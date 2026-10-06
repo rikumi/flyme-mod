@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Fluix 控件的触摸反馈 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <package android:name="com.android.systemui" />
+        <package android:name="com.android.settings" />
+        <package android:name="com.meizu.mstore" />
+        <package android:name="com.meizu.flyme.weather" />
+        <package android:name="com.android.packageinstaller" />
+        <package android:name="com.meizu.flyme.launcher" />
+    </queries>
+
+    <application
+        android:directBootAware="true"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:description="@string/xposed_description"
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+        tools:ignore="MissingApplicationIcon">
+
+        <provider
+            android:name=".SettingsProvider"
+            android:authorities="com.rikumi.flymemod.settings"
+            android:directBootAware="true"
+            android:exported="true" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.FlymeMod">
+            <!-- 在 LSPosed 管理器中提供模块设置入口。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
+            </intent-filter>
+        </activity>
+
+        <!-- 普通桌面启动入口。 -->
+        <activity-alias
+            android:name=".MainActivityLauncher"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+    </application>
+
+    <!-- libxposed module configuration is under META-INF/xposed. -->
+</manifest>
