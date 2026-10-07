@@ -41,6 +41,9 @@ final class ClockFontHooks {
     private final java.util.function.BooleanSupplier statusBarSpacingEnabled;
     private final java.util.function.BooleanSupplier controlCenterDateUpEnabled;
     private final IntSupplier controlCenterDateUpDistance;
+    private final java.util.function.BooleanSupplier controlCenterButtonsUpEnabled;
+    private final IntSupplier controlCenterButtonsUpDistance;
+    private final Field[] headerButtons;
     private final java.util.function.BooleanSupplier hideLunar;
     private final BiConsumer<String, Throwable> log;
     private final Class<?> lockClass, aodClass, perspectiveClass, systemClockClass;
@@ -89,7 +92,9 @@ final class ClockFontHooks {
                    java.util.function.BooleanSupplier aodSpacingEnabled,
                    java.util.function.BooleanSupplier statusBarSpacingEnabled,
                    java.util.function.BooleanSupplier controlCenterDateUpEnabled,
-                   IntSupplier controlCenterDateUpDistance, java.util.function.BooleanSupplier hideLunar,
+                   IntSupplier controlCenterDateUpDistance,
+                   java.util.function.BooleanSupplier controlCenterButtonsUpEnabled,
+                   IntSupplier controlCenterButtonsUpDistance, java.util.function.BooleanSupplier hideLunar,
                    BiConsumer<String, Throwable> log)
             throws ReflectiveOperationException {
         this.settings = settings; this.lockFont = lockFont; this.aodFont = aodFont;
@@ -103,6 +108,8 @@ final class ClockFontHooks {
         this.statusBarSpacingEnabled = statusBarSpacingEnabled;
         this.controlCenterDateUpEnabled = controlCenterDateUpEnabled;
         this.controlCenterDateUpDistance = controlCenterDateUpDistance;
+        this.controlCenterButtonsUpEnabled = controlCenterButtonsUpEnabled;
+        this.controlCenterButtonsUpDistance = controlCenterButtonsUpDistance;
         this.hideLunar = hideLunar;
         lockClass = loader.loadClass(LOCK); aodClass = loader.loadClass(AOD);
         perspectiveClass = loader.loadClass(PERSPECTIVE);
@@ -120,6 +127,8 @@ final class ClockFontHooks {
         headerDate = statusBarHeader.getField("mDateExpanded");
         headerClockGroup = statusBarHeader.getField("mClockView");
         headerDateGroup = statusBarHeader.getField("mDateGroup");
+        headerButtons = new Field[]{statusBarHeader.getField("mQsTilesSettingButton"),
+                statusBarHeader.getField("mQSTilesEditButton"), statusBarHeader.getField("mQSNotificationFilterBtn")};
         Class<?> statusBarController = loader.loadClass("com.android.systemui.statusbar.phone.PhoneStatusBarViewController");
         statusBarBatteryPercent = statusBarController.getField("batteryPercent");
         statusBarClock = statusBarController.getField("clock");
@@ -279,8 +288,45 @@ final class ClockFontHooks {
                 applyMonospace(view, false);
                 applyColonCenter(view);
             }
+            if (controlCenterHeaderClocks.containsKey(view)
+                    && Boolean.TRUE.equals(customFontApplied.get(view))) {
+                // MzTextClockAlignBottom centers a custom-painted string inside its canvas.
+                // Measure that current string rather than retaining TextClock's reserved width.
+                CharSequence text = view.getText();
+                int desired = (int) Math.ceil(android.text.Layout.getDesiredWidth(
+                        text == null ? "" : text, view.getPaint()))
+                        + view.getCompoundPaddingLeft() + view.getCompoundPaddingRight();
+                int widthSpec = (Integer) chain.getArg(0);
+                if (View.MeasureSpec.getMode(widthSpec) != View.MeasureSpec.UNSPECIFIED) {
+                    desired = Math.min(desired, View.MeasureSpec.getSize(widthSpec));
+                }
+                return chain.proceed(new Object[]{View.MeasureSpec.makeMeasureSpec(
+                        Math.max(0, desired), View.MeasureSpec.EXACTLY), chain.getArg(1)});
+            }
             return chain.proceed();
         }, int.class, int.class);
+        installer.hook("com.flyme.systemui.statusbar.phone.MzTextClockAlignBottom", "onDraw", chain -> {
+            TextView view = (TextView) chain.getThisObject();
+            if (!controlCenterHeaderClocks.containsKey(view)
+                    || (!Boolean.TRUE.equals(customFontApplied.get(view))
+                    && !controlCenterMonospace.getAsBoolean())) return chain.proceed();
+            android.text.Layout layout = view.getLayout();
+            if (layout == null || layout.getLineCount() == 0) return chain.proceed();
+            // Native drawing copies only typeface/size into an independent Paint and converts
+            // the text to String. Draw the measured layout so 'tnum' and colon spans survive.
+            view.getPaint().setColor(view.getCurrentTextColor());
+            view.getPaint().drawableState = view.getDrawableState();
+            float left = layout.getLineLeft(0);
+            float textWidth = layout.getLineRight(0) - left;
+            Canvas canvas = (Canvas) chain.getArg(0);
+            int saved = canvas.save();
+            try {
+                canvas.translate((view.getWidth() - textWidth) / 2f - left,
+                        view.getHeight() - 3f - layout.getLineBaseline(0));
+                layout.draw(canvas);
+            } finally { canvas.restoreToCount(saved); }
+            return null;
+        }, Canvas.class);
         installer.hook("android.widget.TextView", "setLetterSpacing", chain -> {
             TextView view = (TextView) chain.getThisObject();
             if (applying.get() || !isSpacingTarget(view)) return chain.proceed();
@@ -532,6 +578,13 @@ final class ClockFontHooks {
     private void applyControlCenterHeaderBaseline(Object owner) {
         try {
             if (!(owner instanceof View header)) return;
+            settings.accept(header.getContext());
+            float buttonOffset = controlCenterButtonsUpEnabled.getAsBoolean()
+                    ? -controlCenterButtonsUpDistance.getAsInt() * header.getResources().getDisplayMetrics().density : 0f;
+            for (Field field : headerButtons) {
+                Object button = field.get(owner);
+                if (button instanceof View view) applyGroupOffset(view, buttonOffset);
+            }
             applyControlCenterDateOffset(header);
             TextView clock = (TextView) headerClock.get(owner);
             TextView amPm = (TextView) headerAmPm.get(owner);

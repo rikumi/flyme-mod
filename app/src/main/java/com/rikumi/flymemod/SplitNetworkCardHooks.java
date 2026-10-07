@@ -274,6 +274,7 @@ final class SplitNetworkCardHooks {
         boolean solid = style.getAsInt() == 2;
         overflow.apply(icon, cardAncestor(icon), solid || optimizeText.getAsBoolean());
         float scale = optimizeText.getAsBoolean() ? 1.2f : solid ? 1.5f : 1f;
+        if (solid) scale *= 1.2f;
         glyph.setScaleX(saved.scaleX * scale);
         glyph.setScaleY(saved.scaleY * scale);
         View circle = (View) field(icon, "mCircleIconBg");

@@ -82,6 +82,7 @@ public final class XposedInit extends XposedModule {
     private final Set<ProgressBar> networkSpinners = Collections.newSetFromMap(new WeakHashMap<>());
     private boolean sliderActiveCornersEnabled;
     private boolean notificationCornersEnabled;
+    private boolean nativeNotificationExpansionEnabled;
     private boolean headsUpWidthEnabled;
     private boolean originalNotificationIconsEnabled;
     private boolean monochromeNotificationActionsEnabled;
@@ -93,7 +94,9 @@ public final class XposedInit extends XposedModule {
     private boolean lockClockSpacingEnabled, aodClockSpacingEnabled;
     private boolean statusBarClockSpacingEnabled;
     private boolean controlCenterClockDateUpEnabled;
-    private int controlCenterClockDateUpDistance = 8;
+    private int controlCenterClockDateUpDistance = 16;
+    private boolean controlCenterButtonsUpEnabled;
+    private int controlCenterButtonsUpDistance = 8;
     private int volumeFirstFourMode;
     private boolean combinedCollapseFixEnabled;
     private boolean combinedPullAnimationEnabled;
@@ -127,6 +130,7 @@ public final class XposedInit extends XposedModule {
     private Set<String> appliedLauncherHiddenPackages = Collections.emptySet();
     private volatile boolean folderPagingEnabled;
     private volatile boolean folderCenterEnabled;
+    private volatile boolean folderCloseTargetEnabled;
     private volatile boolean folderRestoreColorEnabled;
     private volatile boolean folderRadiusEnabled;
     private volatile int folderRadiusDp = ModuleSettings.FOLDER_RADIUS_DEFAULT;
@@ -215,6 +219,13 @@ public final class XposedInit extends XposedModule {
         if ("com.meizu.flyme.launcher".equals(packageName)) {
             installLauncherIconHiding(loader);
             try {
+                new FolderCloseTargetHooks(loader, this::loadSettings, () -> folderCloseTargetEnabled,
+                        (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(
+                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve folder app-close animation target", error);
+            }
+            try {
                 new HomeSwipeDampingHooks(loader, () -> homeSwipeDampingEnabled).install(
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
             } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
@@ -277,7 +288,8 @@ public final class XposedInit extends XposedModule {
                     () -> lockClockSpacingEnabled, () -> lockClockSpacingEnabled,
                     () -> statusBarClockSpacingEnabled,
                     () -> controlCenterClockDateUpEnabled,
-                    () -> controlCenterClockDateUpDistance, () -> hideLunarEnabled,
+                    () -> controlCenterClockDateUpDistance, () -> controlCenterButtonsUpEnabled,
+                    () -> controlCenterButtonsUpDistance, () -> hideLunarEnabled,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
             activeClockFontHooks.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
@@ -310,6 +322,13 @@ public final class XposedInit extends XposedModule {
         installWallpaperStartupFix(loader);
         installNotificationCorners(loader);
         try {
+            new NotificationExpansionHooks(loader, this::loadSettings, () -> nativeNotificationExpansionEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve native notification expansion hooks", error);
+        }
+        try {
             new HeadsUpWidthHooks(loader, this::loadSettings, () -> headsUpWidthEnabled).install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         } catch (ReflectiveOperationException e) {
@@ -331,6 +350,7 @@ public final class XposedInit extends XposedModule {
         try {
             secondaryExpansionHooks = new SecondaryExpansionHooks(loader, this::loadSettings,
                     () -> secondaryExpansionEnabled, (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            secondaryExpansionHooks.setSlowRebound(() -> combinedPullAnimationEnabled);
             secondaryExpansionHooks.install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         } catch (ReflectiveOperationException e) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve secondary QS expansion hooks", e);
@@ -343,6 +363,16 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve combined empty-shade hooks", e);
         }
         try {
+            new RowRevealHooks(loader, this::loadSettings, () -> combinedPullAnimationEnabled).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+            ReboundTimingHooks rebound = new ReboundTimingHooks(() -> combinedPullAnimationEnabled);
+            rebound.install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+            rebound.installRowStretch(loader,
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+            new BlurRevealTimingHooks(loader, () -> combinedPullAnimationEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(loader,
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
             CombinedShadeAnimationHooks animations = new CombinedShadeAnimationHooks(loader, this::loadSettings,
                     () -> combinedPullAnimationEnabled, () -> combinedCollapseFixEnabled,
                     () -> qsTranslationOriginEnabled,
@@ -350,6 +380,7 @@ public final class XposedInit extends XposedModule {
             if (secondaryExpansionHooks != null) {
                 animations.setSecondaryOwner(secondaryExpansionHooks::ownsGesture);
                 animations.setSecondaryTouchOwner(secondaryExpansionHooks::allowsTouch);
+                secondaryExpansionHooks.setVisualOwner(animations::releaseForSecondary);
             }
             animations.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
@@ -357,8 +388,10 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve combined shade animation classes", e);
         }
         try {
-            new SeparateShadeOriginHooks(loader, this::loadSettings, () -> qsTranslationOriginEnabled,
-                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(
+            SeparateShadeOriginHooks separate = new SeparateShadeOriginHooks(loader, this::loadSettings, () -> qsTranslationOriginEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            separate.setSlowRebound(() -> combinedPullAnimationEnabled);
+            separate.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         } catch (ReflectiveOperationException e) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve separate QS translation origin classes", e);
@@ -1448,6 +1481,33 @@ public final class XposedInit extends XposedModule {
             return chain.proceed();
         }, StatusBarNotification.class);
         try {
+            Class<?> ticker = loader.loadClass("com.flyme.systemui.statusbar.ticker.MarqueeTicker");
+            Class<?> segment = loader.loadClass("com.flyme.systemui.statusbar.ticker.MarqueeTicker$Segment");
+            java.lang.reflect.Field contextField = ticker.getField("mContext");
+            hook(segment.getDeclaredConstructor(ticker, StatusBarNotification.class, Drawable.class, CharSequence.class))
+                    .intercept(chain -> {
+                        Context context = (Context) contextField.get(chain.getArg(0));
+                        loadSettings(context);
+                        StatusBarNotification sbn = (StatusBarNotification) chain.getArg(1);
+                        Icon original = !originalNotificationIconsEnabled || sbn == null ? null
+                                : originalNotificationIcons.get(sbn.getNotification());
+                        if (original == null) return chain.proceed();
+                        Drawable drawable;
+                        try {
+                            drawable = original.loadDrawable(context);
+                        } catch (RuntimeException error) {
+                            log(Log.ERROR, "FlymeMod", "Cannot load original ticker icon " + sbn.getPackageName(), error);
+                            return chain.proceed();
+                        }
+                        if (drawable == null) return chain.proceed();
+                        // Replace only this queued ticker segment, without changing the shared Notification.
+                        return chain.proceed(new Object[]{chain.getArg(0), sbn,
+                                new OriginalTickerIcon(drawable), chain.getArg(3)});
+                    });
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot hook original ticker notification icons", error);
+        }
+        try {
             Class<?> statusBarIcon = Class.forName("com.android.internal.statusbar.StatusBarIcon", false, loader);
             install(loader, "com.android.systemui.statusbar.StatusBarIconView", "set", chain -> {
                 View view = (View) chain.getThisObject();
@@ -1471,7 +1531,7 @@ public final class XposedInit extends XposedModule {
                 // dot and layout spacing stay unchanged. Restore after each draw.
                 java.lang.reflect.Field scale = view.getClass().getField("mIconScale");
                 float originalScale = scale.getFloat(view);
-                scale.setFloat(view, originalScale * 0.6f);
+                scale.setFloat(view, originalScale * 0.65f);
                 try {
                     return chain.proceed();
                 } finally {
@@ -1480,6 +1540,23 @@ public final class XposedInit extends XposedModule {
             }, Canvas.class);
         } catch (ClassNotFoundException e) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve notification icon descriptor", e);
+        }
+    }
+
+    private static final class OriginalTickerIcon extends DrawableWrapper {
+        OriginalTickerIcon(Drawable drawable) {
+            super(drawable);
+        }
+
+        @Override public void draw(Canvas canvas) {
+            int saved = canvas.save();
+            try {
+                // Keep native ticker layout, intrinsic size and dark-mode tinting unchanged.
+                canvas.scale(.65f, .65f, getBounds().exactCenterX(), getBounds().exactCenterY());
+                super.draw(canvas);
+            } finally {
+                canvas.restoreToCount(saved);
+            }
         }
     }
 
@@ -1580,6 +1657,8 @@ public final class XposedInit extends XposedModule {
                 headsUpWidthEnabled = headsUpWidthColumn >= 0 && cursor.getInt(headsUpWidthColumn) != 0;
                 int cornersColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CORNERS);
                 notificationCornersEnabled = cornersColumn >= 0 && cursor.getInt(cornersColumn) != 0;
+                int nativeExpansionColumn = cursor.getColumnIndex(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION);
+                nativeNotificationExpansionEnabled = nativeExpansionColumn >= 0 && cursor.getInt(nativeExpansionColumn) != 0;
                 int originalIconsColumn = cursor.getColumnIndex(ModuleSettings.ORIGINAL_NOTIFICATION_ICONS);
                 originalNotificationIconsEnabled = originalIconsColumn >= 0 && cursor.getInt(originalIconsColumn) != 0;
                 int actionColorsColumn = cursor.getColumnIndex(ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS);
@@ -1615,8 +1694,13 @@ public final class XposedInit extends XposedModule {
                 int controlCenterDateUpColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP);
                 controlCenterClockDateUpEnabled = controlCenterDateUpColumn >= 0 && cursor.getInt(controlCenterDateUpColumn) != 0;
                 int controlCenterDateUpDistanceColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE);
-                controlCenterClockDateUpDistance = controlCenterDateUpDistanceColumn < 0 ? 8
+                controlCenterClockDateUpDistance = controlCenterDateUpDistanceColumn < 0 ? 16
                         : Math.max(0, Math.min(40, cursor.getInt(controlCenterDateUpDistanceColumn)));
+                int buttonsUpColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_BUTTONS_UP);
+                controlCenterButtonsUpEnabled = buttonsUpColumn >= 0 && cursor.getInt(buttonsUpColumn) != 0;
+                int buttonsDistanceColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE);
+                controlCenterButtonsUpDistance = buttonsDistanceColumn < 0 ? 8
+                        : Math.max(0, Math.min(40, cursor.getInt(buttonsDistanceColumn)));
                 int lockSpacingColumn = cursor.getColumnIndex(ModuleSettings.LOCK_CLOCK_SPACING);
                 lockClockSpacing = lockSpacingColumn < 0 ? 0 : Math.max(-10, Math.min(10, cursor.getInt(lockSpacingColumn)));
                 int aodSpacingColumn = cursor.getColumnIndex(ModuleSettings.AOD_CLOCK_SPACING);
@@ -1681,6 +1765,8 @@ public final class XposedInit extends XposedModule {
                 folderPagingEnabled = folderPagingColumn >= 0 && cursor.getInt(folderPagingColumn) != 0;
                 int folderCenterColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_CENTER);
                 folderCenterEnabled = folderCenterColumn >= 0 && cursor.getInt(folderCenterColumn) != 0;
+                int folderCloseTargetColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_CLOSE_TARGET);
+                folderCloseTargetEnabled = folderCloseTargetColumn >= 0 && cursor.getInt(folderCloseTargetColumn) != 0;
                 int folderColorColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RESTORE_COLOR);
                 folderRestoreColorEnabled = folderColorColumn >= 0 && cursor.getInt(folderColorColumn) != 0;
                 int folderRadiusEnabledColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RADIUS_ENABLED);

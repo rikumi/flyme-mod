@@ -149,12 +149,22 @@ final class SolidCardHooks {
             boolean rtl = padding.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
             int start = (rtl ? saved.right : saved.left) / 2;
             padding.setPaddingRelative(start, saved.top, rtl ? saved.left : saved.right, saved.bottom);
-            Saved text = remember(label);
-            if (label.getLayoutParams() instanceof ViewGroup.MarginLayoutParams params) {
-                int margin = device ? text.marginStart / 2 : text.marginStart - labelGap(card) / 2;
+            if (device && label.getLayoutParams() instanceof ViewGroup.MarginLayoutParams params) {
+                Saved text = remember(label);
+                int margin = text.marginStart / 2;
                 if (params.getMarginStart() != margin) { params.setMarginStart(margin); label.setLayoutParams(params); }
             }
         } else { restore(padding); restore(label); }
+        if (!device && label.getLayoutParams() instanceof ViewGroup.MarginLayoutParams params) {
+            // Native horizontal constraints reserve the circle width plus the label gap.
+            // Init/state callbacks can precede applyConstraints, so a saved margin may be zero.
+            int circleId = card.getResources().getIdentifier("circle_qs_icon_size", "dimen", "com.android.systemui");
+            if (circleId != 0) {
+                int gap = labelGap(card);
+                int margin = card.getResources().getDimensionPixelSize(circleId) + gap - (solid ? gap / 2 : 0);
+                if (params.getMarginStart() != margin) { params.setMarginStart(margin); label.setLayoutParams(params); }
+            }
+        }
         for (String name : device ? new String[]{"tileIcon", "secondIcon", "thirdIcon"} : new String[]{"icon"}) {
             View icon = (View) field(card, name);
             if (icon == null) continue;
@@ -171,6 +181,7 @@ final class SolidCardHooks {
             if (solid || optimized) {
                 Saved saved = remember(glyph);
                 float scale = optimized ? 1.2f : 1.5f;
+                if (solid) scale *= 1.2f;
                 glyph.setScaleX(saved.scaleX * scale); glyph.setScaleY(saved.scaleY * scale);
                 float shift = solid ? 4f * card.getResources().getDisplayMetrics().density : 0f;
                 glyph.setTranslationX(saved.translationX + (card.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL ? -shift : shift));

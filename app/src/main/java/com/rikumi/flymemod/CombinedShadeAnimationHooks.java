@@ -39,6 +39,8 @@ final class CombinedShadeAnimationHooks {
     private final Method expandEnabled, flowValue, damping;
     private final Method instantCollapse, cancelSpring;
     private final Method eventTouchSlop;
+    private final Field panelLazy;
+    private final Method lazyValue, cancelHeight, trackingStopped, expandingFinished;
 
     CombinedShadeAnimationHooks(ClassLoader loader, Consumer<Context> settings,
                                 BooleanSupplier enabled, BooleanSupplier collapseFix) throws ReflectiveOperationException {
@@ -68,6 +70,11 @@ final class CombinedShadeAnimationHooks {
         pointer = field(panel, "mTrackingPointer");
         touchSlop = field(panel, "mTouchSlop");
         eventTouchSlop = method(panel, "getTouchSlop", MotionEvent.class);
+        panelLazy = field(quickSettings, "mPanelViewControllerLazy");
+        lazyValue = panelLazy.getType().getMethod("get");
+        cancelHeight = method(panel, "cancelHeightAnimator");
+        trackingStopped = method(panel, "onTrackingStopped", boolean.class);
+        expandingFinished = method(panel, "notifyExpandingFinished");
         tracking = method(panel, "isTracking");
         closing = method(panel, "isClosing");
         maxHeight = method(panel, "getMaxPanelHeight");
@@ -86,6 +93,25 @@ final class CombinedShadeAnimationHooks {
 
     void setSecondaryOwner(Predicate<Object> owner) { secondaryOwner = owner; }
     void setSecondaryTouchOwner(Predicate<Object> owner) { secondaryTouchOwner = owner; }
+
+    void releaseForSecondary(Object quickSettings) {
+        try {
+            // Remove the old owner before cancel() delivers its synchronous end callbacks.
+            Gesture previous = gestures.remove(quickSettings);
+            if (previous != null && previous.positionAnimator != null) previous.positionAnimator.cancel();
+            Object panel = lazyValue.invoke(panelLazy.get(quickSettings));
+            cancel(expand, panel);
+            cancel(collapse, panel);
+            stopSpring(quickSettings);
+            cancelHeight.invoke(panel);
+            if ((Boolean) tracking.invoke(panel)) trackingStopped.invoke(panel, true);
+            expandingFinished.invoke(panel);
+            translation.invoke(quickSettings, 0f);
+            alpha.invoke(panel, 1f);
+        } catch (ReflectiveOperationException error) {
+            log.accept("Cannot transfer merged shade animation ownership", error);
+        }
+    }
 
     void install(SignalHooks.Installer installer) {
         installer.hook(PANEL, "flingExpands", chain -> {
@@ -149,7 +175,17 @@ final class CombinedShadeAnimationHooks {
         installer.hook(PANEL, "fling", chain -> {
             Object panel = chain.getThisObject();
             settings.accept(((View) view.get(panel)).getContext());
+            if (secondaryOwner.test(qs.get(panel))) return chain.proceed();
             Gesture gesture = gestures.get(qs.get(panel));
+            if (gesture != null && gesture.releasedByFling && gesture.expanding != (Boolean) chain.getArg(1)) {
+                // A command or reversed gesture can change the endpoint before the old
+                // visual timer finishes. Preserve its current position, but retire its writer.
+                ValueAnimator previousAnimator = gesture.positionAnimator;
+                gesture.positionAnimator = null;
+                if (previousAnimator != null) previousAnimator.cancel();
+                gesture.nativeFinished = false;
+                gesture.releasedByFling = false;
+            }
             // Launcher input-focus transfer and command-driven expansion can reach fling
             // without a tracking height callback. Give that path the same visual timer.
             if (animationFix.getAsBoolean() && gesture == null && (Boolean) chain.getArg(1)
@@ -483,12 +519,16 @@ final class CombinedShadeAnimationHooks {
         float fadeDistance = DISMISSAL_DISTANCE_DP * ((View) view.get(panel))
                 .getResources().getDisplayMetrics().density;
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        ValueAnimator previousAnimator = gesture.positionAnimator;
         gesture.positionAnimator = animator;
+        if (previousAnimator != null) previousAnimator.cancel();
         long minimum = animationFix.getAsBoolean() ? MIN_TRANSITION_DURATION_MS : 280L;
-        animator.setDuration(gesture.expanding ? Math.max(minimum, gesture.openingRemaining) : minimum);
+        animator.setDuration(gesture.expanding
+                ? ReboundTimingHooks.duration(Math.max(minimum, gesture.openingRemaining), animationFix.getAsBoolean())
+                : minimum);
         animator.setInterpolator(new DecelerateInterpolator());
         animator.addUpdateListener(frame -> {
-            if (gestures.get(quickSettings) != gesture) return;
+            if (gestures.get(quickSettings) != gesture || gesture.positionAnimator != animator) return;
             float amount = (Float) frame.getAnimatedValue();
             gesture.translation = gesture.releaseTranslation + (target - gesture.releaseTranslation) * amount;
             if (gesture.expanding) {
@@ -507,6 +547,7 @@ final class CombinedShadeAnimationHooks {
         });
         animator.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator animation) {
+                if (gesture.positionAnimator != animation) return;
                 gesture.positionAnimator = null;
                 if (gestures.get(quickSettings) != gesture || !gesture.nativeFinished) return;
                 try {

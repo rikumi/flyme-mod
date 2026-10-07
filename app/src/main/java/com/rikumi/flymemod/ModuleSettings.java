@@ -33,6 +33,8 @@ public final class ModuleSettings {
     public static final String CONTROL_CENTER_CLOCK_WEIGHT = "control_center_clock_weight";
     public static final String CONTROL_CENTER_CLOCK_DATE_UP = "control_center_clock_date_up";
     public static final String CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE = "control_center_clock_date_up_distance";
+    public static final String CONTROL_CENTER_BUTTONS_UP = "control_center_buttons_up";
+    public static final String CONTROL_CENTER_BUTTONS_UP_DISTANCE = "control_center_buttons_up_distance";
     public static final String CLOCK_FONT_WEIGHT = "clock_font_weight";
     public static final String LOCK_CLOCK_SPACING = "lock_clock_spacing";
     public static final String AOD_CLOCK_SPACING = "aod_clock_spacing";
@@ -57,6 +59,7 @@ public final class ModuleSettings {
     public static final String HEADS_UP_WIDTH = "wider_heads_up_notifications";
     public static final String NOTIFICATION_CORNERS = "larger_notification_corners";
     public static final String ORIGINAL_NOTIFICATION_ICONS = "original_third_party_notification_icons";
+    public static final String NATIVE_NOTIFICATION_EXPANSION = "native_notification_pull_expansion";
     public static final String MONOCHROME_NOTIFICATION_ACTIONS = "monochrome_notification_actions";
     public static final String MERGE_DUAL_SIGNAL = "merge_dual_sim_signal";
     public static final String SEPARATE_NETWORK_TYPE = "separate_network_type";
@@ -75,6 +78,7 @@ public final class ModuleSettings {
     public static final int FOLDER_RADIUS_DEFAULT = 12;
     public static final int FOLDER_RADIUS_MAX = 32;
     public static final String FOLDER_CENTER = "folder_vertical_center";
+    public static final String FOLDER_CLOSE_TARGET = "folder_restore_close_animation_target";
     public static final String HOME_SWIPE_DAMPING = "home_swipe_damping_reduced";
     public static final String[] HIDE_STATUS_ICON_KEYS = {
             "status_icon_hide_zen", "status_icon_hide_vpn", "status_icon_hide_location",

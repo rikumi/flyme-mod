@@ -21,6 +21,7 @@ final class SeparateShadeOriginHooks {
     private static final float CARD_FACTOR = .54f;
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled;
+    private BooleanSupplier slowRebound = () -> false;
     private final BiConsumer<String, Throwable> log;
     private final Field context, tracking, closed, initialY, pointer, spring;
     private final Method translation, touchSlop, alpha;
@@ -44,6 +45,8 @@ final class SeparateShadeOriginHooks {
         alpha = method(center, "setAnimationAlpha", float.class);
         touchSlop = method(center, "getTouchSlop", MotionEvent.class);
     }
+
+    void setSlowRebound(BooleanSupplier enabled) { slowRebound = enabled; }
 
     void install(SignalHooks.Installer installer) {
         installer.hook(CENTER + "$TouchHandler", "onTouch", chain -> {
@@ -120,7 +123,7 @@ final class SeparateShadeOriginHooks {
             float target = expanding ? 0f : -state.reference / CARD_FACTOR;
             ValueAnimator animator = ValueAnimator.ofFloat(state.translation, target);
             state.animator = animator;
-            animator.setDuration(300L);
+            animator.setDuration(ReboundTimingHooks.duration(300L, expanding && slowRebound.getAsBoolean()));
             animator.setInterpolator(new DecelerateInterpolator());
             animator.addUpdateListener(frame -> {
                 if (states.get(center) != state) return;

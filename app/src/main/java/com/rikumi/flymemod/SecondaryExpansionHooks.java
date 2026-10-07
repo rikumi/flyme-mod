@@ -4,10 +4,14 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Rect;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.VelocityTracker;
+import android.view.ViewConfiguration;
+import java.lang.ref.WeakReference;
 import android.view.animation.DecelerateInterpolator;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -23,12 +27,17 @@ final class SecondaryExpansionHooks {
     private static final String IMPL = "com.flyme.systemui.qs.MzQSImpl";
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled;
+    private BooleanSupplier slowRebound = () -> false;
+    private Consumer<Object> claimVisuals = ignored -> {};
     private final BiConsumer<String, Throwable> log;
     private final Field shade, shadeFraction, root, tileLayout, implShade, spec, cellWidth, gap, alignOffset;
     private final Field conflictingGesture, trackingPointer, velocityTracker;
     private final Field[] miniCards;
     private final Method mode, flow, container, fullyExpanded, tracking, stopTracking, translation, plugin, cancelSpring;
-    private final Method pageAt, pageCount;
+    private final Method pageAt, pageCount, expansionFraction, handleTouch, customizing;
+    private final Map<View, WeakReference<Object>> touchOwners = new WeakHashMap<>();
+    private final ThreadLocal<Boolean> routingCancel = new ThreadLocal<>();
+    private final Map<View, Pivot> pivots = new WeakHashMap<>();
     private final Map<Object, Drag> drags = new WeakHashMap<>();
     private final Map<Object, Panels> panels = new WeakHashMap<>();
     private final Map<View, Panels> miniPanels = new WeakHashMap<>();
@@ -43,6 +52,9 @@ final class SecondaryExpansionHooks {
         implShade = impl.getField("mShadeInteractor");
         container = qs.getMethod("getContainer"); fullyExpanded = qs.getMethod("getFullyExpanded");
         tracking = qs.getMethod("isTracking"); translation = qs.getMethod("setQSTranslationY", float.class);
+        expansionFraction = qs.getMethod("computeExpansionFraction");
+        handleTouch = qs.getMethod("handleTouch", MotionEvent.class, boolean.class, boolean.class);
+        customizing = qs.getMethod("isCustomizing");
         stopTracking = qs.getDeclaredMethod("setTracking", boolean.class); stopTracking.setAccessible(true);
         conflictingGesture = qs.getField("mConflictingExpansionGesture");
         trackingPointer = qs.getField("mTrackingPointer");
@@ -69,9 +81,50 @@ final class SecondaryExpansionHooks {
         return enabled.getAsBoolean() && drag != null && (drag.secondary || drag.overpull || drag.animator != null);
     }
 
-    boolean allowsTouch(Object qs) { return enabled.getAsBoolean() && drags.containsKey(qs); }
+    boolean allowsTouch(Object qs) { return ownsGesture(qs); }
 
     void install(SignalHooks.Installer installer) {
+        installer.hook("com.android.systemui.shade.NotificationPanelView", "dispatchTouchEvent", chain -> {
+            View panel = (View) chain.getThisObject();
+            WeakReference<Object> reference = touchOwners.get(panel);
+            Object qs = reference == null ? null : reference.get();
+            MotionEvent event = (MotionEvent) chain.getArg(0);
+            if (qs != null && (Boolean) customizing.invoke(qs)) {
+                clear(qs);
+                return chain.proceed();
+            }
+            if (qs == null || !enabled.getAsBoolean()
+                    || !Boolean.TRUE.equals(flow.invoke(mode.invoke(shade.get(qs))))) return chain.proceed();
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) clear(qs);
+            if (action == MotionEvent.ACTION_DOWN && shadeFraction.getFloat(qs) >= .99f && isAllTilesExpanded(qs)) {
+                // Observe DOWN before a clickable tile consumes the rest of the stream.
+                Drag drag = new Drag();
+                drag.fullOnDown = true;
+                drag.startY = event.getY(); drag.startX = event.getX();
+                drags.put(qs, drag);
+            }
+            Drag drag = drags.get(qs);
+            if (drag == null || !drag.fullOnDown) return chain.proceed();
+            float distance = event.getY() - drag.startY;
+            if (action == MotionEvent.ACTION_MOVE && (drag.overpull
+                    || (distance > ViewConfiguration.get(panel.getContext()).getScaledTouchSlop()
+                    && distance > Math.abs(event.getX() - drag.startX)))) {
+                if (!drag.overpull) {
+                    drag.overpull = true;
+                    MotionEvent cancel = MotionEvent.obtain(event);
+                    cancel.setAction(MotionEvent.ACTION_CANCEL);
+                    routingCancel.set(true);
+                    try { chain.proceed(new Object[]{cancel}); }
+                    finally { routingCancel.remove(); cancel.recycle(); }
+                }
+                return handleTouch.invoke(qs, event, false, false);
+            }
+            if (drag.overpull && (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)) {
+                return handleTouch.invoke(qs, event, false, false);
+            }
+            return chain.proceed();
+        }, MotionEvent.class);
         installer.hook(IMPL, "setQsExpansion", chain -> {
             Object result = chain.proceed();
             Object owner = chain.getThisObject();
@@ -85,6 +138,7 @@ final class SecondaryExpansionHooks {
             if (Float.isNaN(f)) return result;
             Panels state = panels.get(owner);
             if (active && (state == null || state.mini != mini || state.full != full)) {
+                if (state != null) restoreClips(state);
                 state = new Panels(full, mini);
                 panels.put(owner, state); miniPanels.put(mini, state);
             }
@@ -98,13 +152,17 @@ final class SecondaryExpansionHooks {
         // Re-evaluate after layout, including reordered tiles with unchanged panel bounds.
         installer.hook("com.flyme.systemui.controlcenter.qs.UnifiedTileLayout", "onLayout", chain -> {
             Object result = chain.proceed();
+            for (Pivot pivot : pivots.values()) pivot.calculated = false;
             for (Panels state : panels.values()) { alignMini(state); render(state); }
             return result;
         }, boolean.class, int.class, int.class, int.class, int.class);
         installer.hook("android.widget.LinearLayout", "onLayout", chain -> {
             Object result = chain.proceed();
             Panels state = miniPanels.get(chain.getThisObject());
-            if (state != null) { alignMini(state); render(state); }
+            if (state != null) {
+                for (Pivot pivot : pivots.values()) pivot.calculated = false;
+                alignMini(state); render(state);
+            }
             return result;
         }, boolean.class, int.class, int.class, int.class, int.class);
         installer.hook("com.flyme.systemui.controlcenter.phone.MzQQSPanel", "onDensityOrFontScaleChanged", chain -> {
@@ -119,10 +177,19 @@ final class SecondaryExpansionHooks {
             return result;
         });
         installer.hook(QS, "handleTouch", chain -> {
+            if (Boolean.TRUE.equals(routingCancel.get())) return chain.proceed();
             Object qs = chain.getThisObject();
+            if ((Boolean) customizing.invoke(qs)) { clear(qs); return chain.proceed(); }
             MotionEvent event = (MotionEvent) chain.getArg(0);
             View view = (View) container.invoke(qs);
             if (view == null) return chain.proceed();
+            for (View current = view; current != null;
+                 current = current.getParent() instanceof View parent ? parent : null) {
+                if (current.getClass().getName().equals("com.android.systemui.shade.NotificationPanelView")) {
+                    touchOwners.put(current, new WeakReference<>(qs));
+                    break;
+                }
+            }
             settings.accept(view.getContext());
             if (!enabled.getAsBoolean() || !Boolean.TRUE.equals(flow.invoke(mode.invoke(shade.get(qs))))) {
                 clear(qs); return chain.proceed();
@@ -130,14 +197,18 @@ final class SecondaryExpansionHooks {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
                 clear(qs);
+                // QS can remain fully expanded while the shade itself is closed (especially
+                // with no notifications). That DOWN belongs to opening the whole shade.
+                if ((Boolean) chain.getArg(1) || shadeFraction.getFloat(qs) <= 0f) return chain.proceed();
                 Drag drag = new Drag();
-                drag.fullOnDown = (Boolean) fullyExpanded.invoke(qs);
+                drag.fullOnDown = shadeFraction.getFloat(qs) >= .99f && isAllTilesExpanded(qs);
                 // In merged shade mode, the all-tiles QS can be fully expanded
                 // while the overall shade fraction is well below 1.0.
                 if (!drag.fullOnDown && ((Boolean) chain.getArg(1) || shadeFraction.getFloat(qs) < .99f)) {
                     return chain.proceed();
                 }
                 drag.startY = event.getY(0);
+                drag.startX = event.getX(0);
                 drags.put(qs, drag);
                 if (drag.fullOnDown) {
                     stopSpring(qs);
@@ -149,11 +220,13 @@ final class SecondaryExpansionHooks {
             if (action == MotionEvent.ACTION_MOVE && !drag.fullOnDown) {
                 if (event.getY(0) < drag.startY) { clear(qs); return chain.proceed(); }
                 drag.secondary = event.getY(0) > drag.startY;
+                if (drag.secondary) claim(qs, drag);
             }
             if (action == MotionEvent.ACTION_MOVE && drag.fullOnDown) {
                 float distance = event.getY(0) - drag.startY;
                 if (distance > 0f) {
                     drag.overpull = true;
+                    claim(qs, drag);
                     stopSpring(qs);
                     drag.translation = overpullTranslation(distance);
                     translation.invoke(qs, drag.translation);
@@ -179,12 +252,26 @@ final class SecondaryExpansionHooks {
         }, MotionEvent.class, boolean.class, boolean.class);
         installer.hook(QS, "startQsHeaderAnimator", chain -> {
             Object qs = chain.getThisObject();
+            if ((Boolean) customizing.invoke(qs)) { clear(qs); return chain.proceed(); }
             Drag drag = drags.get(qs);
             if (!ownsGesture(qs)) return chain.proceed();
             stopSpring(qs);
             translation.invoke(qs, drag.overpull ? drag.translation : 0f);
             return null;
         }, float.class);
+        installer.hook("com.android.systemui.shade.NotificationPanelViewController", "onHeightUpdated", chain -> {
+            Object result = chain.proceed();
+            Object panel = chain.getThisObject();
+            if (panel.getClass().getField("mExpandedFraction").getFloat(panel) <= 0f) {
+                clear(panel.getClass().getField("mQsController").get(panel));
+            }
+            return result;
+        }, float.class);
+    }
+
+    private boolean isAllTilesExpanded(Object qs) throws ReflectiveOperationException {
+        return (Boolean) fullyExpanded.invoke(qs)
+                || ((Number) expansionFraction.invoke(qs)).floatValue() >= .99f;
     }
 
     private void alignMini(Panels state) throws ReflectiveOperationException {
@@ -239,6 +326,8 @@ final class SecondaryExpansionHooks {
         if (layout == null) return;
         float fullFade = clamp((state.fraction - .43f) / .57f);
         float miniFade = clamp(1f - state.fraction / .43f);
+        boolean transitioning = state.active && state.fraction > 0f && state.fraction < 1f;
+        if (!transitioning) restoreClips(state);
         boolean[] matched = new boolean[miniCards.length];
         View[] collapsed = new View[miniCards.length];
         for (int i = 0; i < miniCards.length; i++) collapsed[i] = (View) miniCards[i].get(state.mini);
@@ -253,8 +342,17 @@ final class SecondaryExpansionHooks {
                 boolean fixed = state.active && page == 0 && card >= 0
                         && sameBounds(child, collapsed[card], state.full.getRootView());
                 if (fixed) matched[card] = true;
-                child.setAlpha(state.active ? (fixed ? 1f : fullFade) : 1f);
+                float tileAlpha = state.active ? (fixed ? 1f : fullFade) : 1f;
                 // Native scaling affects the content tile, not the decorated grid cell.
+                if (child instanceof ViewGroup cell && cell.getChildCount() > 0) {
+                    View tile = cell.getChildAt(0);
+                    // Fading the stationary cell creates an alpha layer bounded by its
+                    // original rectangle. The row pivot moves the tile outside that rectangle,
+                    // so fade the transformed tile itself instead of its untransformed parent.
+                    child.setAlpha(1f);
+                    tile.setAlpha(tileAlpha);
+                    applyRowPivot(tile, child, group, transitioning && !fixed && fullFade < 1f, state);
+                } else child.setAlpha(tileAlpha);
                 setTileScale(child, state.active && fixed ? 1f : .85f + .15f * fullFade);
             }
         }
@@ -268,16 +366,108 @@ final class SecondaryExpansionHooks {
                 collapsed[i].setAlpha(alpha);
                 collapsed[i].setVisibility(alpha > 0f ? View.VISIBLE : View.INVISIBLE);
                 float scale = matched[i] ? 1f : .85f + .15f * miniFade;
+                applyRowPivot(collapsed[i], collapsed[i], state.mini, transitioning && !matched[i] && miniFade < 1f, state);
                 collapsed[i].setScaleX(scale); collapsed[i].setScaleY(scale);
             }
         } else {
             state.full.setAlpha(fullFade); state.full.setVisibility(fullFade > 0f ? View.VISIBLE : View.INVISIBLE);
             state.mini.setAlpha(miniFade); state.mini.setVisibility(miniFade > 0f ? View.VISIBLE : View.INVISIBLE);
             for (View child : collapsed) if (child != null) {
+                restorePivot(child);
                 child.setAlpha(1f); child.setVisibility(View.VISIBLE);
                 child.setScaleX(.85f + .15f * miniFade); child.setScaleY(.85f + .15f * miniFade);
             }
         }
+    }
+
+    private void applyRowPivot(View tile, View cell, View rowRoot, boolean active, Panels state) {
+        if (!active) { restorePivot(tile); return; }
+        for (View current = tile.getParent() instanceof View parent ? parent : null;
+             current != null; current = current.getParent() instanceof View parent ? parent : null) {
+            if (current instanceof ViewGroup group) {
+                state.clips.computeIfAbsent(group, Clip::new);
+                releaseClip(group);
+            }
+            // The outer notification/QS container also sets its own clip bounds on layout.
+            if (current.getClass().getName().equals("com.android.systemui.shade.NotificationPanelView")) break;
+        }
+        if (state.clipListener == null) {
+            state.clipObserver = state.full.getViewTreeObserver();
+            state.clipListener = () -> {
+                // Native layout and the primary reveal animation can overwrite these flags
+                // after setQsExpansion. Reassert only the cached ancestor chain before draw.
+                for (ViewGroup group : state.clips.keySet()) releaseClip(group);
+                return true;
+            };
+            state.clipObserver.addOnPreDrawListener(state.clipListener);
+        }
+        Pivot original = pivots.computeIfAbsent(tile, Pivot::new);
+        if (original.calculated) {
+            tile.setPivotX(original.targetX); tile.setPivotY(original.targetY);
+            return;
+        }
+        float left = Float.POSITIVE_INFINITY, right = Float.NEGATIVE_INFINITY;
+        if (rowRoot instanceof ViewGroup group) {
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View sibling = group.getChildAt(i);
+                if (sibling.getVisibility() == View.GONE || sibling.getTop() > cell.getTop() + 1
+                        || sibling.getBottom() <= cell.getTop() + 1) continue;
+                left = Math.min(left, sibling.getLeft());
+                right = Math.max(right, sibling.getRight());
+            }
+        }
+        float center = Float.isFinite(left) ? (left + right) / 2f : rowRoot.getWidth() / 2f;
+        original.targetX = center - coordinate(tile, rowRoot, false);
+        original.targetY = coordinate(cell, rowRoot, true) - coordinate(tile, rowRoot, true);
+        original.calculated = true;
+        tile.setPivotX(original.targetX); tile.setPivotY(original.targetY);
+    }
+
+    private static void restoreClips(Panels state) {
+        if (state.clipListener != null) {
+            ViewTreeObserver observer = state.clipObserver != null && state.clipObserver.isAlive()
+                    ? state.clipObserver : state.full.getViewTreeObserver();
+            if (observer.isAlive()) observer.removeOnPreDrawListener(state.clipListener);
+            state.clipListener = null;
+            state.clipObserver = null;
+        }
+        for (Map.Entry<ViewGroup, Clip> entry : state.clips.entrySet()) {
+            ViewGroup view = entry.getKey(); Clip clip = entry.getValue();
+            view.setClipChildren(clip.children); view.setClipToPadding(clip.padding);
+            view.setClipToOutline(clip.outline); view.setClipBounds(clip.bounds);
+        }
+        state.clips.clear();
+    }
+
+    private static void releaseClip(ViewGroup group) {
+        if (group.getClipChildren()) group.setClipChildren(false);
+        if (group.getClipToPadding()) group.setClipToPadding(false);
+        if (group.getClipToOutline()) group.setClipToOutline(false);
+        if (group.getClipBounds() != null) group.setClipBounds(null);
+    }
+
+    private static final class Clip {
+        final boolean children, padding, outline;
+        final Rect bounds;
+        Clip(ViewGroup view) {
+            children = view.getClipChildren(); padding = view.getClipToPadding();
+            outline = view.getClipToOutline(); bounds = view.getClipBounds();
+        }
+    }
+
+    private void restorePivot(View view) {
+        Pivot original = pivots.remove(view);
+        if (original == null) return;
+        if (original.explicit) { view.setPivotX(original.x); view.setPivotY(original.y); }
+        else view.resetPivot();
+    }
+
+    private static final class Pivot {
+        final float x, y;
+        final boolean explicit;
+        boolean calculated;
+        float targetX, targetY;
+        Pivot(View view) { x = view.getPivotX(); y = view.getPivotY(); explicit = view.isPivotSet(); }
     }
 
     private static int cardIndex(String spec) {
@@ -311,6 +501,9 @@ final class SecondaryExpansionHooks {
         final View full, mini;
         int left, top, right, bottom;
         final Map<View, Integer> spacers = new WeakHashMap<>();
+        final Map<ViewGroup, Clip> clips = new WeakHashMap<>();
+        ViewTreeObserver clipObserver;
+        ViewTreeObserver.OnPreDrawListener clipListener;
         boolean active;
         float fraction;
         Panels(View full, View mini) {
@@ -323,14 +516,25 @@ final class SecondaryExpansionHooks {
         }
     }
 
-    static float overpullTranslation(float distance) { return Math.max(0f, distance) * .5f; }
+    static float overpullTranslation(float distance) { return Math.max(0f, distance) * .5f / .54f; }
+
+    void setSlowRebound(BooleanSupplier enabled) { slowRebound = enabled; }
+
+    void setVisualOwner(Consumer<Object> claimVisuals) { this.claimVisuals = claimVisuals; }
+
+    private void claim(Object qs, Drag drag) {
+        if (drag.claimed) return;
+        drag.claimed = true;
+        claimVisuals.accept(qs);
+    }
 
     private void rebound(Object qs, Drag drag) {
         stopSpringQuietly(qs);
         float start = drag.translation;
         ValueAnimator animator = ValueAnimator.ofFloat(start, 0f);
         drag.animator = animator;
-        animator.setDuration(280L); animator.setInterpolator(new DecelerateInterpolator());
+        animator.setDuration(ReboundTimingHooks.duration(280L, slowRebound.getAsBoolean()));
+        animator.setInterpolator(new DecelerateInterpolator());
         animator.addUpdateListener(frame -> {
             if (drags.get(qs) != drag) return;
             drag.translation = (Float) frame.getAnimatedValue();
@@ -352,7 +556,11 @@ final class SecondaryExpansionHooks {
         Drag old = drags.remove(qs);
         if (old == null) return;
         if (old.animator != null) old.animator.cancel();
-        translation.invoke(qs, 0f);
+        if (old.claimed || old.overpull || old.secondary) {
+            stopSpring(qs);
+            finishTracking(qs);
+            translation.invoke(qs, 0f);
+        }
     }
     private void stopSpring(Object qs) throws ReflectiveOperationException {
         Object target = plugin.invoke(qs); if (target != null) cancelSpring.invoke(target);
@@ -379,5 +587,5 @@ final class SecondaryExpansionHooks {
         int id = root.getResources().getIdentifier(name, "id", "com.android.systemui");
         return id == 0 ? null : root.findViewById(id);
     }
-    private static final class Drag { float startY, translation; boolean fullOnDown, overpull, secondary; ValueAnimator animator; }
+    private static final class Drag { float startX, startY, translation; boolean fullOnDown, overpull, secondary, claimed; ValueAnimator animator; }
 }

@@ -346,6 +346,8 @@ private fun FolderPreferences() {
         FluixItemDivider()
         ApplicationPreference(ModuleSettings.FOLDER_RESTORE_COLOR, "恢复文件夹背景色")
         FluixItemDivider()
+        ApplicationPreference(ModuleSettings.FOLDER_CLOSE_TARGET, "恢复关闭到文件夹动画目标")
+        FluixItemDivider()
         FluixSwitchPreference(
             checked = radiusEnabled,
             onCheckedChange = {
@@ -447,6 +449,7 @@ private fun NotificationPreferences() {
         listOf(
             ModuleSettings.HEADS_UP_WIDTH to "增加浮动通知宽度",
             ModuleSettings.NOTIFICATION_CORNERS to "增大通知圆角",
+            ModuleSettings.NATIVE_NOTIFICATION_EXPANSION to "恢复原生通知下滑展开",
             ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS to "通知操作按钮改为黑白色",
         ),
     )
@@ -488,6 +491,9 @@ private fun ControlCenterPreferences(group: String) {
                 ClockMonospacePreference(ModuleSettings.CONTROL_CENTER_CLOCK_MONOSPACE, "控制中心时钟字体等宽")
                 FluixItemDivider()
                 ControlCenterClockDateOffsetPreference()
+                FluixItemDivider()
+                ControlCenterVerticalOffsetPreference(ModuleSettings.CONTROL_CENTER_BUTTONS_UP,
+                    ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE, "控制中心设置按钮上移", 8)
             }
         }
         "颜色设置" -> FluixCard {
@@ -503,7 +509,7 @@ private fun ControlCenterPreferences(group: String) {
         "动画设置" -> PreferenceCard(
             listOf(
                 ModuleSettings.ANIMATED_MUTE_SLASH to "动画式斜划线静音图标",
-                ModuleSettings.COMBINED_PULL_ANIMATION to "修复合并中心开启/关闭动画",
+                ModuleSettings.COMBINED_PULL_ANIMATION to "修复控制中心开启/关闭动画",
                 ModuleSettings.COMBINED_COLLAPSE_FIX to "修复合并控制中心上拉动画起始位置",
                 ModuleSettings.QS_TRANSLATION_ORIGIN to "修复控制中心位移基准点",
                 ModuleSettings.SECONDARY_EXPANSION_FIX to "修复合并控制中心二次展开动画",
@@ -781,18 +787,24 @@ private fun WhiteActiveOpacityPreference() {
 
 @Composable
 private fun ControlCenterClockDateOffsetPreference() {
+    ControlCenterVerticalOffsetPreference(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP,
+        ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE, "控制中心时钟日期上移", 16)
+}
+
+@Composable
+private fun ControlCenterVerticalOffsetPreference(enabledKey: String, distanceKey: String, title: String, defaultDistance: Int) {
     val context = LocalContext.current
     val preferences = remember(context) { ModuleSettings.preferences(context) }
-    var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP, false)) }
-    var distance by remember { mutableStateOf(preferences.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE, 8).coerceIn(0, 40)) }
+    var enabled by remember { mutableStateOf(preferences.getBoolean(enabledKey, false)) }
+    var distance by remember { mutableStateOf(preferences.getInt(distanceKey, defaultDistance).coerceIn(0, 40)) }
     var expanded by remember { mutableStateOf(false) }
     FluixSwitchPreference(
-        title = "控制中心时钟日期上移",
+        title = title,
         checked = enabled,
         onCheckedChange = {
             enabled = it
             expanded = it
-            preferences.edit().putBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP, it).apply()
+            preferences.edit().putBoolean(enabledKey, it).apply()
             context.contentResolver.notifyChange(ModuleSettings.URI, null)
         },
         onTitleClick = if (enabled) ({ expanded = !expanded }) else null,
@@ -808,7 +820,7 @@ private fun ControlCenterClockDateOffsetPreference() {
             value = distance / 40f,
             onValueChange = {
                 distance = (it * 40).roundToInt().coerceIn(0, 40)
-                preferences.edit().putInt(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE, distance).apply()
+                preferences.edit().putInt(distanceKey, distance).apply()
             },
             onValueChangeFinished = { context.contentResolver.notifyChange(ModuleSettings.URI, null) },
             modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),

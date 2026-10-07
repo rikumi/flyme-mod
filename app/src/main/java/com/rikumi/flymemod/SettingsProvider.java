@@ -69,6 +69,10 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.ANIMATED_MUTE_SLASH);
         columns.add(ModuleSettings.WIFI_LABEL);
         columns.add(ModuleSettings.LIGHT_OPACITY);
+        columns.add(ModuleSettings.CONTROL_CENTER_BUTTONS_UP);
+        columns.add(ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE);
+        columns.add(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION);
+        columns.add(ModuleSettings.FOLDER_CLOSE_TARGET);
         MatrixCursor cursor = new MatrixCursor(columns.toArray(new String[0]));
         java.util.List<Object> values = new java.util.ArrayList<>(java.util.Arrays.asList(new Object[]{prefs.getBoolean(ModuleSettings.SCALE, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.LIGHT, false) ? 1 : 0,
@@ -144,7 +148,7 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_SPACING_ENABLED, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true)
                 ? String.join("\n", prefs.getStringSet(ModuleSettings.HIDDEN_LAUNCHER_APPS, java.util.Collections.emptySet())) : "");
-        values.add(Math.max(0, Math.min(40, prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE, 8))));
+        values.add(Math.max(0, Math.min(40, prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE, 16))));
         values.add(ModuleSettings.networkSplitStyle(prefs) != 0 ? 1 : 0);
         values.add(Math.max(50, Math.min(100, prefs.getInt(ModuleSettings.WHITE_ACTIVE_OPACITY, 90))));
         values.add(prefs.getBoolean(ModuleSettings.CIRCLE_SMALL_TILES, false) ? 1 : 0);
@@ -155,6 +159,10 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.ANIMATED_MUTE_SLASH, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.WIFI_LABEL, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, prefs.getInt(ModuleSettings.LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT))));
+        values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_BUTTONS_UP, false) ? 1 : 0);
+        values.add(Math.max(0, Math.min(40, prefs.getInt(ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE, 8))));
+        values.add(prefs.getBoolean(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FOLDER_CLOSE_TARGET, false) ? 1 : 0);
         cursor.addRow(values);
         return cursor;
     }
