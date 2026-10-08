@@ -475,8 +475,6 @@ private fun ControlCenterPreferences(group: String) {
             FluixCard {
                 ApplicationPreference(ModuleSettings.COLOROS_CONTOUR, "ColorOS 轮廓光")
                 FluixItemDivider()
-                ApplicationPreference(ModuleSettings.COLOROS_MATERIAL, "ColorOS 背景材质")
-                FluixItemDivider()
                 LightBackgroundOpacityPreference()
                 FluixItemDivider()
                 WhiteActiveOpacityPreference()

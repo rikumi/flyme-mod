@@ -1,11 +1,7 @@
-# ColorOS AGSL bridge
+# ColorOS contour shaders on Flyme
 
-The shader algorithms are extracted from the reference ColorOS SystemUI sources in coloros-mod/sysui_src:
+Native shader math: ColorOS BlurDrawableShaderStrokeStringKt and BlurDrawableShaderCornerStringKt. GradientStrokeLineAdapter supplies the QS stroke templates.
 
-- com/oplus/posteffect/agsl/BlurDrawableShaderStrokeStringKt.java: gradientStrokeColorWithRatio and native fade calculations.
-- com/oplus/posteffect/agsl/BlurDrawableShaderCornerStringKt.java: RBox and G2 sdSquircle.
-- com/oplus/posteffect/agsl/BlurDrawableShaderBlendStringKt.java: luminosity, overlay and colorDodgeBlend.
-- com/oplusos/systemui/common/util/GradientStrokeLineAdapter.java: light/night QS presets, 2dp stroke.
-- com/oplusos/systemui/common/util/QSBlurConfigProvider.java and NotifiAndQsPlatformBlurExKt.java: foreground/background mix colors.
+Flyme 12.6.0.0A / SystemUI 16260625: contours use view-local RuntimeShader overlays. The native perimeter ratio is adjusted per aspect ratio to center the peaks at top and bottom. The hooks do not replace backgrounds, alter background alpha, draw compositor effects, or change native icons/labels.
 
-Entry points and uniform binding are adapted for Flyme 12.6.0.0A SystemUI 16260625. Background material samples Flyme's existing blurred wallpaper BitmapShader with the original center-crop and view transform; it does not filter foreground icons or labels. These are native ColorOS blend operations, not a fabricated saturation/contrast filter. Native progress rendering on SeekBars remains intact; they receive the contour overlay only. Ripple rendering and fallback when no wallpaper bitmap is ready are preserved. Options default to disabled. Shader creation and draw failures log through the module and restore native rendering.
+The experimental backdrop implementation was withdrawn after device feedback reported that only the blurred background remained. FlymeEffectDrawable's compositor shader binding and scope were not verified. Its creation, drawing, background wrappers and settings entry have all been removed. Persisted coloros_control_center_material preferences are ignored; other preferences remain intact. material.agsl is retained solely as a reference for the ColorOS luminosity/overlay/color-dodge algorithms and is not loaded by any hook.

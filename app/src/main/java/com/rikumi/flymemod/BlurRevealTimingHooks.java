@@ -54,6 +54,7 @@ final class BlurRevealTimingHooks {
                 state.active = active;
                 float content = Math.max(0f, Math.min(1f, (Float) chain.getArg(0)));
                 if (!active || content > state.content + .001f) cancelExit(state);
+                else if (content < state.content - .001f) state.closing = true;
                 // Whatever easing the content alpha hook applies, it is the actual visible content.
                 state.content = content;
                 Object result = chain.proceed();
@@ -86,20 +87,27 @@ final class BlurRevealTimingHooks {
                 blur = Math.max(blur, RowRevealHooks.revealCurve(state.content / CONTENT_HOLD_RANGE));
                 if (fraction.getFloat(owner) <= 0f && state.content <= 0f) blur = 0f;
                 float target = blur * maximum;
-                if (!state.exitLimited && target < state.lastApplied - .01f) {
+                if (state.closing && !state.exitLimited && target < state.lastApplied - .01f) {
                     startExit(owner, setter, state);
                 }
                 // Keep the backdrop fading after the content/height has already reached zero.
                 target = Math.max(target, state.exitFloor);
+                // Native release springs seed themselves with mCurrentBlurRadius, which
+                // already contains our accelerated blur. Applying the reveal curve again
+                // can increase that radius on the first closing frame. Neither this
+                // feedback nor a spring overshoot may brighten/deepen a closing backdrop.
+                target = state.closing ? Math.min(target, state.lastApplied)
+                        : Math.max(target, state.lastApplied);
                 state.lastApplied = target;
                 // The early full-blur plateau needs no repeated interactor/spring updates.
                 if (Math.abs(radius.getFloat(owner) - target) < .01f) return null;
                 return chain.proceed(new Object[]{target});
             }, float.class);
             installer.hook(name, "animateBlurRadiusTo", chain -> {
-                if ((Boolean) chain.getArg(1)) {
-                    State state = states.get(chain.getThisObject());
-                    if (state != null) cancelExit(state);
+                State state = states.get(chain.getThisObject());
+                if (state != null) {
+                    if ((Boolean) chain.getArg(1)) cancelExit(state);
+                    else state.closing = true;
                 }
                 return chain.proceed();
             }, float.class, boolean.class);
@@ -151,12 +159,13 @@ final class BlurRevealTimingHooks {
         state.exitAnimator = null;
         state.exitFloor = 0f;
         state.exitLimited = false;
+        state.closing = false;
         if (animator != null) animator.cancel();
     }
 
     private static final class State {
         boolean active, hasRadius;
-        boolean exitLimited;
+        boolean exitLimited, closing;
         float content, nativeRadius, lastApplied, exitFloor;
         ValueAnimator exitAnimator;
     }

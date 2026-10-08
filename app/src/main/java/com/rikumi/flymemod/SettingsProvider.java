@@ -74,7 +74,6 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION);
         columns.add(ModuleSettings.FOLDER_CLOSE_TARGET);
         columns.add(ModuleSettings.COLOROS_CONTOUR);
-        columns.add(ModuleSettings.COLOROS_MATERIAL);
         MatrixCursor cursor = new MatrixCursor(columns.toArray(new String[0]));
         java.util.List<Object> values = new java.util.ArrayList<>(java.util.Arrays.asList(new Object[]{prefs.getBoolean(ModuleSettings.SCALE, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.LIGHT, false) ? 1 : 0,
@@ -166,7 +165,6 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.FOLDER_CLOSE_TARGET, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.COLOROS_CONTOUR, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.COLOROS_MATERIAL, false) ? 1 : 0);
         cursor.addRow(values);
         return cursor;
     }

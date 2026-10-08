@@ -49,7 +49,6 @@ public final class ModuleSettings {
     public static final String COMBINED_PULL_ANIMATION = "combined_control_center_pull_animation";
     public static final String SCALE = "operation_area_scale";
     public static final String COLOROS_CONTOUR = "coloros_control_center_contour";
-    public static final String COLOROS_MATERIAL = "coloros_control_center_material";
     public static final String LIGHT = "light_tile_background";
     public static final String LIGHT_OPACITY = "light_tile_background_opacity";
     public static final int LIGHT_OPACITY_DEFAULT = 15;

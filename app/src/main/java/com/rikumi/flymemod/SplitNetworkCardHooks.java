@@ -35,6 +35,10 @@ final class SplitNetworkCardHooks {
     private final Object companion;
     private final java.lang.reflect.Constructor<?> smoothDrawable;
     private final Method smoothRadius, smoothOutline;
+    private Consumer<View> contourListener;
+    void setContourListener(Consumer<View> listener) { contourListener = listener; }
+    private void updateContours(View card) { if (contourListener != null) contourListener.accept(card); }
+
     private final Map<View, Saved> originals = new WeakHashMap<>();
     private final Map<View, Boolean> cards = new WeakHashMap<>();
     private final Map<View, Boolean> horizontalCards = new WeakHashMap<>();
@@ -192,6 +196,7 @@ final class SplitNetworkCardHooks {
                 circleTint.invoke(icon, circleColor.invoke(icon, prefix.equals("wifi") ? "wifi" : "bt", state(card, prefix)));
                 restoreIconColor((View) icon, state(card, prefix));
             }
+            updateContours(card);
             return;
         }
         boolean solid = style.getAsInt() == 2;
@@ -262,6 +267,7 @@ final class SplitNetworkCardHooks {
             card.getClass().getMethod("updateAllColors", String.class, int.class, int.class)
                     .invoke(card, prefix.equals("wifi") ? "wifi" : "bt", label, secondary);
         }
+        updateContours(card);
     }
 
     private final CardIconOverflow overflow = new CardIconOverflow();

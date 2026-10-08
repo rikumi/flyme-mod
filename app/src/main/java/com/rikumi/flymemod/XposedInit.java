@@ -73,6 +73,8 @@ public final class XposedInit extends XposedModule {
     private final Set<View> lightBackgroundTiles = Collections.newSetFromMap(new WeakHashMap<>());
     private final Set<GradientDrawable> lightSliderBackgrounds = Collections.newSetFromMap(new WeakHashMap<>());
     private boolean darkenEnabled;
+    private final ThreadLocal<Object> blurDimOwner = new ThreadLocal<>();
+    private boolean surfaceDarkBackground;
     private boolean whiteActiveEnabled;
     private int whiteActiveOpacity = 90;
     private final Set<View> whiteActiveTileViews = Collections.newSetFromMap(new WeakHashMap<>());
@@ -146,7 +148,7 @@ public final class XposedInit extends XposedModule {
     private SimpleQsTextHooks activeSimpleQsTextHooks;
     private SplitNetworkCardHooks activeSplitNetworkCardHooks;
     private CircleTileHooks activeCircleTileHooks;
-    private boolean colorOsContourEnabled, colorOsMaterialEnabled;
+    private boolean colorOsContourEnabled;
     private ColorOsMaterialHooks activeColorOsMaterialHooks;
     private int blurRadius = ModuleSettings.BLUR_DEFAULT;
     private boolean settingsErrorLogged;
@@ -338,7 +340,7 @@ public final class XposedInit extends XposedModule {
         }
         try {
             activeColorOsMaterialHooks = new ColorOsMaterialHooks(loader, this::loadSettings,
-                    () -> colorOsContourEnabled, () -> colorOsMaterialEnabled,
+                    () -> colorOsContourEnabled, () -> networkSplitStyle != 0,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
             activeColorOsMaterialHooks.install(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
@@ -435,6 +437,8 @@ public final class XposedInit extends XposedModule {
             activeSplitNetworkCardHooks = new SplitNetworkCardHooks(loader, this::loadSettings,
                     () -> networkSplitStyle, () -> whiteActiveEnabled, () -> optimize2x1TextEnabled, this::activeBackgroundColor, this::applyIconColor,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            if (activeColorOsMaterialHooks != null)
+                activeSplitNetworkCardHooks.setContourListener(activeColorOsMaterialHooks::updateNetworkRows);
             activeSplitNetworkCardHooks.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
             activeFoldIdleMediaHooks = new FoldIdleMediaHooks(loader, this::loadSettings,
@@ -1179,17 +1183,49 @@ public final class XposedInit extends XposedModule {
     }
 
     private void installDarkBackground(ClassLoader loader) {
+        // Extend only the native dim-layer call to apart mode. The normal blur
+        // eligibility checks (including height/spring and lockscreen paths) stay intact.
+        install(loader, "com.android.systemui.shade.NotificationPanelViewController", "allowSetShadeBlur", chain ->
+                blurDimOwner.get() == chain.getThisObject() ? true : chain.proceed());
         install(loader, "com.android.systemui.shade.NotificationPanelViewController", "showBackgroundBlurDimLayer", chain -> {
             Object controller = chain.getThisObject();
             View view = (View) controller.getClass().getField("mView").get(controller);
             // Re-read the theme's color first, restoring normal day-mode behavior.
             controller.getClass().getMethod("updateDimColor").invoke(controller);
-            if (shouldDarken(view.getContext()) && Boolean.TRUE.equals(
-                    controller.getClass().getMethod("allowSetShadeBlur").invoke(controller))) {
+            boolean active = shouldDarken(view.getContext())
+                    && ((Integer) controller.getClass().getMethod("getBarState").invoke(controller)) == 0;
+            if (active) {
                 controller.getClass().getField("mDimColor").setInt(controller, DARK_BACKGROUND);
             }
-            return chain.proceed();
+            Object previous = blurDimOwner.get();
+            if (active) blurDimOwner.set(controller); else blurDimOwner.remove();
+            try {
+                // The input is ControlCenterInteractor's actual blur fraction, including
+                // the blur-only lead-in and the delayed blur tail after content disappears.
+                Object result = chain.proceed();
+                surfaceDarkBackground = active
+                        && controller.getClass().getField("mBackgroundSurface").get(controller) != null;
+                return result;
+            } finally {
+                if (previous == null) blurDimOwner.remove(); else blurDimOwner.set(previous);
+            }
         }, float.class);
+        try {
+            // Its small eligibility getter may have been inlined by the ROM compiler.
+            deoptimize(Class.forName("com.android.systemui.shade.NotificationPanelViewController", false, loader)
+                    .getDeclaredMethod("showBackgroundBlurDimLayer", float.class));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot deoptimize control center blur dim layer", error);
+        }
+        install(loader, "com.android.systemui.scrim.ScrimView", "onDraw", chain -> {
+            View scrim = (View) chain.getThisObject();
+            int id = scrim.getResources().getIdentifier("center_behind", "id", "com.android.systemui");
+            // Keep native alpha values/animators intact, but draw the dark backdrop once.
+            // If the surface layer is unavailable (e.g. lockscreen), retain the old scrim.
+            if (surfaceDarkBackground && id != 0 && scrim.getId() == id
+                    && shouldDarken(scrim.getContext())) return null;
+            return chain.proceed();
+        }, Canvas.class);
         // The reference ROM uses a separate vector scrim over its blurred surface.
         // Replace that drawable, leaving blur radius, scaling and fade animation intact.
         install(loader, PHONE + "CenterController", "setBehindViewColor", chain -> {
@@ -1654,8 +1690,6 @@ public final class XposedInit extends XposedModule {
                 lightEnabled = cursor.getInt(1) != 0;
                 int contourColumn = cursor.getColumnIndex(ModuleSettings.COLOROS_CONTOUR);
                 colorOsContourEnabled = contourColumn >= 0 && cursor.getInt(contourColumn) != 0;
-                int materialColumn = cursor.getColumnIndex(ModuleSettings.COLOROS_MATERIAL);
-                colorOsMaterialEnabled = materialColumn >= 0 && cursor.getInt(materialColumn) != 0;
                 int lightOpacityColumn = cursor.getColumnIndex(ModuleSettings.LIGHT_OPACITY);
                 lightBackgroundOpacity = lightOpacityColumn < 0 ? ModuleSettings.LIGHT_OPACITY_DEFAULT
                         : Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, cursor.getInt(lightOpacityColumn)));
