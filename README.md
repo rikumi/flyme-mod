@@ -2,6 +2,8 @@
 
 一个用于 Flyme 定制的 Android/LSPosed 模块。
 
+应用包名：`dev.rikumi.flymemod`。
+
 设置界面使用 Fluix 主题，提供首页分类和二级页面导航。系统 hook 以参考设备的 Flyme 实现为依据。
 
 ## 控制中心

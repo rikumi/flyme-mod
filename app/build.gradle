@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.rikumi.flymemod'
+    namespace 'dev.rikumi.flymemod'
     compileSdk 37
 
     defaultConfig {
-        applicationId 'com.rikumi.flymemod'
+        applicationId 'dev.rikumi.flymemod'
         minSdk 26
         targetSdk 37
         versionCode 1

@@ -30,7 +30,7 @@
 
         <provider
             android:name=".SettingsProvider"
-            android:authorities="com.rikumi.flymemod.settings"
+            android:authorities="dev.rikumi.flymemod.settings"
             android:directBootAware="true"
             android:exported="true" />
 
