@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.text.Collator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -44,6 +45,11 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Share
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private const val DISABLED_APPS_HINT =
+    "为防止误操作损害设备，我们不提供直接停用应用功能；这里列出了已通过其它途径停用和用户级卸载的应用列表，可在右上角导出成脚本方便重复执行。请注意：\n" +
+    "1. 取决于停用应用的途径，导出的脚本仍然可能需要 adb root；\n" +
+    "2. 模块获取的信息可能并不准确，因此脚本可能会导致系统崩溃或不稳定。请始终在无数据的全新系统上执行脚本。"
 
 // 停用应用条目: label 取不到时为 null(列表退回只显示包名);
 // uninstalled=true 表示用户级卸载(pm uninstall -k --user 0), false 表示停用(pm disable-user)。
@@ -208,6 +214,7 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
                 .padding(padding)
                 .fluixOverscroll(listState, overscrollOffset),
         ) {
+            item { FluixCard { DisabledAppsHintRow() } }
             item { FluixSmallTitle(text = "停用应用设置") }
             item {
                 FluixCard {
@@ -228,6 +235,32 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
                 }
             }
             item { Box(Modifier.height(24.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun DisabledAppsHintRow() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
+    ) {
+        BasicText(
+            text = "功能说明",
+            style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+        )
+        DISABLED_APPS_HINT.split('\n').forEach { paragraph ->
+            BasicText(
+                text = paragraph,
+                style = MiuixTheme.textStyles.body2.copy(
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontFeatureSettings = "tnum",
+                ),
+                modifier = Modifier.padding(top = 6.dp),
+            )
         }
     }
 }
