@@ -65,6 +65,7 @@ public final class XposedInit extends XposedModule {
     }
     private static final int ACTIVE_MOBILE_COLOR = matchedOklchColor(135f, .92d);
     private static final int ACTIVE_YELLOW_COLOR = matchedOklchColor(45f);
+    private static final int ACTIVE_PURPLE_COLOR = matchedOklchColor(270f);
     private volatile boolean settingsLoaded;
     private boolean scaleEnabled;
     private boolean lightEnabled;
@@ -1057,6 +1058,7 @@ public final class XposedInit extends XposedModule {
         if (normalized.equals("screenrecord") || normalized.equals("screen_record")) {
             return activeHsvColor(5f);
         }
+        if (normalized.equals("dnd")) return ACTIVE_PURPLE_COLOR;
         if (normalized.equals("volume") || normalized.equals("sound")) return ACTIVE_FOREGROUND;
         return ACTIVE_BLUE_COLOR;
     }
