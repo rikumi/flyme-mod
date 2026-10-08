@@ -267,6 +267,12 @@ final class CombinedShadeAnimationHooks {
         installer.hook(PANEL, "onTrackingStarted", chain -> {
             Object panel = chain.getThisObject();
             settings.accept(((View) view.get(panel)).getContext());
+            Gesture active = gestures.get(qs.get(panel));
+            // Launcher focus transfer can start tracking before the synthesized touch
+            // starts it again. That is the same opening, not a new reveal timer.
+            if (enabled.getAsBoolean() && active != null && !active.released
+                    && (Boolean) tracking.invoke(panel) && isCombined(panel)
+                    && !filter.getBoolean(panel)) return chain.proceed();
             Gesture previous = gestures.remove(qs.get(panel));
             if (previous != null && previous.positionAnimator != null) previous.positionAnimator.cancel();
             if (enabled.getAsBoolean() && isCombined(panel)

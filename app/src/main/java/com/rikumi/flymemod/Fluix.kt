@@ -334,7 +334,7 @@ fun FluixLargeTitle(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             BasicText(text = title, style = fluixTopBarTitleStyle())
-            if (subtitle != null) {
+            if (!subtitle.isNullOrBlank()) {
                 BasicText(
                     text = subtitle,
                     style = TextStyle(
@@ -701,7 +701,7 @@ internal fun FluixCategoryRow(
         }
         Column(modifier = Modifier.weight(1f).padding(start = FLUIX_CATEGORY_ICON_GAP)) {
             BasicText(text = title, style = MiuixTheme.textStyles.body1.copy(color = onSurface))
-            if (subtitle != null) BasicText(
+            if (!subtitle.isNullOrBlank()) BasicText(
                 text = subtitle,
                 style = MiuixTheme.textStyles.body2.copy(color = summary),
                 modifier = Modifier.padding(top = FLUIX_CATEGORY_SUBTITLE_GAP),
@@ -963,7 +963,7 @@ fun FluixSwitchPreference(
                             text = title,
                             style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
                         )
-                        if (subtitle != null) {
+                        if (!subtitle.isNullOrBlank()) {
                             BasicText(
                                 text = subtitle,
                                 style = MiuixTheme.textStyles.body2.copy(
@@ -1485,7 +1485,7 @@ fun FluixMasterToggle(
                         color = MiuixTheme.colorScheme.onSurface,
                     ),
                 )
-                if (subtitle != null) {
+                if (!subtitle.isNullOrBlank()) {
                     BasicText(
                         text = subtitle,
                         style = MiuixTheme.textStyles.body2.copy(

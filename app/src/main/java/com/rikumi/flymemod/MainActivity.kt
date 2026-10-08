@@ -71,8 +71,8 @@ private object SettingsHomeColors {
 
 private val CATEGORY_GROUPS: List<List<Category>> = listOf(
     listOf(
-        Category("desktop", "桌面", R.drawable.ic_flyme_home_apps, SettingsHomeColors.blueForeground, listOf("桌面布局", "文件夹", "壁纸设置")),
-        Category("quick_settings", "控制中心", R.drawable.ic_flyme_home_wireless, SettingsHomeColors.cyanForeground, listOf("布局设置", "颜色设置", "背景设置", "动画设置", "音量调节设置")),
+        Category("desktop", "桌面", R.drawable.ic_flyme_home_apps, SettingsHomeColors.blueForeground, listOf("壁纸设置", "桌面动画设置", "桌面文件夹设置")),
+        Category("quick_settings", "控制中心", R.drawable.ic_flyme_home_wireless, SettingsHomeColors.cyanForeground, listOf("控制中心背景", "控制中心主题", "控制中心布局", "控制中心动画", "音量调节设置")),
         Category("notification", "通知中心与状态栏", R.drawable.ic_flyme_home_notifications, SettingsHomeColors.cyanForeground, listOf("通知中心设置", "状态栏设置")),
         Category("lockscreen", "锁屏", R.drawable.ic_flyme_home_security, SettingsHomeColors.greenForeground, listOf("锁屏视觉")),
     ),
@@ -81,7 +81,7 @@ private val CATEGORY_GROUPS: List<List<Category>> = listOf(
         Category("navigation", "导航与手势", R.drawable.ic_flyme_home_gestures, SettingsHomeColors.yellowForeground, listOf("手势行为", "多任务切换")),
     ),
     listOf(
-        Category("system_cleanup", "系统净化", R.drawable.ic_flyme_home_cleaner, SettingsHomeColors.orangeForeground, listOf("应用商店内容", "搜索页面", "应用详情", "天气", "安装设置")),
+        Category("system_cleanup", "系统净化", R.drawable.ic_flyme_home_cleaner, SettingsHomeColors.orangeForeground, listOf("应用商店内容", "应用商店搜索", "应用商店详情页", "天气", "应用安装器")),
         Category("storage", "存储管理", R.drawable.ic_flyme_home_storage, SettingsHomeColors.redForeground, listOf("不自动创建以下文件夹")),
         Category(DISABLED_APPS_ID, "停用应用", R.drawable.ic_flyme_home_disabled, SettingsHomeColors.redForeground, listOf("停用应用设置", "已停用的应用")),
     ),
@@ -236,16 +236,16 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 if (category.id == "system_cleanup" && groupTitle == "应用商店内容") {
                     item { AppStoreContentPreferences() }
                 }
-                if (category.id == "system_cleanup" && groupTitle == "搜索页面") {
+                if (category.id == "system_cleanup" && groupTitle == "应用商店搜索") {
                     item { AppStoreSearchPreferences() }
                 }
-                if (category.id == "system_cleanup" && groupTitle == "应用详情") {
+                if (category.id == "system_cleanup" && groupTitle == "应用商店详情页") {
                     item { AppStoreDetailPreferences() }
                 }
                 if (category.id == "system_cleanup" && groupTitle == "天气") {
                     item { WeatherPreferences() }
                 }
-                if (category.id == "system_cleanup" && groupTitle == "安装设置") {
+                if (category.id == "system_cleanup" && groupTitle == "应用安装器") {
                     item {
                         FluixCard {
                             ApplicationPreference(ModuleSettings.INSTALLER_SKIP_WARNINGS, "跳过安装警告")
@@ -285,14 +285,16 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 if (category.id == "desktop" && groupTitle == "壁纸设置") {
                     item { WallpaperPreferences() }
                 }
-                if (category.id == "desktop" && groupTitle == "桌面布局") {
+                if (category.id == "desktop" && groupTitle == "桌面动画设置") {
                     item {
                         FluixCard {
                             ApplicationPreference(ModuleSettings.HOME_SWIPE_DAMPING, "降低回桌面上抛阻尼")
+                            FluixItemDivider()
+                            ApplicationPreference(ModuleSettings.FOLDER_CLOSE_TARGET, "恢复关闭到文件夹动画目标")
                         }
                     }
                 }
-                if (category.id == "desktop" && groupTitle == "文件夹") {
+                if (category.id == "desktop" && groupTitle == "桌面文件夹设置") {
                     item { FolderPreferences() }
                 }
                 if (category.id == "navigation" && groupTitle == "手势行为") {
@@ -345,8 +347,6 @@ private fun FolderPreferences() {
         )
         FluixItemDivider()
         ApplicationPreference(ModuleSettings.FOLDER_RESTORE_COLOR, "恢复文件夹背景色")
-        FluixItemDivider()
-        ApplicationPreference(ModuleSettings.FOLDER_CLOSE_TARGET, "恢复关闭到文件夹动画目标")
         FluixItemDivider()
         FluixSwitchPreference(
             checked = radiusEnabled,
@@ -470,19 +470,21 @@ private fun PreferenceCard(items: List<Pair<String, String>>) {
 @Composable
 private fun ControlCenterPreferences(group: String) {
     when (group) {
-        "布局设置" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PreferenceCard(
-                listOf(
-                    ModuleSettings.HIDE_LUNAR to "隐藏农历日期",
-                    ModuleSettings.WIFI_LABEL to "无线网络替换为 Wi-Fi",
-                    ModuleSettings.OPTIMIZE_2X1_TEXT to "2×1 卡片文字布局优化",
-                    ModuleSettings.SPLIT_NETWORK_CARD to "网络卡片分离",
-                    ModuleSettings.SOLID_2X1_CARDS to "2×1 卡片改为实心（HyperOS 模式）",
-                    ModuleSettings.CIRCLE_SMALL_TILES to "1×1 磁贴改为圆形",
-                    ModuleSettings.SCALE to "控制中心操作区域放大",
-                    ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT to "恢复合并控制中心折叠状态磁贴高度",
-                ),
-            )
+        "控制中心背景" -> ControlCenterBackgroundPreferences()
+        "控制中心主题" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            FluixCard {
+                ApplicationPreference(ModuleSettings.COLOROS_CONTOUR, "ColorOS 轮廓光")
+                FluixItemDivider()
+                ApplicationPreference(ModuleSettings.COLOROS_MATERIAL, "ColorOS 背景材质")
+                FluixItemDivider()
+                LightBackgroundOpacityPreference()
+                FluixItemDivider()
+                WhiteActiveOpacityPreference()
+                FluixItemDivider()
+                ApplicationPreference(ModuleSettings.NETWORK_DARK_SPINNER, "修复网络磁贴展开态深色模式适配")
+                FluixItemDivider()
+                ApplicationPreference(ModuleSettings.SLIDER_ACTIVE_CORNERS, "音量/亮度条激活区域圆角")
+            }
             FluixCard {
                 ClockFontPreference(ModuleSettings.CONTROL_CENTER_CLOCK_FONT, "控制中心时钟字体")
                 FluixItemDivider()
@@ -496,22 +498,24 @@ private fun ControlCenterPreferences(group: String) {
                     ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE, "控制中心设置按钮上移", 8)
             }
         }
-        "颜色设置" -> FluixCard {
-            LightBackgroundOpacityPreference()
-            FluixItemDivider()
-            WhiteActiveOpacityPreference()
-            FluixItemDivider()
-            ApplicationPreference(ModuleSettings.NETWORK_DARK_SPINNER, "修复网络磁贴展开态深色模式适配")
-            FluixItemDivider()
-            ApplicationPreference(ModuleSettings.SLIDER_ACTIVE_CORNERS, "音量/亮度条激活区域圆角")
-        }
-        "背景设置" -> ControlCenterBackgroundPreferences()
-        "动画设置" -> PreferenceCard(
+        "控制中心布局" -> PreferenceCard(
             listOf(
+                ModuleSettings.HIDE_LUNAR to "隐藏农历日期",
+                ModuleSettings.WIFI_LABEL to "无线网络替换为 Wi-Fi",
+                ModuleSettings.SCALE to "控制中心操作区域放大",
+                ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT to "恢复合并控制中心折叠状态磁贴高度",
+                ModuleSettings.SPLIT_NETWORK_CARD to "网络卡片分离",
                 ModuleSettings.ANIMATED_MUTE_SLASH to "动画式斜划线静音图标",
+                ModuleSettings.OPTIMIZE_2X1_TEXT to "2×1 卡片文字布局优化",
+                ModuleSettings.SOLID_2X1_CARDS to "2×1 卡片改为实心（HyperOS 模式）",
+                ModuleSettings.CIRCLE_SMALL_TILES to "1×1 磁贴改为圆形",
+            ),
+        )
+        "控制中心动画" -> PreferenceCard(
+            listOf(
                 ModuleSettings.COMBINED_PULL_ANIMATION to "修复控制中心开启/关闭动画",
-                ModuleSettings.COMBINED_COLLAPSE_FIX to "修复合并控制中心上拉动画起始位置",
                 ModuleSettings.QS_TRANSLATION_ORIGIN to "修复控制中心位移基准点",
+                ModuleSettings.COMBINED_COLLAPSE_FIX to "修复合并控制中心上拉动画起始位置",
                 ModuleSettings.SECONDARY_EXPANSION_FIX to "修复合并控制中心二次展开动画",
                 ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN to "合并控制中心清空通知后保持开启",
             ),
@@ -574,11 +578,11 @@ private fun AppStoreContentPreferences() {
     FluixCard {
         ApplicationPreference(ModuleSettings.BLOCK_STORE_SPLASH, "屏蔽开屏广告")
         FluixItemDivider()
+        ApplicationPreference(ModuleSettings.STORE_HIDE_FEATURED, "去除精选 Tab")
+        FluixItemDivider()
+        ApplicationPreference(ModuleSettings.STORE_HIDE_GAMES, "去除游戏 Tab")
+        FluixItemDivider()
         ApplicationPreference(ModuleSettings.STORE_EMPTY_APPLICATION_PAGE, "去除应用页所有内容")
-        FluixItemDivider()
-        ApplicationPreference(ModuleSettings.STORE_HIDE_FEATURED, "去除精选 tab")
-        FluixItemDivider()
-        ApplicationPreference(ModuleSettings.STORE_HIDE_GAMES, "去除游戏 tab")
         FluixItemDivider()
         ApplicationPreference(ModuleSettings.STORE_HIDE_POPULAR, "去除大家都在用")
         FluixItemDivider()
@@ -612,11 +616,11 @@ private fun AppStoreDetailPreferences() {
 @Composable
 private fun WeatherPreferences() {
     FluixCard {
-        ApplicationPreference(ModuleSettings.BLOCK_WEATHER_ADS, "全局去广告")
+        ApplicationPreference(ModuleSettings.BLOCK_WEATHER_ADS, "去除天气应用贴片广告")
         FluixItemDivider()
-        ApplicationPreference(ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS, "屏蔽内容推荐")
+        ApplicationPreference(ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS, "屏蔽生活建议页内容推荐")
         FluixItemDivider()
-        ApplicationPreference(ModuleSettings.WEATHER_DARK_BACKGROUND, "背景压暗")
+        ApplicationPreference(ModuleSettings.WEATHER_DARK_BACKGROUND, "天气首页背景压暗")
     }
 }
 
@@ -700,7 +704,7 @@ private fun ClockWeightPreference(key: String = ModuleSettings.CLOCK_FONT_WEIGHT
     }
     FluixDropdownPreference(
         title = title,
-        options = listOf("跟随系统", "极细（100）", "纤细（200）", "细体（300）", "常规（400）", "中等（500）", "半粗（600）", "粗体（700）", "特粗（800）", "黑体（900）"),
+        options = listOf("跟随系统", "极细（100）", "纤细（200）", "细体（300）", "常规（400）", "中等（500）", "半粗（600）", "粗体（700）", "特粗（800）", "超粗（900）"),
         selected = selected,
         onSelected = {
             selected = it

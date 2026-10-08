@@ -25,6 +25,9 @@ final class AodMovementHooks {
     private final Class<?> authController;
     private final Field context, x, y, anchor, algorithm;
     private final Field colorfulContext, contentOffset;
+    private final Field controllerContext;
+    private final Field[] colorfulOffsets;
+    private final Method colorfulLockscreenState;
     private final Class<?> colorfulData, hostState;
     private final Method burnInOffset;
     private final Field photoContext, selfContext, timeTop;
@@ -51,6 +54,14 @@ final class AodMovementHooks {
         burnInOffset = hostState.getMethod("getBurnInOffset");
         contentOffset = loader.loadClass("com.flyme.systemui.plugins.clocks.colorful_paradise.ui.state.ColorfulParadiseState")
                 .getField("contentOffset");
+        Class<?> colorfulState = contentOffset.getDeclaringClass();
+        colorfulOffsets = new Field[]{colorfulState.getField("h1Offset"), colorfulState.getField("h2Offset"),
+                colorfulState.getField("m1Offset"), colorfulState.getField("m2Offset"),
+                colorfulState.getField("dateOffset"), colorfulState.getField("decor1Offset"),
+                colorfulState.getField("decor2Offset"), colorfulState.getField("decor3Offset")};
+        colorfulLockscreenState = loader.loadClass(COLORFUL).getMethod("createLockscreenState",
+                colorfulData, hostState, boolean.class);
+        controllerContext = loader.loadClass("com.flyme.systemui.clock.BaseClockController").getField("context");
         Class<?> photo = loader.loadClass(PHOTO);
         photoContext = photo.getField("pluginContext");
         lockscreenTop = photo.getMethod("getLockscreenDoubleLineTop");
@@ -63,6 +74,14 @@ final class AodMovementHooks {
     }
 
     void install(SignalHooks.Installer installer) {
+        installer.hook("com.flyme.systemui.clock.BaseClockController", "setBurnInOffset", chain -> {
+            Context ctx = (Context) controllerContext.get(chain.getThisObject());
+            settings.accept(ctx);
+            if (!enabled.getAsBoolean()) return chain.proceed();
+            int range = rangePx(ctx);
+            return chain.proceed(new Object[]{Math.max(-range, Math.min(range, (Float) chain.getArg(0))),
+                    Math.max(-range, Math.min(range, (Float) chain.getArg(1)))});
+        }, float.class, float.class);
         installer.hook(DATA, "calculateBurnInOffset", chain -> {
             Object data = chain.getThisObject();
             Context ctx = (Context) context.get(data);
@@ -113,6 +132,14 @@ final class AodMovementHooks {
                 // Stock rejects offsets when both axes are nonpositive and substitutes a large
                 // fingerprint-related shift. Accept signed movement and keep it inside the range.
                 ((PointF) contentOffset.get(state)).set(clamp(offset.x, range), clamp(offset.y, range));
+                // AOD also has per-digit offsets that move the layout toward screen center.
+                // Bounding only contentOffset leaves those large design offsets untouched.
+                Object lockState = colorfulLockscreenState.invoke(chain.getThisObject(),
+                        chain.getArg(0), chain.getArg(1), chain.getArg(2));
+                for (Field field : colorfulOffsets) {
+                    PointF base = (PointF) field.get(lockState);
+                    ((PointF) field.get(state)).set(base.x, base.y);
+                }
             }
             return state;
         }, colorfulData, hostState, boolean.class, boolean.class);

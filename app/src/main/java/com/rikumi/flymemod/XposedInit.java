@@ -146,6 +146,8 @@ public final class XposedInit extends XposedModule {
     private SimpleQsTextHooks activeSimpleQsTextHooks;
     private SplitNetworkCardHooks activeSplitNetworkCardHooks;
     private CircleTileHooks activeCircleTileHooks;
+    private boolean colorOsContourEnabled, colorOsMaterialEnabled;
+    private ColorOsMaterialHooks activeColorOsMaterialHooks;
     private int blurRadius = ModuleSettings.BLUR_DEFAULT;
     private boolean settingsErrorLogged;
     private final Map<View, Drawable> originalCenterBackgrounds = new WeakHashMap<>();
@@ -333,6 +335,15 @@ public final class XposedInit extends XposedModule {
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         } catch (ReflectiveOperationException e) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve heads-up width classes", e);
+        }
+        try {
+            activeColorOsMaterialHooks = new ColorOsMaterialHooks(loader, this::loadSettings,
+                    () -> colorOsContourEnabled, () -> colorOsMaterialEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeColorOsMaterialHooks.install(loader,
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve ColorOS control center materials", error);
         }
         installOriginalNotificationIcons(loader);
         installMonochromeNotificationActions(loader);
@@ -1620,6 +1631,7 @@ public final class XposedInit extends XposedModule {
                     if (activeMuteSlashHooks != null) activeMuteSlashHooks.refresh();
                     if (activeFoldIdleMediaHooks != null) activeFoldIdleMediaHooks.refresh();
                     if (activeCircleTileHooks != null) activeCircleTileHooks.refresh();
+                    if (activeColorOsMaterialHooks != null) activeColorOsMaterialHooks.refresh();
                     if (whiteActiveEnabled && previousOpacity != whiteActiveOpacity) refreshWhiteActiveOpacity();
                     if (lightEnabled && previousLightOpacity != lightBackgroundOpacity) refreshLightBackgroundOpacity();
                     for (ProgressBar spinner : new ArrayList<>(networkSpinners)) {
@@ -1640,6 +1652,10 @@ public final class XposedInit extends XposedModule {
                 }
                 scaleEnabled = cursor.getInt(0) != 0;
                 lightEnabled = cursor.getInt(1) != 0;
+                int contourColumn = cursor.getColumnIndex(ModuleSettings.COLOROS_CONTOUR);
+                colorOsContourEnabled = contourColumn >= 0 && cursor.getInt(contourColumn) != 0;
+                int materialColumn = cursor.getColumnIndex(ModuleSettings.COLOROS_MATERIAL);
+                colorOsMaterialEnabled = materialColumn >= 0 && cursor.getInt(materialColumn) != 0;
                 int lightOpacityColumn = cursor.getColumnIndex(ModuleSettings.LIGHT_OPACITY);
                 lightBackgroundOpacity = lightOpacityColumn < 0 ? ModuleSettings.LIGHT_OPACITY_DEFAULT
                         : Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, cursor.getInt(lightOpacityColumn)));

@@ -73,6 +73,8 @@ final class ClockFontHooks {
     private final Map<TextView, String> spacingKinds = new WeakHashMap<>();
     private final Map<TextView, Boolean> spacingViews = new WeakHashMap<>();
     private final Map<TextView, Boolean> controlCenterHeaderClocks = new WeakHashMap<>();
+    private final Map<TextView, Boolean> originalHeaderFontPadding = new WeakHashMap<>();
+    private final CardIconOverflow headerClockOverflow = new CardIconOverflow();
     private final Map<TextView, Boolean> splitDigitViews = new WeakHashMap<>();
     private final Map<Integer, Typeface> fonts = new HashMap<>();
     private final ThreadLocal<Boolean> applying = ThreadLocal.withInitial(() -> false);
@@ -287,6 +289,19 @@ final class ClockFontHooks {
                 if (isSpacingTarget(view)) applySpacing(view, isAodDigit(view), true);
                 applyMonospace(view, false);
                 applyColonCenter(view);
+            }
+            if (controlCenterHeaderClocks.containsKey(view)) {
+                boolean padded = Boolean.TRUE.equals(customFontApplied.get(view))
+                        || controlCenterMonospace.getAsBoolean();
+                if (padded) {
+                    originalHeaderFontPadding.putIfAbsent(view, view.getIncludeFontPadding());
+                    if (!view.getIncludeFontPadding()) view.setIncludeFontPadding(true);
+                } else {
+                    Boolean original = originalHeaderFontPadding.remove(view);
+                    if (original != null && view.getIncludeFontPadding() != original) {
+                        view.setIncludeFontPadding(original);
+                    }
+                }
             }
             if (controlCenterHeaderClocks.containsKey(view)
                     && Boolean.TRUE.equals(customFontApplied.get(view))) {
@@ -589,6 +604,11 @@ final class ClockFontHooks {
             TextView clock = (TextView) headerClock.get(owner);
             TextView amPm = (TextView) headerAmPm.get(owner);
             TextView date = (TextView) headerDate.get(owner);
+            // SplitClockView is translated to the date baseline. Its horizontal parent
+            // still has the pre-translation bounds, which otherwise cuts off the clock top.
+            if (clock != null) headerClockOverflow.apply(clock, header,
+                    Boolean.TRUE.equals(customFontApplied.get(clock)) || controlCenterMonospace.getAsBoolean()
+                            || controlCenterDateUpEnabled.getAsBoolean() || hideLunar.getAsBoolean());
             if (clock == null || date == null || !date.isShown() || date.getHeight() == 0
                     || !clock.isLaidOut() || date.getBaseline() < 0 || clock.getBaseline() < 0) return;
             settings.accept(header.getContext());

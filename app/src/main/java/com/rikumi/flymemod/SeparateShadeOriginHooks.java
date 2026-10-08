@@ -58,6 +58,11 @@ final class SeparateShadeOriginHooks {
         installer.hook(CENTER, "onTrackingStarted", chain -> {
             Object center = chain.getThisObject();
             settings.accept((Context) context.get(center));
+            State active = states.get(center);
+            // Preserve the visual origin when launcher focus transfer and the
+            // synthesized touch both announce the same tracking session.
+            if (enabled.getAsBoolean() && active != null && !active.settling
+                    && tracking.getBoolean(center)) return chain.proceed();
             State previous = states.remove(center);
             if (previous != null && previous.animator != null) previous.animator.cancel();
             Object result = chain.proceed();

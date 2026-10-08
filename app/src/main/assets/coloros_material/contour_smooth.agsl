@@ -1,0 +1,124 @@
+uniform float2 u_size; uniform float u_corner; uniform float u_weight;
+layout(color) uniform vec4 uColor;
+uniform float uRatio;
+uniform float[6] uNearLineParams;
+uniform float[6] uFarLineParams;
+struct GradientInputParams {float2 size; float weight; float corner; float sdf; float2 resolution; float2 pos;};
+struct LineParams {float width;float alpha;float2 fadeToSides;float2 fadeTowardsCenter;};
+struct GradientStrokeResult {vec4 color;float sdf;};
+float RBox(float2 p,float2 b,float r){
+    float2 q=abs(p)-b+r;
+    return min(max(q.x,q.y),0.)+length(max(q,0.))-r;
+}
+float approx_sdSquircle(vec2 p, float n){
+    // symmetries
+    p = abs(p); // if( p.y>p.x ) p=p.yx;
+    float w = pow(p.x,n) + pow(p.y,n);
+
+    // linearlized implicit (taylor)
+    float b = 2.0*n-2.0;
+    float a = 1.0-1.0/n;
+    return (w-pow(w,a)) * inversesqrt(pow(p.x,b)+pow(p.y,b));
+}
+float opSmoothIntersectionOne(float d1,float d2){
+    float h=clamp(.5-.5*(d2-d1),0.,1.);
+    return mix(d2,d1,h) + h*(1.-h);
+}
+vec2 sdRoundedBoxMerge(vec2 p,  vec2 b,  float cr){
+    vec2 q1 = abs(p)-b;
+    float r1 = min(max(q1.x,q1.y),0.0) + length(max(q1,0.0));
+    vec2 q2 = q1 + cr;
+    float r2 = min(max(q2.x,q2.y),0.0) + length(max(q2,0.0)) - cr;
+    float h=clamp(.5-.5*(r2-r1),0.,1.);
+    return vec2(mix(r2,r1,h)+h*(1.-h), r2);
+}
+vec2 getPreCalcMA(float2 halfSize) {
+    float halfSizeX = halfSize.x;
+    float halfSizeY = halfSize.y;
+    float maX = 0.0;
+    float maY = 0.0;
+    if (halfSizeX > halfSizeY) {
+        maX = halfSizeX;
+        maY = halfSizeY * 0.5;
+    } else {
+        maX = halfSizeX * 0.5;
+        maY = halfSizeY;
+    }
+    return vec2(maX, maY);
+}
+float sdSquircle(vec2 p, in vec2 b, float cc, float corner, float weight) {
+    float sdf = 0.0;
+    float sc =  cc + weight * cc;
+    float rbRes = 0.0;
+
+    if(any(lessThanEqual(abs(p), b - sc))) {
+        vec2 res = sdRoundedBoxMerge(p, b, cc);
+        sdf = res.x;
+        rbRes = res.y;
+    } else {
+        vec2 sp = (abs(p) - b + sc) / sc;
+        float angle = abs(atan(sp.y, sp.x) - 0.785398); // 0.785398 for 45 degree
+        float preCalcN1Delta = 3.02 + weight * 2.44;
+        float preCalcN2Delta = 2.05 + weight * 2.44;
+        float sn = mix(preCalcN1Delta, preCalcN2Delta, smoothstep(22.0, 0.0, degrees(angle)));
+        sdf = approx_sdSquircle(sp, sn) * sc;
+        rbRes = RBox(p, b, cc);
+        sdf = opSmoothIntersectionOne(sdf, rbRes);
+    }
+    if((corner) == min(b.x, b.y)) {
+        float sdfRect = RBox(p, getPreCalcMA(b), 0);
+        sdf = min(max(sdfRect, rbRes), sdf);
+    }
+    // return smoothstep(0.0, -antiAliasing, sdf);
+    return sdf;
+}
+float getDis(float2 pos,float2 halfsize){
+    float2 rect=abs(pos-halfsize);
+    return rect.x+rect.y;
+}
+float3 getLineFadeTowardCenter(float2 u_lineFadeTowardsCenter, float lineWidth) {
+    float x = clamp(u_lineFadeTowardsCenter.x, 0.0000001, 1.0);
+    float y = clamp(u_lineFadeTowardsCenter.y, 0.0000001, 1.0 - x);
+    float z = clamp((1.0 - x - y), 0.00000001, 1.0);
+    float3 lineFadeTowardsCenter = lineWidth * float3(x, y, z);
+    lineFadeTowardsCenter.y += lineFadeTowardsCenter.x;
+    lineFadeTowardsCenter.z += lineFadeTowardsCenter.y;
+    lineFadeTowardsCenter *= -1.;
+    return lineFadeTowardsCenter;
+}
+float getLineAlpha(LineParams lineParams, float rectSdf, float distanceAll, float distancePart) {
+    float2 fade = float2(lineParams.fadeToSides.x, lineParams.fadeToSides.x + lineParams.fadeToSides.y);
+    float alpha = lineParams.alpha*smoothstep(fade.y*distanceAll, fade.x*distanceAll, distancePart);
+    float3 fadeTowardsCenter = getLineFadeTowardCenter(lineParams.fadeTowardsCenter, lineParams.width);
+    float sdf = smoothstep(0., fadeTowardsCenter.x, rectSdf)-smoothstep(fadeTowardsCenter.y,fadeTowardsCenter.z,rectSdf);
+    return alpha * sdf;
+}
+GradientStrokeResult gradientStrokeColorWithRatio(float2 fragCoord, GradientInputParams inputParams) {
+    float2 halfSize = inputParams.size / 2.0;
+    float2 pos = fragCoord - 0.5*inputParams.resolution - inputParams.pos;
+    float2 dir_pos= normalize(pos);
+    float2 dirAbs_pos = abs(dir_pos);
+    float2 pos_n = min(float2(dirAbs_pos.xy*halfSize.yx/max(vec2(.001),dirAbs_pos.yx)),halfSize)*sign(dir_pos);
+    float2 halfSize_symobol = float2(-halfSize.y,halfSize.x);
+    float flag = mix(-1.0,1.0, step(uRatio,0.5))*dot(halfSize_symobol,pos_n);
+    float distanceAll= inputParams.size.x + inputParams.size.y;
+    float dis_point = distanceAll*min(uRatio,1.0-uRatio)*2.0;
+    float dis_pos = getDis(pos_n,halfSize);
+    float distance_near = mix(dis_point+dis_pos,abs(dis_point-dis_pos),step(0.,flag));
+    distance_near=min(2.*distanceAll-distance_near,distance_near);
+    float corner = min(inputParams.corner, min(halfSize.x, halfSize.y));
+float rectSdf= sdSquircle(pos, halfSize, corner, inputParams.corner, inputParams.weight);
+LineParams nearLineParams = LineParams(uNearLineParams[0], uNearLineParams[1], float2(uNearLineParams[2], uNearLineParams[3]), float2(uNearLineParams[4], uNearLineParams[5]));
+   LineParams farLineParams = LineParams(uFarLineParams[0], uFarLineParams[1], float2(uFarLineParams[2], uFarLineParams[3]), float2(uFarLineParams[4], uFarLineParams[5]));
+   float lineNearAlpha = getLineAlpha(nearLineParams, rectSdf, distanceAll, distance_near);
+   float lineFarAlpha = getLineAlpha(farLineParams, rectSdf, distanceAll, distanceAll-distance_near);
+   float lineAlpha = clamp(lineNearAlpha + lineFarAlpha, 0.0, 1.0);
+   return GradientStrokeResult(vec4(uColor.xyz, lineAlpha), rectSdf);
+}
+vec4 main(vec2 coords) {
+ GradientInputParams inputParams = GradientInputParams(u_size, u_weight, u_corner, 0.0, u_size, float2(0.0, 0.0));
+ GradientStrokeResult strokeResult = gradientStrokeColorWithRatio(coords, inputParams);
+ float antiAliasing = smoothstep(0.0, -1.5, strokeResult.sdf);
+ float alpha = strokeResult.color.a * antiAliasing;
+ return vec4(strokeResult.color.rgb * alpha, alpha);
+}

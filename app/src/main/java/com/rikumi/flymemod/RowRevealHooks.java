@@ -1,6 +1,7 @@
 package com.rikumi.flymemod;
 
 import android.content.Context;
+import android.animation.ValueAnimator;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
@@ -19,6 +20,8 @@ import java.util.function.Consumer;
 final class RowRevealHooks {
     private static final String CENTER = "com.flyme.systemui.controlcenter.phone.CenterController";
     private static final String QS = "com.flyme.systemui.qs.MzQSImpl";
+    private static final String PANEL_CONTROLLER = "com.flyme.systemui.controlcenter.phone.MzQSPanelController";
+    private static final String SHADE = "com.android.systemui.shade.NotificationPanelViewController";
     // Short row stagger within the existing opening transition, with no extra animator.
     private static final float ROW_DELAY = .22f;
     private final Consumer<Context> settings;
@@ -31,6 +34,8 @@ final class RowRevealHooks {
     private final ThreadLocal<View> currentNotifications = new ThreadLocal<>();
     private final Class<?> tileType;
     private final Map<Object, State> states = new WeakHashMap<>();
+    private final Map<Object, Float> rawAlpha = new WeakHashMap<>();
+    private final ThreadLocal<AlphaSeed> alphaSeed = new ThreadLocal<>();
 
     RowRevealHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled)
             throws ReflectiveOperationException {
@@ -44,7 +49,7 @@ final class RowRevealHooks {
         combinedStatusBar = field(qs, "mQSStatusBar");
         fullController = field(qs, "mMzQSPanelController");
         miniController = field(qs, "mMzQQSPanelController");
-        controllerView = field(loader.loadClass("com.flyme.systemui.controlcenter.phone.MzQSPanelController"), "mView");
+        controllerView = field(loader.loadClass(PANEL_CONTROLLER), "mView");
         Class<?> miniPanel = loader.loadClass("com.flyme.systemui.controlcenter.phone.MzQQSPanel");
         miniNetwork = field(miniPanel, "mConnectivityTilesWrapper");
         miniSliders = field(miniPanel, "mSliderWrapper");
@@ -59,6 +64,47 @@ final class RowRevealHooks {
     }
 
     void install(SignalHooks.Installer installer) {
+        // Native animators read the visible (already eased) alpha to seed their next
+        // transition. Feeding it back through contentProgress/revealCurve a second
+        // time can reset a partially revealed shade to zero on launcher handoff.
+        // Seed only their content animator with the last untransformed progress.
+        for (String owner : new String[]{CENTER, SHADE}) {
+            int contentIndex = owner.equals(CENTER) ? 1 : 0;
+            installer.hook(owner, "startExpandAnimator", chain -> {
+                AlphaSeed previous = alphaSeed.get();
+                Float progress = rawAlpha.get(chain.getThisObject());
+                if (enabled.getAsBoolean() && progress != null) alphaSeed.set(new AlphaSeed(contentIndex, progress));
+                else alphaSeed.remove();
+                try { return chain.proceed(); }
+                finally { if (previous == null) alphaSeed.remove(); else alphaSeed.set(previous); }
+            });
+            installer.hook(owner, "startCollapseAnimator", chain -> {
+                AlphaSeed previous = alphaSeed.get();
+                Float progress = rawAlpha.get(chain.getThisObject());
+                if (enabled.getAsBoolean() && progress != null) alphaSeed.set(new AlphaSeed(contentIndex, progress));
+                else alphaSeed.remove();
+                try { return chain.proceed(); }
+                finally { if (previous == null) alphaSeed.remove(); else alphaSeed.set(previous); }
+            }, owner.equals(CENTER) ? new Class<?>[]{float.class} : new Class<?>[0]);
+        }
+        installer.hook(ValueAnimator.class.getName(), "ofFloat", chain -> {
+            AlphaSeed seed = alphaSeed.get();
+            if (seed == null || seed.index++ != seed.contentIndex) return chain.proceed();
+            float[] values = (float[]) chain.getArg(0);
+            if (values.length != 2) return chain.proceed();
+            return chain.proceed(new Object[]{new float[]{seed.progress, values[1]}});
+        }, float[].class);
+        installer.hook(PANEL_CONTROLLER, "setQsScale", chain -> {
+            View root = (View) controllerView.get(chain.getThisObject());
+            if (root != null) settings.accept(root.getContext());
+            // Both the standalone opening scale animator and setQsExpansion write
+            // directly here, including after the reveal has reached alpha=1.
+            // Keep the native stored scale at 1 as well, so subsequently added tiles
+            // and new animators cannot inherit a stale, individually centered scale.
+            // Our pre-draw renderer supplies the shared row pivots and transition
+            // scale; outside that transition the tiles remain at their open size.
+            return enabled.getAsBoolean() ? chain.proceed(new Object[]{1f}) : chain.proceed();
+        }, float.class);
         installer.hook(CENTER, "setAnimationScale", chain -> {
             Object result = chain.proceed();
             if (enabled.getAsBoolean()) {
@@ -73,9 +119,10 @@ final class RowRevealHooks {
             }
             return result;
         }, float.class);
-        installer.hook("com.android.systemui.shade.NotificationPanelViewController", "setAnimationAlpha", chain -> {
+        installer.hook(SHADE, "setAnimationAlpha", chain -> {
             View previous = currentNotifications.get();
             Object panel = chain.getThisObject();
+            rememberAlpha(panel, (Float) chain.getArg(0));
             boolean combined = enabled.getAsBoolean()
                     && Boolean.TRUE.equals(flowValue.invoke(combinedMode.invoke(shadeInteractor.get(panel))));
             currentNotifications.set(combined ? (View) notificationStack.get(panel) : null);
@@ -93,6 +140,7 @@ final class RowRevealHooks {
         }, float.class);
         installer.hook(CENTER, "setAnimationAlpha", chain -> {
             float progress = (Float) chain.getArg(0);
+            rememberAlpha(chain.getThisObject(), progress);
             Object result = chain.proceed(new Object[]{enabled.getAsBoolean() ? revealCurve(contentProgress(progress)) : progress});
             update(chain.getThisObject(), progress, true);
             return result;
@@ -103,6 +151,21 @@ final class RowRevealHooks {
             update(chain.getThisObject(), progress, false);
             return result;
         }, float.class);
+    }
+
+    private void rememberAlpha(Object owner, float progress) {
+        if (enabled.getAsBoolean()) rawAlpha.put(owner, progress);
+        else rawAlpha.remove(owner);
+    }
+
+    private static final class AlphaSeed {
+        final int contentIndex;
+        final float progress;
+        int index;
+        AlphaSeed(int contentIndex, float progress) {
+            this.contentIndex = contentIndex;
+            this.progress = progress;
+        }
     }
 
     private static void keepHeaderScale(Object owner, Field header, Field statusBar)

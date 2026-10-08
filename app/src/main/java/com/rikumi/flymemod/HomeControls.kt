@@ -70,7 +70,7 @@ internal fun HomeModuleControls() {
     FluixMasterToggle(
         checked = checked,
         title = if (checked) "启用模块" else "一键启用",
-        subtitle = if (checked) null else "信任开发者，一键启用全部推荐功能",
+        subtitle = if (checked) null else "信任开发者，一键启用全部",
         onCheckedChange = { enabled ->
             if (!busy) {
                 busy = true
