@@ -1,0 +1,160 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: flyme-mod-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with tags)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check publishing token
+        env:
+          GH_TOKEN: ${{ secrets.XPOSED_REPO_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Configure XPOSED_REPO_TOKEN with Contents read/write access to Xposed-Modules-Repo/dev.rikumi.flymemod."
+            exit 1
+          fi
+          gh api repos/Xposed-Modules-Repo/dev.rikumi.flymemod --silent
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install compile SDK
+        run: sdkmanager 'platforms;android-37'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compute next version and update app/build.gradle
+        id: version
+        shell: python
+        run: |
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          path = Path('app/build.gradle')
+          source = path.read_text()
+          base = re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'", source)
+          if base is None:
+              raise RuntimeError('Missing semantic versionName in app/build.gradle')
+          base_version = tuple(map(int, base[1].split('.')))
+          tags = subprocess.check_output(['git', 'tag', '--list', 'v*'], text=True).splitlines()
+          versions = [(tuple(map(int, tag[1:].split('.'))), tag) for tag in tags
+                      if re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag)]
+          previous = max(versions) if versions else None
+          version = base_version if previous is None else max(
+              base_version, (previous[0][0], previous[0][1], previous[0][2] + 1))
+          major, minor, patch = version
+          name = '.'.join(map(str, version))
+          code = major * 10000 + minor * 100 + patch
+          source = re.sub(r'versionCode \d+', f'versionCode {code}', source, count=1)
+          source = re.sub(r"versionName '[0-9.]+'", f"versionName '{name}'", source, count=1)
+          path.write_text(source)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={name}\nprevious_tag={previous[1] if previous else ""}\n')
+          print(f'Next version: {name} ({code})')
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug
+
+      - name: Commit version bump and create tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: bump version to $VERSION"
+            git push origin HEAD:main
+          fi
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Generate release changelog
+        env:
+          PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
+        run: |
+          RANGE=HEAD
+          if [ -n "$PREVIOUS_TAG" ]; then
+            RANGE="${PREVIOUS_TAG}..HEAD"
+          fi
+          git log "$RANGE" --pretty=format:'- %s (%h)' \
+            --invert-grep --grep='^chore: bump version to ' > release-notes.md
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flyme-mod-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body_path: release-notes.md
+          files: app/build/outputs/apk/debug/*.apk
+          fail_on_unmatched_files: true
+
+      - name: Sync README to Xposed-Modules-Repo
+        env:
+          GH_TOKEN: ${{ secrets.XPOSED_REPO_TOKEN }}
+          TARGET: Xposed-Modules-Repo/dev.rikumi.flymemod
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh auth setup-git
+          BRANCH=$(gh api "repos/$TARGET" --jq '.default_branch // "main"')
+          MIRROR="$RUNNER_TEMP/flyme-xposed-repo"
+          git init -b "$BRANCH" "$MIRROR"
+          git -C "$MIRROR" remote add origin "https://github.com/$TARGET.git"
+          if [ -n "$(git -C "$MIRROR" ls-remote --heads origin "$BRANCH")" ]; then
+            git -C "$MIRROR" fetch origin "$BRANCH"
+            git -C "$MIRROR" reset --hard FETCH_HEAD
+          fi
+          cp README.md "$MIRROR/README.md"
+          git -C "$MIRROR" config user.name 'github-actions[bot]'
+          git -C "$MIRROR" config user.email 'github-actions[bot]@users.noreply.github.com'
+          git -C "$MIRROR" add README.md
+          if ! git -C "$MIRROR" diff --cached --quiet; then
+            git -C "$MIRROR" commit -m "docs: sync README for v$VERSION"
+            git -C "$MIRROR" push origin "HEAD:$BRANCH"
+          fi
+
+      - name: Upload release to Xposed-Modules-Repo
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: Xposed-Modules-Repo/dev.rikumi.flymemod
+          token: ${{ secrets.XPOSED_REPO_TOKEN }}
+          target_commitish: main
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body_path: release-notes.md
+          files: app/build/outputs/apk/debug/*.apk
+          fail_on_unmatched_files: true
