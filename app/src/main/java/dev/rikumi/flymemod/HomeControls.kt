@@ -82,11 +82,11 @@ internal fun HomeModuleControls() {
                                 MODULE_SWITCHES.forEach { editor.putBoolean(it, enabled) }
                                 editor.putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, enabled)
                                 editor.putInt(ModuleSettings.VOLUME_FIRST_FOUR, 0)
-                                editor.putInt(ModuleSettings.LOCK_CLOCK_FONT, if (enabled) 1 else 0)
-                                editor.putInt(ModuleSettings.AOD_CLOCK_FONT, if (enabled) 1 else 0)
-                                editor.putInt(ModuleSettings.STATUS_BAR_CLOCK_FONT, if (enabled) 1 else 0)
-                                editor.putInt(ModuleSettings.CONTROL_CENTER_CLOCK_FONT, if (enabled) 1 else 0)
-                                if (!enabled) editor.putInt(ModuleSettings.CLOCK_FONT_WEIGHT, 0)
+                                editor.putInt(ModuleSettings.LOCK_CLOCK_FONT, if (enabled) 2 else 0)
+                                editor.putInt(ModuleSettings.AOD_CLOCK_FONT, if (enabled) 2 else 0)
+                                editor.putInt(ModuleSettings.STATUS_BAR_CLOCK_FONT, if (enabled) 2 else 0)
+                                editor.putInt(ModuleSettings.CONTROL_CENTER_CLOCK_FONT, if (enabled) 2 else 0)
+                                editor.putInt(ModuleSettings.CLOCK_FONT_WEIGHT, if (enabled) 300 else 0)
                                 if (!enabled) editor.putInt(ModuleSettings.BLUR_RADIUS, ModuleSettings.BLUR_DEFAULT)
                             }.commit()
                             ModuleSettings.MEDIA_FOLDERS.forEach { updateMediaFolder(it[0], enabled) }

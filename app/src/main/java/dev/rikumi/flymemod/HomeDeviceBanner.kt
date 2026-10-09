@@ -41,7 +41,7 @@ internal fun HomeDeviceBanner() {
         if (it.contains("flyme", ignoreCase = true)) it else "Flyme $it"
     }
     val shadowOffset = with(LocalDensity.current) { 3.dp.toPx() }
-    val shadow = Shadow(Color(0x66000000), Offset(0f, shadowOffset), 10f)
+    val shadow = Shadow(Color(0x1F000000), Offset(0f, shadowOffset), 10f)
     val textColor = if (isSystemInDarkTheme()) Color.White else MiuixTheme.colorScheme.onSurface
     Box(
         modifier = Modifier
