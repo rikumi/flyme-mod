@@ -19,9 +19,10 @@ import kotlinx.coroutines.withContext
 private val MODULE_SWITCHES = listOf(
     ModuleSettings.SECONDARY_EXPANSION_FIX, ModuleSettings.QS_TRANSLATION_ORIGIN,
     ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT,
+    ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP, ModuleSettings.CONTROL_CENTER_BUTTONS_UP,
     ModuleSettings.ANIMATED_MUTE_SLASH,
     ModuleSettings.OPTIMIZE_2X1_TEXT, ModuleSettings.WIFI_LABEL,
-    ModuleSettings.SPLIT_NETWORK_CARD, ModuleSettings.SOLID_2X1_CARDS,
+    ModuleSettings.SPLIT_NETWORK_CARD,
     ModuleSettings.FOLD_IDLE_MEDIA,
     ModuleSettings.CIRCLE_SMALL_TILES,
     ModuleSettings.COMBINED_COLLAPSE_FIX, ModuleSettings.COMBINED_PULL_ANIMATION, ModuleSettings.LIMIT_AOD_MOVEMENT,
@@ -80,7 +81,7 @@ internal fun HomeModuleControls() {
                             val saved = preferences.edit().also { editor ->
                                 MODULE_SWITCHES.forEach { editor.putBoolean(it, enabled) }
                                 editor.putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, enabled)
-                                editor.putInt(ModuleSettings.VOLUME_FIRST_FOUR, if (enabled) 2 else 0)
+                                editor.putInt(ModuleSettings.VOLUME_FIRST_FOUR, 0)
                                 editor.putInt(ModuleSettings.LOCK_CLOCK_FONT, if (enabled) 1 else 0)
                                 editor.putInt(ModuleSettings.AOD_CLOCK_FONT, if (enabled) 1 else 0)
                                 editor.putInt(ModuleSettings.STATUS_BAR_CLOCK_FONT, if (enabled) 1 else 0)
@@ -102,6 +103,7 @@ internal fun HomeModuleControls() {
                 }
             }
         },
+        aboveContent = { HomeDeviceBanner() },
         belowContent = {
             FluixActionPairRow(
                 leftTitle = "启动 KernelSU",

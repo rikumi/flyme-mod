@@ -6,6 +6,7 @@ import android.graphics.PointF;
 import android.view.View;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -23,7 +24,7 @@ final class AodMovementHooks {
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled;
     private final Class<?> authController;
-    private final Field context, x, y, anchor, algorithm;
+    private final Field context, x, y, anchor, algorithm, legacyContent;
     private final Field colorfulContext, contentOffset;
     private final Field controllerContext;
     private final Field[] colorfulOffsets;
@@ -31,8 +32,9 @@ final class AodMovementHooks {
     private final Class<?> colorfulData, hostState;
     private final Method burnInOffset;
     private final Field photoContext, selfContext, timeTop;
-    private final Method lockscreenTop;
-    private final Class<?> selfData, resourceState;
+    private final Field photoTop, photoOffset;
+    private final Method lockscreenTop, selfLockscreenState;
+    private final Class<?> selfData, resourceState, photoData;
     private final ThreadLocal<View> layout = new ThreadLocal<>();
     private final Map<View, Position> positions = new WeakHashMap<>();
 
@@ -48,6 +50,7 @@ final class AodMovementHooks {
         Class<?> display = loader.loadClass(DISPLAY);
         anchor = display.getField("mAliveDefaultTop");
         algorithm = display.getField("mPositionSimulateAlgorithm");
+        legacyContent = display.getField("mContentView");
         colorfulContext = loader.loadClass(COLORFUL).getField("pluginContext");
         colorfulData = loader.loadClass("com.flyme.systemui.plugins.clocks.colorful_paradise.data.ColorfulParadisePluginData");
         hostState = loader.loadClass("com.flyme.systemui.plugins.clocks.core.data.HostState");
@@ -65,15 +68,24 @@ final class AodMovementHooks {
         Class<?> photo = loader.loadClass(PHOTO);
         photoContext = photo.getField("pluginContext");
         lockscreenTop = photo.getMethod("getLockscreenDoubleLineTop");
+        photoData = loader.loadClass("com.flyme.systemui.plugins.clocks.photo_frame.data.PhotoFramePluginData");
+        Class<?> photoState = loader.loadClass("com.flyme.systemui.plugins.clocks.photo_frame.ui.state.PhotoFrameState");
+        photoTop = photoState.getField("doubleLineTop");
+        photoTop.setAccessible(true);
+        photoOffset = photoState.getField("contentOffset");
+        photoOffset.setAccessible(true);
         selfContext = loader.loadClass(SELF).getField("pluginContext");
         timeTop = loader.loadClass("com.flyme.systemui.plugins.clocks.distinctive_self.ui.state.DistinctiveSelfState")
                 .getField("timeMarginTop");
         timeTop.setAccessible(true);
         selfData = loader.loadClass("com.flyme.systemui.plugins.clocks.distinctive_self.data.DistinctiveSelfPluginData");
         resourceState = loader.loadClass("com.flyme.systemui.plugins.clocks.distinctive_self.data.DistinctiveSelfDataRepo$ResourceState");
+        selfLockscreenState = loader.loadClass(SELF).getMethod("createLockscreenState",
+                selfData, hostState, resourceState, Integer.class);
     }
 
-    void install(SignalHooks.Installer installer) {
+    void install(SignalHooks.Installer installer, ClassLoader loader, Consumer<Method> deoptimizer)
+            throws ReflectiveOperationException {
         installer.hook("com.flyme.systemui.clock.BaseClockController", "setBurnInOffset", chain -> {
             Context ctx = (Context) controllerContext.get(chain.getThisObject());
             settings.accept(ctx);
@@ -102,7 +114,17 @@ final class AodMovementHooks {
             View previous = layout.get();
             layout.set(view);
             try {
-                return chain.proceed();
+                Object result = chain.proceed();
+                // Bound the actual layout too: optimized ROM code can inline the
+                // position algorithm, and first-entry branches bypass it entirely.
+                if (legacyContent.get(view) instanceof View content) {
+                    int range = rangePx(view.getContext());
+                    int top = anchor.getInt(view) + clamp(content.getTop() - anchor.getInt(view), range);
+                    int centerLeft = (view.getWidth() - content.getWidth()) / 2;
+                    int left = centerLeft + clamp(content.getLeft() - centerLeft, range);
+                    content.layout(left, top, left + content.getWidth(), top + content.getHeight());
+                }
+                return result;
             } finally {
                 if (previous == null) layout.remove();
                 else layout.set(previous);
@@ -149,19 +171,58 @@ final class AodMovementHooks {
             // AOD has a separate, lower design top. Use the lockscreen anchor even on first load.
             return enabled.getAsBoolean() ? lockscreenTop.invoke(model) : chain.proceed();
         });
+        installer.hook(PHOTO, "createAodState", chain -> {
+            Object model = chain.getThisObject();
+            settings.accept((Context) photoContext.get(model));
+            Object state = chain.proceed();
+            if (enabled.getAsBoolean()) {
+                int range = rangePx((Context) photoContext.get(model));
+                Point offset = (Point) burnInOffset.invoke(chain.getArg(1));
+                photoOffset.set(state, new Point(clamp(offset.x, range), clamp(offset.y, range)));
+                // Enforce the produced state, rather than relying on an inlinable getter.
+                photoTop.setFloat(state, ((Number) lockscreenTop.invoke(model)).floatValue());
+            }
+            return state;
+        }, photoData, hostState);
         installer.hook(SELF, "createAodState", chain -> {
             Object state = chain.proceed();
             Context ctx = (Context) selfContext.get(chain.getThisObject());
             settings.accept(ctx);
             if (enabled.getAsBoolean()) {
-                int id = ctx.getResources().getIdentifier("lockscreen_time_margin_top", "dimen", "com.android.systemui");
-                if (id != 0) {
-                    Point offset = (Point) burnInOffset.invoke(chain.getArg(1));
-                    timeTop.setInt(state, ctx.getResources().getDimensionPixelSize(id) + clamp(offset.y, rangePx(ctx)));
-                }
+                // The anchor belongs to the clock plugin's resources, not necessarily
+                // the SystemUI resource namespace. Ask the same plugin for its lock state.
+                Object lockState = selfLockscreenState.invoke(chain.getThisObject(),
+                        chain.getArg(0), chain.getArg(1), chain.getArg(2), null);
+                Point offset = (Point) burnInOffset.invoke(chain.getArg(1));
+                timeTop.setInt(state, timeTop.getInt(lockState) + clamp(offset.y, rangePx(ctx)));
             }
             return state;
         }, selfData, hostState, resourceState);
+        // These are the actual Kotlin flow producers and native position callers.
+        // Deoptimize callers as well as hooks so precompiled/inlined methods still
+        // pass through the clamp when the display first enters AOD or ticks again.
+        deoptimizeCallers(loader.loadClass(DATA), deoptimizer);
+        deoptimizeCallers(loader.loadClass(DISPLAY), deoptimizer);
+        for (String producer : new String[]{
+                "com.flyme.systemui.keyguard.ui.binder.ClockContainerViewBinder$bind$1$1$9$2",
+                "com.flyme.systemui.keyguard.ui.binder.ClockContainerViewBinder$bind$1$1$10$2",
+                COLORFUL + "$colorfulParadiseState$1",
+                PHOTO + "$photoFrameState$1",
+                SELF + "$distinctiveSelfState$1"}) {
+            deoptimizeCallers(loader.loadClass(producer), deoptimizer);
+        }
+        deoptimizer.accept(loader.loadClass(PHOTO).getDeclaredMethod("createAodState", photoData, hostState));
+    }
+
+    private static void deoptimizeCallers(Class<?> type, Consumer<Method> deoptimizer) {
+        for (Method method : type.getDeclaredMethods()) {
+            String name = method.getName();
+            if (!Modifier.isAbstract(method.getModifiers()) && !Modifier.isNative(method.getModifiers())
+                    && (name.equals("emit") || name.equals("invoke") || name.equals("invokeSuspend")
+                    || name.equals("refreshAODDelay") || name.equals("onLayout"))) {
+                deoptimizer.accept(method);
+            }
+        }
     }
 
     private static int rangePx(Context context) {

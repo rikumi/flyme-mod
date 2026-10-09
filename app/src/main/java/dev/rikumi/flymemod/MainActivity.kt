@@ -479,8 +479,6 @@ private fun ControlCenterPreferences(group: String) {
                 FluixItemDivider()
                 WhiteActiveOpacityPreference()
                 FluixItemDivider()
-                ApplicationPreference(ModuleSettings.NETWORK_DARK_SPINNER, "修复网络磁贴展开态深色模式适配")
-                FluixItemDivider()
                 ApplicationPreference(ModuleSettings.SLIDER_ACTIVE_CORNERS, "音量/亮度条激活区域圆角")
             }
             FluixCard {
@@ -505,7 +503,6 @@ private fun ControlCenterPreferences(group: String) {
                 ModuleSettings.SPLIT_NETWORK_CARD to "网络卡片分离",
                 ModuleSettings.ANIMATED_MUTE_SLASH to "动画式斜划线静音图标",
                 ModuleSettings.OPTIMIZE_2X1_TEXT to "2×1 卡片文字布局优化",
-                ModuleSettings.SOLID_2X1_CARDS to "2×1 卡片改为实心（HyperOS 模式）",
                 ModuleSettings.CIRCLE_SMALL_TILES to "1×1 磁贴改为圆形",
             ),
         )
@@ -758,7 +755,7 @@ private fun WhiteActiveOpacityPreference() {
     var opacity by remember { mutableStateOf(preferences.getInt(ModuleSettings.WHITE_ACTIVE_OPACITY, 90).coerceIn(50, 100)) }
     var expanded by remember { mutableStateOf(false) }
     FluixSwitchPreference(
-        title = "控制中心激活态改为白色",
+        title = "控制中心 ColorOS 全新焕彩配色",
         checked = enabled,
         onCheckedChange = {
             enabled = it

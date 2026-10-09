@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Flyme Mod</string>
-    <string name="xposed_description">Flyme 定制模块开发基架</string>
+    <string name="xposed_description">一个针对 Flyme 的全方位体验增强模块，永久免费\n禁止分享、转载、盗卖以及其他违规用途\n开发者：rikumi</string>
 </resources>

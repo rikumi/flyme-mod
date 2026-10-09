@@ -64,7 +64,6 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.CIRCLE_SMALL_TILES);
         columns.add(ModuleSettings.FOLD_IDLE_MEDIA);
         columns.add(ModuleSettings.NETWORK_SPLIT_STYLE);
-        columns.add(ModuleSettings.SOLID_2X1_CARDS);
         columns.add(ModuleSettings.OPTIMIZE_2X1_TEXT);
         columns.add(ModuleSettings.ANIMATED_MUTE_SLASH);
         columns.add(ModuleSettings.WIFI_LABEL);
@@ -155,7 +154,6 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.CIRCLE_SMALL_TILES, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.FOLD_IDLE_MEDIA, false) ? 1 : 0);
         values.add(ModuleSettings.networkSplitStyle(prefs));
-        values.add(prefs.getBoolean(ModuleSettings.SOLID_2X1_CARDS, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.OPTIMIZE_2X1_TEXT, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.ANIMATED_MUTE_SLASH, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.WIFI_LABEL, false) ? 1 : 0);

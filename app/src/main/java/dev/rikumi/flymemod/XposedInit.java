@@ -33,7 +33,6 @@ import android.view.ViewOutlineProvider;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Button;
-import android.widget.ProgressBar;
 import android.view.ViewGroup;
 import java.lang.reflect.Method;
 import java.util.Map;
@@ -50,22 +49,13 @@ public final class XposedInit extends XposedModule {
     private static final int DARK_BACKGROUND = 0x73000000;
     private static final float OPERATION_SCALE = 1.06f;
     private static final int ACTIVE_FOREGROUND = 0x99000000;
-    private static final float ACTIVE_COLOR_SATURATION = 0.90f;
-    private static final float ACTIVE_COLOR_VALUE = 0.95f;
-    private static final double ACTIVE_OKLCH_SATURATION = .98d * oklchGamutSaturation(
-            Color.HSVToColor(0xFF, new float[]{210f, ACTIVE_COLOR_SATURATION, ACTIVE_COLOR_VALUE}));
-    private static final int ACTIVE_BLUE_COLOR = saturatedBlueColor();
-
-    private static int saturatedBlueColor() {
-        double[] blue = toOklch(Color.HSVToColor(0xFF,
-                new float[]{210f, ACTIVE_COLOR_SATURATION, ACTIVE_COLOR_VALUE}));
-        double saturation = Math.min(1d, ACTIVE_OKLCH_SATURATION * 1.12d);
-        double lightness = blue[0] * .92d;
-        return fromOklch(lightness, blue[1], maxOklchChroma(lightness, blue[1]) * saturation, 0xD9);
-    }
-    private static final int ACTIVE_MOBILE_COLOR = matchedOklchColor(135f, .92d);
-    private static final int ACTIVE_YELLOW_COLOR = matchedOklchColor(45f);
-    private static final int ACTIVE_PURPLE_COLOR = matchedOklchColor(270f);
+    // ColorOS QsColorfulConfigUtil's native radiant palette; keep its opaque tints.
+    private static final int ACTIVE_BLUE_COLOR = 0xFF0066FF;
+    private static final int ACTIVE_MOBILE_COLOR = 0xFF00990F;
+    private static final int ACTIVE_YELLOW_COLOR = 0xFFEBAB22;
+    private static final int ACTIVE_PURPLE_COLOR = 0xFF5A47FF;
+    private static final int ACTIVE_RED_COLOR = 0xFFDB382C;
+    private static final int ACTIVE_VOLUME_COLOR = 0xFF333333;
     private volatile boolean settingsLoaded;
     private boolean scaleEnabled;
     private boolean lightEnabled;
@@ -79,10 +69,9 @@ public final class XposedInit extends XposedModule {
     private boolean whiteActiveEnabled;
     private int whiteActiveOpacity = 90;
     private final Set<View> whiteActiveTileViews = Collections.newSetFromMap(new WeakHashMap<>());
+    private final Set<ImageView> whiteActiveTintedIcons = Collections.newSetFromMap(new WeakHashMap<>());
     private final Set<View> whiteActiveCircleViews = Collections.newSetFromMap(new WeakHashMap<>());
     private final Set<GradientDrawable> whiteActiveProgress = Collections.newSetFromMap(new WeakHashMap<>());
-    private boolean networkDarkSpinnerEnabled;
-    private final Set<ProgressBar> networkSpinners = Collections.newSetFromMap(new WeakHashMap<>());
     private boolean sliderActiveCornersEnabled;
     private boolean notificationCornersEnabled;
     private boolean nativeNotificationExpansionEnabled;
@@ -118,10 +107,9 @@ public final class XposedInit extends XposedModule {
     private boolean optimize2x1TextEnabled;
     private boolean splitNetworkCardEnabled;
     private int networkSplitStyle;
-    private boolean solid2x1CardsEnabled;
     private boolean animatedMuteSlashEnabled;
     private MuteSlashHooks activeMuteSlashHooks;
-    private SolidCardHooks activeSolidCardHooks;
+    private CardIconLayoutHooks activeCardIconLayoutHooks;
     private boolean foldIdleMediaEnabled;
     private FoldIdleMediaHooks activeFoldIdleMediaHooks;
     private boolean circleSmallTilesEnabled;
@@ -231,8 +219,9 @@ public final class XposedInit extends XposedModule {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve folder app-close animation target", error);
             }
             try {
-                new HomeSwipeDampingHooks(loader, () -> homeSwipeDampingEnabled).install(
-                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+                new HomeSwipeDampingHooks(loader, this::loadSettings, () -> homeSwipeDampingEnabled).install(
+                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                        this::deoptimize);
             } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve Launcher swipe-to-home spring animation", error);
             }
@@ -314,7 +303,8 @@ public final class XposedInit extends XposedModule {
         }
         try {
             new AodMovementHooks(loader, this::loadSettings, () -> limitAodMovementEnabled).install(
-                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                    loader, this::deoptimize);
         } catch (ReflectiveOperationException e) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme AOD movement classes", e);
         }
@@ -436,7 +426,7 @@ public final class XposedInit extends XposedModule {
         }
         try {
             activeSplitNetworkCardHooks = new SplitNetworkCardHooks(loader, this::loadSettings,
-                    () -> networkSplitStyle, () -> whiteActiveEnabled, () -> optimize2x1TextEnabled, this::activeBackgroundColor, this::applyIconColor,
+                    () -> networkSplitStyle, () -> optimize2x1TextEnabled, this::applyIconColor,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
             if (activeColorOsMaterialHooks != null)
                 activeSplitNetworkCardHooks.setContourListener(activeColorOsMaterialHooks::updateNetworkRows);
@@ -451,12 +441,12 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve split network card", error);
         }
         try {
-            activeSolidCardHooks = new SolidCardHooks(loader, this::loadSettings, () -> solid2x1CardsEnabled, () -> optimize2x1TextEnabled,
+            activeCardIconLayoutHooks = new CardIconLayoutHooks(loader, this::loadSettings, () -> optimize2x1TextEnabled,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
-            activeSolidCardHooks.install(
+            activeCardIconLayoutHooks.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-            log(Log.ERROR, "FlymeMod", "Cannot resolve solid 2x1 cards", error);
+            log(Log.ERROR, "FlymeMod", "Cannot resolve 2x1 card icon layout", error);
         }
         try {
             activeMuteSlashHooks = new MuteSlashHooks(loader, this::loadSettings, () -> animatedMuteSlashEnabled,
@@ -600,23 +590,6 @@ public final class XposedInit extends XposedModule {
             args[0] = args[1] = args[2] = lightBackgroundColor();
             return chain.proceed(args);
         }, int.class, int.class, int.class, int.class, int.class);
-        install(loader, "com.android.systemui.qs.tiles.dialog.InternetDialogDelegateLegacy",
-                "setProgressBarVisible", chain -> {
-                    Object result = chain.proceed();
-                    applyNetworkSpinnerTint(chain.getThisObject(), "mProgressBar");
-                    return result;
-                }, boolean.class);
-        install(loader, "com.android.systemui.qs.tiles.dialog.InternetDetailsContentManager",
-                "setProgressBarVisible", chain -> {
-                    Object result = chain.proceed();
-                    applyNetworkSpinnerTint(chain.getThisObject(), "progressBar");
-                    return result;
-                }, boolean.class);
-        install(loader, ProgressBar.class.getName(), "onDraw", chain -> {
-            ProgressBar progressBar = (ProgressBar) chain.getThisObject();
-            if (networkSpinners.contains(progressBar)) enforceNetworkSpinnerTint(progressBar);
-            return chain.proceed();
-        }, Canvas.class);
         // Slider state/theme changes have a separate background setter.
         install(loader, "com.android.systemui.settings.brightness.BrightnessSliderView",
                 "changeSliderBgColor", chain -> {
@@ -905,7 +878,7 @@ public final class XposedInit extends XposedModule {
         int value = (Integer) slider.getClass().getMethod("getProgress").invoke(slider);
         int max = (Integer) slider.getClass().getMethod("getMax").invoke(slider);
         int color = max > 0 && (long) value * 100 > (long) max * 15
-                ? (volumeSliderIcons.contains(icon) ? ACTIVE_FOREGROUND : activeTileIconColor("brightness"))
+                ? (volumeSliderIcons.contains(icon) ? ACTIVE_VOLUME_COLOR : activeTileIconColor("brightness"))
                 : Color.WHITE;
         if (!force && Integer.valueOf(color).equals(sliderIconColors.get(icon))) return;
         // The brightness circle has overlapping fill and stroke. Tint each path
@@ -933,6 +906,35 @@ public final class XposedInit extends XposedModule {
         icon.invalidate();
     }
 
+    private void clearLottieTint(ImageView icon) throws ReflectiveOperationException {
+        ClassLoader loader = icon.getClass().getClassLoader();
+        Class<?> keyPath = Class.forName("com.airbnb.lottie.model.KeyPath", false, loader);
+        Class<?> callback = Class.forName("com.airbnb.lottie.value.LottieValueCallback", false, loader);
+        Object path = keyPath.getConstructor(String[].class).newInstance((Object) new String[]{"**"});
+        Object property = Class.forName("com.airbnb.lottie.LottieProperty", false, loader)
+                .getField("COLOR_FILTER").get(null);
+        icon.getClass().getMethod("addValueCallback", keyPath, Object.class, callback)
+                .invoke(icon, path, property, null);
+    }
+
+    private void refreshActiveIconTheme() {
+        for (View icon : new ArrayList<>(whiteActiveCircleViews)) {
+            if (icon == null) continue;
+            try {
+                icon.getClass().getMethod("setIconForUiModelChange").invoke(icon);
+                Object state = icon.getClass().getField("mIconState").get(icon);
+                if (state == null) continue;
+                int value = state.getClass().getField("state").getInt(state);
+                String spec = (String) state.getClass().getField("spec").get(state);
+                int color = (Integer) icon.getClass().getMethod("getCircleIconBgColor", String.class, int.class)
+                        .invoke(icon, spec, value);
+                icon.getClass().getMethod("setCircleIconBg", int.class).invoke(icon, color);
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                log(Log.ERROR, "FlymeMod", "Cannot restore active icon theme", error);
+            }
+        }
+    }
+
     private void installWhiteActive(ClassLoader loader) {
         Class<?> tileStateClass;
         try {
@@ -948,6 +950,7 @@ public final class XposedInit extends XposedModule {
             loadSettings(icon.getContext());
             if (whiteActiveEnabled && tileState.getClass().getField("state").getInt(tileState) == 2) {
                 String spec = (String) tileState.getClass().getField("spec").get(tileState);
+                whiteActiveTintedIcons.add(icon);
                 applyIconColor(icon, activeTileIconColor(icon, spec));
             }
             return result;
@@ -964,6 +967,7 @@ public final class XposedInit extends XposedModule {
             View icon = (View) chain.getThisObject();
             loadSettings(icon.getContext());
             if (!whiteActiveEnabled || (Integer) chain.getArg(0) != 2) return chain.proceed();
+            whiteActiveCircleViews.add(icon);
             Object state = icon.getClass().getField("mIconState").get(icon);
             String spec = state == null ? null : (String) state.getClass().getField("spec").get(state);
             return activeTileIconColor(icon, spec);
@@ -1020,11 +1024,19 @@ public final class XposedInit extends XposedModule {
                 return result;
             }, String.class);
             install(loader, "com.android.systemui.qs.tileimpl.QSIconViewImpl", "tintLottie", chain -> {
+                View owner = (View) chain.getThisObject();
+                ImageView glyph = (ImageView) chain.getArg(1);
+                loadSettings(owner.getContext());
+                boolean active = whiteActiveEnabled
+                        && chain.getArg(0).getClass().getField("state").getInt(chain.getArg(0)) == 2;
+                // The ROM skips tintLottie for *_on compositions. Remove our callback
+                // first so disabling white activation restores their original colors.
+                if (!active && whiteActiveTintedIcons.remove(glyph)) clearLottieTint(glyph);
                 Object result = chain.proceed();
-                loadSettings(((View) chain.getThisObject()).getContext());
-                if (whiteActiveEnabled && chain.getArg(0).getClass().getField("state").getInt(chain.getArg(0)) == 2) {
+                if (active) {
                     String spec = (String) chain.getArg(0).getClass().getField("spec").get(chain.getArg(0));
-                    applyIconColor((ImageView) chain.getArg(1), activeTileIconColor((View) chain.getThisObject(), spec));
+                    whiteActiveTintedIcons.add(glyph);
+                    applyIconColor(glyph, activeTileIconColor(owner, spec));
                 }
                 return result;
             }, tileStateClass, animationView, int.class);
@@ -1034,14 +1046,6 @@ public final class XposedInit extends XposedModule {
     }
 
     private int activeTileIconColor(View icon, String spec) {
-        if (networkSplitStyle == 2 && ("wifi".equals(spec) || "bt".equals(spec))) {
-            for (View current = icon; current != null;
-                 current = current.getParent() instanceof View parent ? parent : null) {
-                if ("com.flyme.systemui.qs.tileimpl.ConnectivityQSTileViewImpl".equals(current.getClass().getName())) {
-                    return activeBackgroundColor() & 0xFF000000;
-                }
-            }
-        }
         return activeTileIconColor(spec);
     }
 
@@ -1056,87 +1060,11 @@ public final class XposedInit extends XposedModule {
             return ACTIVE_YELLOW_COLOR;
         }
         if (normalized.equals("screenrecord") || normalized.equals("screen_record")) {
-            return activeHsvColor(5f);
+            return ACTIVE_RED_COLOR;
         }
         if (normalized.equals("dnd")) return ACTIVE_PURPLE_COLOR;
-        if (normalized.equals("volume") || normalized.equals("sound")) return ACTIVE_FOREGROUND;
+        if (normalized.equals("volume") || normalized.equals("sound")) return ACTIVE_VOLUME_COLOR;
         return ACTIVE_BLUE_COLOR;
-    }
-
-    private int activeHsvColor(float hue) {
-        return Color.HSVToColor(0xD9, new float[]{hue, ACTIVE_COLOR_SATURATION, ACTIVE_COLOR_VALUE});
-    }
-
-    private static int matchedOklchColor(float hue) {
-        return matchedOklchColor(hue, 1d);
-    }
-
-    private static int matchedOklchColor(float hue, double lightnessFactor) {
-        int base = Color.HSVToColor(0xFF, new float[]{hue, ACTIVE_COLOR_SATURATION, ACTIVE_COLOR_VALUE});
-        double[] oklch = toOklch(base);
-        double lightness = oklch[0] * lightnessFactor;
-        double chroma = maxOklchChroma(lightness, oklch[1]) * ACTIVE_OKLCH_SATURATION;
-        return fromOklch(lightness, oklch[1], chroma, 0xD9);
-    }
-
-    private static double oklchGamutSaturation(int color) {
-        double[] oklch = toOklch(color);
-        double maximum = maxOklchChroma(oklch[0], oklch[1]);
-        return maximum <= 0d ? 0d : oklch[2] / maximum;
-    }
-
-    private static double[] toOklch(int color) {
-        double r = srgbToLinear(Color.red(color) / 255d);
-        double g = srgbToLinear(Color.green(color) / 255d);
-        double b = srgbToLinear(Color.blue(color) / 255d);
-        double l = Math.cbrt(.4122214708d * r + .5363325363d * g + .0514459929d * b);
-        double m = Math.cbrt(.2119034982d * r + .6806995451d * g + .1073969566d * b);
-        double s = Math.cbrt(.0883024619d * r + .2817188376d * g + .6299787005d * b);
-        double lightness = .2104542553d * l + .7936177850d * m - .0040720468d * s;
-        double a = 1.9779984951d * l - 2.4285922050d * m + .4505937099d * s;
-        double chromaAxis = .0259040371d * l + .7827717662d * m - .8086757660d * s;
-        return new double[]{lightness, Math.atan2(chromaAxis, a), Math.hypot(a, chromaAxis)};
-    }
-
-    private static double maxOklchChroma(double lightness, double hue) {
-        double low = 0d, high = .5d;
-        for (int i = 0; i < 24; i++) {
-            double middle = (low + high) * .5d;
-            if (isOklchInGamut(lightness, hue, middle)) low = middle;
-            else high = middle;
-        }
-        return low;
-    }
-
-    private static boolean isOklchInGamut(double lightness, double hue, double chroma) {
-        double[] rgb = oklchToLinearRgb(lightness, hue, chroma);
-        return rgb[0] >= 0d && rgb[0] <= 1d && rgb[1] >= 0d && rgb[1] <= 1d
-                && rgb[2] >= 0d && rgb[2] <= 1d;
-    }
-
-    private static int fromOklch(double lightness, double hue, double chroma, int alpha) {
-        double[] rgb = oklchToLinearRgb(lightness, hue, chroma);
-        return Color.argb(alpha, linearToSrgb8(rgb[0]), linearToSrgb8(rgb[1]), linearToSrgb8(rgb[2]));
-    }
-
-    private static double[] oklchToLinearRgb(double lightness, double hue, double chroma) {
-        double a = chroma * Math.cos(hue), b = chroma * Math.sin(hue);
-        double l = Math.pow(lightness + .3963377774d * a + .2158037573d * b, 3d);
-        double m = Math.pow(lightness - .1055613458d * a - .0638541728d * b, 3d);
-        double s = Math.pow(lightness - .0894841775d * a - 1.2914855480d * b, 3d);
-        return new double[]{
-                4.0767416621d * l - 3.3077115913d * m + .2309699292d * s,
-                -1.2684380046d * l + 2.6097574011d * m - .3413193965d * s,
-                -.0041960863d * l - .7034186147d * m + 1.7076147010d * s};
-    }
-
-    private static double srgbToLinear(double value) {
-        return value <= .04045d ? value / 12.92d : Math.pow((value + .055d) / 1.055d, 2.4d);
-    }
-
-    private static int linearToSrgb8(double value) {
-        double srgb = value <= .0031308d ? 12.92d * value : 1.055d * Math.pow(value, 1d / 2.4d) - .055d;
-        return (int) Math.round(Math.max(0d, Math.min(1d, srgb)) * 255d);
     }
 
     private boolean shouldDarken(Context context) {
@@ -1295,7 +1223,6 @@ public final class XposedInit extends XposedModule {
 
     private boolean hasCircularCardActivation(View view) {
         if (isConnectivityCard(view)) return true;
-        if (solid2x1CardsEnabled) return false;
         if (view.getClass().getName().equals(
                 "com.flyme.systemui.qs.tileimpl.DeviceCenterQSTileViewImpl")) return true;
         try {
@@ -1609,54 +1536,12 @@ public final class XposedInit extends XposedModule {
         }
     }
 
-    private void applyNetworkSpinnerTint(Object owner, String fieldName) {
-        try {
-            Object value = owner.getClass().getField(fieldName).get(owner);
-            if (value instanceof ProgressBar progressBar) applyNetworkSpinnerTint(progressBar);
-        } catch (ReflectiveOperationException | RuntimeException error) {
-            log(Log.ERROR, "FlymeMod", "Cannot resolve network loading spinner " + fieldName, error);
-        }
-    }
-
-    private void applyNetworkSpinnerTint(ProgressBar progressBar) {
-        networkSpinners.add(progressBar);
-        loadSettings(progressBar.getContext());
-        boolean night = (progressBar.getResources().getConfiguration().uiMode
-                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        ColorStateList tint = networkDarkSpinnerEnabled && night
-                ? ColorStateList.valueOf(Color.WHITE) : null;
-        progressBar.setIndeterminateTintList(tint);
-        Drawable drawable = progressBar.getIndeterminateDrawable();
-        if (drawable != null) {
-            Drawable mutable = drawable.mutate();
-            mutable.setTintList(tint);
-            mutable.setTintMode(PorterDuff.Mode.SRC_IN);
-            mutable.setColorFilter(tint == null ? null
-                    : new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
-            if (mutable != drawable) progressBar.setIndeterminateDrawable(mutable);
-        }
-    }
-
-    private void enforceNetworkSpinnerTint(ProgressBar progressBar) {
-        loadSettings(progressBar.getContext());
-        boolean night = (progressBar.getResources().getConfiguration().uiMode
-                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        Drawable drawable = progressBar.getIndeterminateDrawable();
-        if (drawable == null) return;
-        Drawable mutable = drawable.mutate();
-        ColorStateList tint = networkDarkSpinnerEnabled && night
-                ? ColorStateList.valueOf(Color.WHITE) : null;
-        mutable.setTintList(tint);
-        mutable.setTintMode(PorterDuff.Mode.SRC_IN);
-        mutable.setColorFilter(tint == null ? null
-                : new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
-    }
-
     private synchronized void loadSettings(Context context) {
         if (moduleSettingsObserver == null) {
             Context appContext = context.getApplicationContext();
             moduleSettingsObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
                 @Override public void onChange(boolean selfChange) {
+                    boolean previousWhiteActive = whiteActiveEnabled;
                     int previousOpacity = whiteActiveOpacity;
                     int previousLightOpacity = lightBackgroundOpacity;
                     synchronized (XposedInit.this) { settingsLoaded = false; }
@@ -1665,16 +1550,14 @@ public final class XposedInit extends XposedModule {
                     if (activeClockFontHooks != null) activeClockFontHooks.refresh();
                     if (activeSimpleQsTextHooks != null) activeSimpleQsTextHooks.refresh();
                     if (activeSplitNetworkCardHooks != null) activeSplitNetworkCardHooks.refresh();
-                    if (activeSolidCardHooks != null) activeSolidCardHooks.refresh();
+                    if (activeCardIconLayoutHooks != null) activeCardIconLayoutHooks.refresh();
                     if (activeMuteSlashHooks != null) activeMuteSlashHooks.refresh();
                     if (activeFoldIdleMediaHooks != null) activeFoldIdleMediaHooks.refresh();
                     if (activeCircleTileHooks != null) activeCircleTileHooks.refresh();
                     if (activeColorOsMaterialHooks != null) activeColorOsMaterialHooks.refresh();
+                    if (previousWhiteActive != whiteActiveEnabled) refreshActiveIconTheme();
                     if (whiteActiveEnabled && previousOpacity != whiteActiveOpacity) refreshWhiteActiveOpacity();
                     if (lightEnabled && previousLightOpacity != lightBackgroundOpacity) refreshLightBackgroundOpacity();
-                    for (ProgressBar spinner : new ArrayList<>(networkSpinners)) {
-                        if (spinner != null) applyNetworkSpinnerTint(spinner);
-                    }
                 }
             };
             appContext.getContentResolver().registerContentObserver(
@@ -1701,8 +1584,6 @@ public final class XposedInit extends XposedModule {
                 whiteActiveEnabled = activeColumn >= 0 && cursor.getInt(activeColumn) != 0;
                 int opacityColumn = cursor.getColumnIndex(ModuleSettings.WHITE_ACTIVE_OPACITY);
                 whiteActiveOpacity = opacityColumn < 0 ? 90 : Math.max(50, Math.min(100, cursor.getInt(opacityColumn)));
-                int networkDarkSpinnerColumn = cursor.getColumnIndex(ModuleSettings.NETWORK_DARK_SPINNER);
-                networkDarkSpinnerEnabled = networkDarkSpinnerColumn >= 0 && cursor.getInt(networkDarkSpinnerColumn) != 0;
                 int sliderCornersColumn = cursor.getColumnIndex(ModuleSettings.SLIDER_ACTIVE_CORNERS);
                 sliderActiveCornersEnabled = sliderCornersColumn >= 0 && cursor.getInt(sliderCornersColumn) != 0;
                 int headsUpWidthColumn = cursor.getColumnIndex(ModuleSettings.HEADS_UP_WIDTH);
@@ -1788,11 +1669,9 @@ public final class XposedInit extends XposedModule {
                 int splitNetworkCardColumn = cursor.getColumnIndex(ModuleSettings.SPLIT_NETWORK_CARD);
                 int muteSlashColumn = cursor.getColumnIndex(ModuleSettings.ANIMATED_MUTE_SLASH);
                 animatedMuteSlashEnabled = muteSlashColumn >= 0 && cursor.getInt(muteSlashColumn) != 0;
-                int solidCardsColumn = cursor.getColumnIndex(ModuleSettings.SOLID_2X1_CARDS);
-                solid2x1CardsEnabled = solidCardsColumn >= 0 && cursor.getInt(solidCardsColumn) != 0;
                 int splitStyleColumn = cursor.getColumnIndex(ModuleSettings.NETWORK_SPLIT_STYLE);
-                networkSplitStyle = splitStyleColumn >= 0 ? Math.max(0, Math.min(2, cursor.getInt(splitStyleColumn)))
-                        : (splitNetworkCardColumn >= 0 && cursor.getInt(splitNetworkCardColumn) != 0 ? 2 : 0);
+                networkSplitStyle = splitStyleColumn >= 0 ? Math.max(0, Math.min(1, cursor.getInt(splitStyleColumn)))
+                        : (splitNetworkCardColumn >= 0 && cursor.getInt(splitNetworkCardColumn) != 0 ? 1 : 0);
                 splitNetworkCardEnabled = networkSplitStyle != 0;
                 int circleTilesColumn = cursor.getColumnIndex(ModuleSettings.CIRCLE_SMALL_TILES);
                 circleSmallTilesEnabled = circleTilesColumn >= 0 && cursor.getInt(circleTilesColumn) != 0;

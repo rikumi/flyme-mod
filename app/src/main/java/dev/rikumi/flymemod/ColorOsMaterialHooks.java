@@ -23,7 +23,6 @@ final class ColorOsMaterialHooks {
     private final ClassLoader loader;
     private final Map<String, String> sources = new HashMap<>();
     private Context assets;
-    private boolean failed;
 
     ColorOsMaterialHooks(ClassLoader loader, Consumer<Context> settings,
             BooleanSupplier contour, BooleanSupplier splitNetwork, BiConsumer<String, Throwable> log)
@@ -34,6 +33,17 @@ final class ColorOsMaterialHooks {
 
     void install(ClassLoader loader, SignalHooks.Installer installer) throws ReflectiveOperationException {
         if (Build.VERSION.SDK_INT < 33) return;
+        View.class.getDeclaredMethod("invalidateOutline");
+        installer.hook("android.view.View", "invalidateOutline", chain -> {
+            Object result = chain.proceed();
+            View view = (View) chain.getThisObject();
+            Host host = hosts.get(view);
+            if (host != null && host.outline != null) {
+                host.outline.maskWidth = 0;
+                host.outline.invalidateSelf();
+            }
+            return result;
+        });
         Class<?> state = loader.loadClass("com.android.systemui.plugins.qs.QSTile$State");
         for (String name : new String[]{"com.android.systemui.qs.tileimpl.QSTileViewImpl",
                 "com.flyme.systemui.qs.tileimpl.FlymeCustomQSTileView"}) {
@@ -110,16 +120,19 @@ final class ColorOsMaterialHooks {
         try {
             boolean split = splitNetworkEnabled.getAsBoolean();
             boolean visible = host.networkRole == 1 ? !split : host.networkRole != 2 || split;
-            if (failed || !contourEnabled.getAsBoolean() || !visible) {
+            if (!contourEnabled.getAsBoolean() || !visible) {
                 if (host.outline != null) { view.getOverlay().remove(host.outline); host.outline = null; }
             } else {
-                if (host.outline == null) { host.outline = new Contour(view); view.getOverlay().add(host.outline); }
+                if (host.outline == null) host.outline = new Contour(view);
+                // Restore attachment even if a native transition cleared its overlay.
+                view.getOverlay().remove(host.outline);
+                view.getOverlay().add(host.outline);
                 host.outline.maskWidth = 0; // Layout/settings refresh may replace the native outline without resizing.
                 host.outline.setBounds(0, 0, view.getWidth(), view.getHeight());
                 host.outline.invalidateSelf();
             }
 
-        } catch (Exception | LinkageError error) { fail(error); }
+        } catch (Exception | LinkageError error) { fail(view, error); }
     }
 
     private void remove(View view) {
@@ -128,7 +141,13 @@ final class ColorOsMaterialHooks {
         if (host.outline != null) { view.getOverlay().remove(host.outline); host.outline = null; }
 
     }
-    private void fail(Throwable error) { if (!failed) { failed = true; log.accept("Cannot render ColorOS contours", error); refresh(); } }
+    private void fail(View view, Throwable error) {
+        Host host = hosts.get(view);
+        if (host != null && !host.errorLogged) {
+            host.errorLogged = true;
+            log.accept("Cannot render ColorOS contour for " + view.getClass().getName(), error);
+        }
+    }
     private String source(View view, String name) throws Exception {
         if (sources.containsKey(name)) return sources.get(name);
         if (assets == null) assets = view.getContext().createPackageContext("dev.rikumi.flymemod", 0);
@@ -169,7 +188,7 @@ final class ColorOsMaterialHooks {
         try { return ((Number) field(view, "mClipCornerRadius")).floatValue(); } catch (ReflectiveOperationException ignored) { }
         return 14f * view.getResources().getDisplayMetrics().density;
     }
-    private static final class Host { Contour outline; int networkRole; }
+    private static final class Host { Contour outline; int networkRole; boolean errorLogged; }
 
     private final class Contour extends Drawable {
         final WeakReference<View> owner;
@@ -181,6 +200,7 @@ final class ColorOsMaterialHooks {
         float maskRadius = -1, maskStroke;
         boolean maskSmooth;
         Path maskSource;
+        int maskGeneration;
         float maskSmoothness;
         final Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -201,7 +221,7 @@ final class ColorOsMaterialHooks {
         }
         public void draw(Canvas canvas) {
             View view = owner.get(); Rect bounds = getBounds();
-            if (view == null || bounds.isEmpty() || failed) return;
+            if (view == null || bounds.isEmpty()) return;
             try {
                 float radius = Math.min(radius(view, view.getBackground()), Math.min(bounds.width(), bounds.height()) / 2f);
                 RuntimeShader shader;
@@ -210,8 +230,7 @@ final class ColorOsMaterialHooks {
                 boolean naturalCard = surface != null && surface.getClass().getName()
                         .equals("com.android.systemui.qs.CustomSmoothCornerDrawable");
                 if (slider || naturalCard) {
-                    updateNativeMask(view, bounds, radius, surface, slider);
-                    shader = nativeCurve;
+                    shader = updateNativeMask(view, bounds, radius, surface, slider) ? nativeCurve : round;
                 } else shader = round; // Native GradientDrawable/round-rect backgrounds retain their actual circular arcs.
                 shader.setFloatUniform("u_size", bounds.width(), bounds.height());
                 shader.setFloatUniform("u_corner", radius); shader.setFloatUniform("u_weight", .2f);
@@ -225,9 +244,9 @@ final class ColorOsMaterialHooks {
                 shader.setFloatUniform("uFarLineParams", farParams);
                 paint.setShader(shader); paint.setAlpha(alpha);
                 canvas.drawRect(bounds, paint);
-            } catch (Exception | LinkageError error) { fail(error); }
+            } catch (Exception | LinkageError error) { fail(view, error); }
         }
-        private void updateNativeMask(View view, Rect bounds, float radius, Drawable surface, boolean slider)
+        private boolean updateNativeMask(View view, Rect bounds, float radius, Drawable surface, boolean slider)
                 throws ReflectiveOperationException {
             float stroke = 2f * view.getResources().getDisplayMetrics().density;
             boolean natural = true;
@@ -240,12 +259,13 @@ final class ColorOsMaterialHooks {
             }
             if (maskWidth == bounds.width() && maskHeight == bounds.height() && maskRadius == radius
                     && maskStroke == stroke && maskSmooth == natural && maskSource == nativePath
-                    && maskSmoothness == smoothness && maskProvider == provider) return;
+                    && maskGeneration == (nativePath == null ? 0 : nativePath.getGenerationId())
+                    && maskSmoothness == smoothness && maskProvider == provider) return true;
             Path path;
             if (slider) {
                 // The slider's rectangular track is clipped by this exact provider, not by a
                 // separately generated rounded rectangle. Copy its current path and coordinates.
-                if (provider == null) throw new IllegalStateException("Slider outline provider missing");
+                if (provider == null) return false;
                 Outline outline = new Outline();
                 provider.getOutline(view, outline);
                 Rect rect = new Rect();
@@ -256,8 +276,8 @@ final class ColorOsMaterialHooks {
                             outlineRadius, outlineRadius, Path.Direction.CW);
                 } else if (outlinePath.get(outline) instanceof Path actual && !actual.isEmpty()) {
                     path = new Path(actual);
-                } else throw new IllegalStateException("Slider outline path missing");
-            } else if (nativePath != null) path = new Path(nativePath);
+                } else return false;
+            } else if (nativePath != null && !nativePath.isEmpty()) path = new Path(nativePath);
             else path = (Path) generatePath.invoke(null, 0f, 0f, (float) bounds.width(),
                     (float) bounds.height(), smoothness, radius, false);
             // Copy the native outline into a local mask; no compositor or background rendering is changed.
@@ -277,6 +297,8 @@ final class ColorOsMaterialHooks {
             maskWidth = bounds.width(); maskHeight = bounds.height(); maskRadius = radius;
             maskStroke = stroke; maskSmooth = natural;
             maskSource = nativePath; maskSmoothness = smoothness; maskProvider = provider;
+            maskGeneration = nativePath == null ? 0 : nativePath.getGenerationId();
+            return true;
         }
         public void setAlpha(int value) { alpha = value; invalidateSelf(); }
         public void setColorFilter(ColorFilter filter) { paint.setColorFilter(filter); invalidateSelf(); }

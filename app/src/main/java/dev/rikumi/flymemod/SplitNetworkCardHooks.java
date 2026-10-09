@@ -24,9 +24,8 @@ import java.util.function.IntSupplier;
 final class SplitNetworkCardHooks {
     private static final String NETWORK = "com.flyme.systemui.qs.tileimpl.ConnectivityQSTileViewImpl";
     private final Consumer<Context> settings;
-    private final BooleanSupplier whiteActive, optimizeText;
+    private final BooleanSupplier optimizeText;
     private final IntSupplier style;
-    private final IntSupplier activeColor;
     interface IconTint { void apply(ImageView icon, int color) throws ReflectiveOperationException; }
     private final IconTint iconTint;
     private final BiConsumer<String, Throwable> log;
@@ -51,9 +50,9 @@ final class SplitNetworkCardHooks {
 
 
     SplitNetworkCardHooks(ClassLoader loader, Consumer<Context> settings, IntSupplier style,
-                         BooleanSupplier whiteActive, BooleanSupplier optimizeText, IntSupplier activeColor, IconTint iconTint, BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
-        this.settings = settings; this.style = style; this.whiteActive = whiteActive; this.optimizeText = optimizeText; this.log = log;
-        this.activeColor = activeColor; this.iconTint = iconTint;
+                         BooleanSupplier optimizeText, IconTint iconTint, BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
+        this.settings = settings; this.style = style; this.optimizeText = optimizeText; this.log = log;
+        this.iconTint = iconTint;
         Class<?> network = loader.loadClass(NETWORK);
         for (String field : new String[]{"wifiContainer", "mobileContainer", "bluetoothContainer",
                 "wifiIcon", "bluetoothIcon", "wifiChevron", "bluetoothChevron", "lastWifiSnapshot", "lastBluetoothSnapshot"}) network.getField(field);
@@ -86,13 +85,6 @@ final class SplitNetworkCardHooks {
         installer.hook(NETWORK, "init", chain -> {
             Object result = chain.proceed(); apply((View) chain.getThisObject()); return result;
         }, tileClass);
-        installer.hook("com.android.systemui.qs.tileimpl.QSIconViewImpl", "setCircleIconBg", chain -> {
-            View icon = (View) chain.getThisObject();
-            View card = cardAncestor(icon);
-            if (card == null) return chain.proceed();
-            settings.accept(card.getContext());
-            return style.getAsInt() == 2 ? chain.proceed(new Object[]{Color.TRANSPARENT}) : chain.proceed();
-        }, int.class);
         for (String method : new String[]{"onAttachedToWindow", "setIconForUiModelChange"}) {
             installer.hook("com.android.systemui.qs.tileimpl.QSIconViewImpl", method, chain -> {
                 Object result = chain.proceed();
@@ -100,9 +92,6 @@ final class SplitNetworkCardHooks {
                 View card = cardAncestor(icon);
                 if (card != null) {
                     settings.accept(card.getContext());
-                    if (style.getAsInt() == 2) {
-                        circleTint.invoke(icon, Color.TRANSPARENT);
-                    }
                     if (style.getAsInt() != 0) enlargeIcon(icon);
                 }
                 return result;
@@ -115,12 +104,8 @@ final class SplitNetworkCardHooks {
             String prefix = "wifi".equals(spec) ? "wifi" : "bt".equals(spec) ? "bluetooth" : null;
             if (style.getAsInt() == 0 || prefix == null) return chain.proceed();
             Object[] args = chain.getArgs().toArray();
-            if (style.getAsInt() == 1) {
-                args[1] = card.getClass().getMethod("getLabelColorForState", int.class).invoke(card, 1);
-                args[2] = card.getClass().getMethod("getSecondaryLabelColorForState", int.class).invoke(card, 1);
-            } else if (whiteActive.getAsBoolean() && state(card, prefix) == 2) {
-                args[1] = 0xE6000000; args[2] = 0xE6000000;
-            }
+            args[1] = card.getClass().getMethod("getLabelColorForState", int.class).invoke(card, 1);
+            args[2] = card.getClass().getMethod("getSecondaryLabelColorForState", int.class).invoke(card, 1);
             Object result = chain.proceed(args);
             tintRow(card, prefix);
             return result;
@@ -143,22 +128,7 @@ final class SplitNetworkCardHooks {
                             catch (java.lang.reflect.InvocationTargetException error) { throw error.getCause(); }
                         });
                 Object[] args = chain.getArgs().toArray(); args[1] = proxy;
-                Object listener = chain.proceed(args);
-                if (!method.equals("getTileClickListener")) return listener;
-                Object tile = chain.getArg(0);
-                return (View.OnClickListener) tapped -> {
-                    settings.accept(card.getContext());
-                    if (style.getAsInt() != 2) {
-                        ((View.OnClickListener) listener).onClick(tapped);
-                        return;
-                    }
-                    try {
-                        ((View) field(card, prefix + "Container")).setTag(prefix + "_icon");
-                        tileClass.getMethod("click", expandableClass, Consumer.class).invoke(tile, proxy, null);
-                    } catch (ReflectiveOperationException | RuntimeException error) {
-                        log.accept("Cannot toggle split network tile", error);
-                    }
-                };
+                return chain.proceed(args);
             }, tileClass, expandableClass, String.class);
         }
     }
@@ -199,7 +169,6 @@ final class SplitNetworkCardHooks {
             updateContours(card);
             return;
         }
-        boolean solid = style.getAsInt() == 2;
         remember(card); remember(wrapper); remember(wifi); remember(bt); remember(mobile);
         if (!(card.getBackground() instanceof ColorDrawable drawable) || drawable.getColor() != Color.TRANSPARENT) {
             card.setBackground(new ColorDrawable(Color.TRANSPARENT));
@@ -221,7 +190,7 @@ final class SplitNetworkCardHooks {
             View chevron = (View) field(card, prefix + "Chevron");
             remember(chevron);
             Object snapshot = field(card, prefix.equals("wifi") ? "lastWifiSnapshot" : "lastBluetoothSnapshot");
-            boolean showChevron = !solid && !optimizeText.getAsBoolean() && snapshot != null
+            boolean showChevron = !optimizeText.getAsBoolean() && snapshot != null
                     && snapshot.getClass().getField("showSideView").getBoolean(snapshot);
             chevron.setVisibility(showChevron ? View.VISIBLE : View.GONE);
             LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) row.getLayoutParams();
@@ -238,7 +207,7 @@ final class SplitNetworkCardHooks {
             tintRow(card, prefix);
             Saved rowOriginal = originals.get(row);
             boolean rtl = row.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
-            int startPadding = (rtl ? rowOriginal.right : rowOriginal.left) / (solid ? 2 : 1);
+            int startPadding = (rtl ? rowOriginal.right : rowOriginal.left);
             if (row.getPaddingStart() != startPadding) {
                 row.setPaddingRelative(startPadding, rowOriginal.top,
                         rtl ? rowOriginal.left : rowOriginal.right, rowOriginal.bottom);
@@ -246,22 +215,17 @@ final class SplitNetworkCardHooks {
             View textGroup = (View) field(card, prefix + "TextContainer");
             remember(textGroup);
             LinearLayout.LayoutParams textParams = (LinearLayout.LayoutParams) textGroup.getLayoutParams();
-            int textMargin = originals.get(textGroup).params.getMarginStart() / (solid ? 2 : 1);
+            int textMargin = originals.get(textGroup).params.getMarginStart();
             if (textParams.getMarginStart() != textMargin) {
                 textParams.setMarginStart(textMargin);
                 textGroup.setLayoutParams(textParams);
             }
             View icon = (View) field(card, prefix + "Icon");
-            if (solid) {
-                circleTint.invoke(icon, Color.TRANSPARENT);
-                enlargeIcon(icon);
-            } else {
-                restoreIcon(icon);
-                circleTint.invoke(icon, circleColor.invoke(icon, prefix.equals("wifi") ? "wifi" : "bt", state(card, prefix)));
-                restoreIconColor(icon, state(card, prefix));
-                if (optimizeText.getAsBoolean()) enlargeIcon(icon);
-            }
-            int currentState = solid ? state(card, prefix) : 1;
+            restoreIcon(icon);
+            circleTint.invoke(icon, circleColor.invoke(icon, prefix.equals("wifi") ? "wifi" : "bt", state(card, prefix)));
+            restoreIconColor(icon, state(card, prefix));
+            if (optimizeText.getAsBoolean()) enlargeIcon(icon);
+            int currentState = 1;
             int label = (Integer) card.getClass().getMethod("getLabelColorForState", int.class).invoke(card, currentState);
             int secondary = (Integer) card.getClass().getMethod("getSecondaryLabelColorForState", int.class).invoke(card, currentState);
             card.getClass().getMethod("updateAllColors", String.class, int.class, int.class)
@@ -277,10 +241,8 @@ final class SplitNetworkCardHooks {
         if (glyph == null) return;
         remember(glyph);
         Saved saved = originals.get(glyph);
-        boolean solid = style.getAsInt() == 2;
-        overflow.apply(icon, cardAncestor(icon), solid || optimizeText.getAsBoolean());
-        float scale = optimizeText.getAsBoolean() ? 1.2f : solid ? 1.5f : 1f;
-        if (solid) scale *= 1.2f;
+        overflow.apply(icon, cardAncestor(icon), optimizeText.getAsBoolean());
+        float scale = optimizeText.getAsBoolean() ? 1.2f : 1f;
         glyph.setScaleX(saved.scaleX * scale);
         glyph.setScaleY(saved.scaleY * scale);
         View circle = (View) field(icon, "mCircleIconBg");
@@ -291,11 +253,7 @@ final class SplitNetworkCardHooks {
             circle.setScaleX(background.scaleX * circleScale);
             circle.setScaleY(background.scaleY * circleScale);
         }
-        float towardText = solid ? 4f * icon.getResources().getDisplayMetrics().density : 0f;
-        glyph.setTranslationX(saved.translationX
-                + (icon.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL ? -towardText : towardText));
-        // Shift only the glyph toward the text, preserving the text and icon slot.
-        // Let the enlarged glyph draw beyond the invisible circle frame.
+        glyph.setTranslationX(saved.translationX);
         for (View current = glyph.getParent() instanceof View parent ? parent : null;
              current != null; current = current.getParent() instanceof View parent ? parent : null) {
             if (current instanceof ViewGroup group) {
@@ -329,14 +287,7 @@ final class SplitNetworkCardHooks {
     private void tintRow(View card, String prefix) throws ReflectiveOperationException {
         View row = (View) field(card, prefix + "Container");
         if (!originals.containsKey(row)) return;
-        int currentState = state(card, prefix);
-        boolean solid = style.getAsInt() == 2;
-        if (solid && whiteActive.getAsBoolean() && currentState == 2) {
-            ImageView glyph = (ImageView) field(field(card, prefix + "Icon"), "mIcon");
-            if (glyph != null) iconTint.apply(glyph, activeColor.getAsInt() & 0xFF000000);
-        }
-        int color = solid && whiteActive.getAsBoolean() && currentState == 2 ? activeColor.getAsInt()
-                : (Integer) backgroundColor.invoke(card, solid ? currentState : 1);
+        int color = (Integer) backgroundColor.invoke(card, 1);
         if (!(row.getBackground() instanceof LayerDrawable)) {
             int id = card.getResources().getIdentifier("qs_tile_background", "drawable", "com.android.systemui");
             if (id != 0) {

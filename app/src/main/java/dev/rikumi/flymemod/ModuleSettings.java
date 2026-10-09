@@ -90,7 +90,6 @@ public final class ModuleSettings {
     public static final String WIFI_LABEL = "control_center_wifi_label";
     public static final String OPTIMIZE_2X1_TEXT = "optimize_2x1_text";
     public static final String ANIMATED_MUTE_SLASH = "animated_mute_slash";
-    public static final String SOLID_2X1_CARDS = "solid_2x1_cards";
     public static final String NETWORK_SPLIT_STYLE = "network_split_style";
     public static final String SPLIT_NETWORK_CARD = "split_network_card";
     public static final String FOLD_IDLE_MEDIA = "fold_idle_media";
@@ -123,17 +122,15 @@ public final class ModuleSettings {
 
     public static int networkSplitStyle(SharedPreferences preferences) {
         return preferences.getBoolean(SPLIT_NETWORK_CARD, false)
-                ? (preferences.getBoolean(SOLID_2X1_CARDS, false) ? 2 : 1) : 0;
+                ? 1 : 0;
     }
 
     public static SharedPreferences preferences(Context context) {
         SharedPreferences preferences = context.createDeviceProtectedStorageContext()
                 .getSharedPreferences(FILE, Context.MODE_PRIVATE);
-        if (!preferences.contains(SOLID_2X1_CARDS)) {
-            int oldStyle = Math.max(0, Math.min(2, preferences.getInt(NETWORK_SPLIT_STYLE,
-                    preferences.getBoolean(SPLIT_NETWORK_CARD, false) ? 2 : 0)));
-            preferences.edit().putBoolean(SPLIT_NETWORK_CARD, oldStyle != 0)
-                    .putBoolean(SOLID_2X1_CARDS, oldStyle == 2).commit();
+        if (!preferences.contains(SPLIT_NETWORK_CARD)) {
+            int oldStyle = preferences.getInt(NETWORK_SPLIT_STYLE, 0);
+            preferences.edit().putBoolean(SPLIT_NETWORK_CARD, oldStyle != 0).commit();
         }
         if (!preferences.contains("hidden_launcher_apps_migrated")) {
             java.util.Set<String> hidden = new java.util.HashSet<>(

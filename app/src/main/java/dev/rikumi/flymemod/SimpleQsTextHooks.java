@@ -90,7 +90,7 @@ final class SimpleQsTextHooks {
                         : prefix.equals("wifi") ? "lastWifiSnapshot" : "lastMobileSnapshot");
                 View arrow = (View) field(tile, prefix + "Chevron");
                 if (snapshot != null && arrow != null) {
-                    boolean hidden = networkStyle.getAsInt() != 0 && (optimizeText || networkStyle.getAsInt() == 2);
+                    boolean hidden = networkStyle.getAsInt() != 0 && optimizeText;
                     boolean show = snapshot.getClass().getField("showSideView").getBoolean(snapshot);
                     arrow.setVisibility(!hidden && show ? View.VISIBLE : View.GONE);
                 }
