@@ -125,7 +125,6 @@ public final class XposedInit extends XposedModule {
     private volatile boolean folderRestoreColorEnabled;
     private volatile boolean folderRadiusEnabled;
     private volatile int folderRadiusDp = ModuleSettings.FOLDER_RADIUS_DEFAULT;
-    private volatile boolean homeSwipeDampingEnabled;
     private volatile Context launcherContext;
     private ContentObserver launcherSettingsObserver;
     private ContentObserver moduleSettingsObserver;
@@ -217,13 +216,6 @@ public final class XposedInit extends XposedModule {
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
             } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve folder app-close animation target", error);
-            }
-            try {
-                new HomeSwipeDampingHooks(loader, this::loadSettings, () -> homeSwipeDampingEnabled).install(
-                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
-                        this::deoptimize);
-            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-                log(Log.ERROR, "FlymeMod", "Cannot resolve Launcher swipe-to-home spring animation", error);
             }
             try {
                 new RecentsHooks(
@@ -1705,8 +1697,6 @@ public final class XposedInit extends XposedModule {
                 int folderRadiusColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RADIUS);
                 folderRadiusDp = folderRadiusColumn < 0 ? ModuleSettings.FOLDER_RADIUS_DEFAULT
                         : Math.max(0, Math.min(ModuleSettings.FOLDER_RADIUS_MAX, cursor.getInt(folderRadiusColumn)));
-                int homeSwipeDampingColumn = cursor.getColumnIndex(ModuleSettings.HOME_SWIPE_DAMPING);
-                homeSwipeDampingEnabled = homeSwipeDampingColumn >= 0 && cursor.getInt(homeSwipeDampingColumn) != 0;
                 settingsLoaded = true;
                 log(Log.INFO, "FlymeMod", "Control center settings loaded: scale=" + scaleEnabled
                         + ", light=" + lightEnabled + ", darken=" + darkenEnabled

@@ -36,7 +36,7 @@ private val MODULE_SWITCHES = listOf(
     ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS, ModuleSettings.MERGE_DUAL_SIGNAL,
     ModuleSettings.SEPARATE_NETWORK_TYPE, ModuleSettings.BLUR_ENABLED, ModuleSettings.WALLPAPER_STARTUP_FIX,
     ModuleSettings.RECENTS_SWIPE_UP_KILL, ModuleSettings.RECENTS_HIDE_NOT_RUNNING,
-    ModuleSettings.FOLDER_PAGING, ModuleSettings.FOLDER_CENTER, ModuleSettings.FOLDER_RESTORE_COLOR, ModuleSettings.FOLDER_RADIUS_ENABLED,
+    ModuleSettings.FOLDER_CLOSE_TARGET, ModuleSettings.FOLDER_PAGING, ModuleSettings.FOLDER_CENTER, ModuleSettings.FOLDER_RESTORE_COLOR, ModuleSettings.FOLDER_RADIUS_ENABLED,
     ModuleSettings.STORE_HIDE_FEATURED, ModuleSettings.STORE_HIDE_GAMES, ModuleSettings.STORE_HIDE_POPULAR, ModuleSettings.STORE_HIDE_COMMUNITY, ModuleSettings.STORE_HIDE_DAILY,
     ModuleSettings.BLOCK_WEATHER_ADS, ModuleSettings.SLIDER_ACTIVE_CORNERS, ModuleSettings.HIDE_DISABLED_APPS, ModuleSettings.BLOCK_STORE_SPLASH, ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS,
 ) + ModuleSettings.MEDIA_FOLDERS.map { it[1] }

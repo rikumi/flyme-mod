@@ -288,8 +288,6 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 if (category.id == "desktop" && groupTitle == "桌面动画设置") {
                     item {
                         FluixCard {
-                            ApplicationPreference(ModuleSettings.HOME_SWIPE_DAMPING, "降低回桌面上抛阻尼")
-                            FluixItemDivider()
                             ApplicationPreference(ModuleSettings.FOLDER_CLOSE_TARGET, "恢复关闭到文件夹动画目标")
                         }
                     }
@@ -477,7 +475,7 @@ private fun ControlCenterPreferences(group: String) {
                 FluixItemDivider()
                 LightBackgroundOpacityPreference()
                 FluixItemDivider()
-                WhiteActiveOpacityPreference()
+                ApplicationPreference(ModuleSettings.WHITE_ACTIVE, "控制中心 ColorOS 全新焕彩配色")
                 FluixItemDivider()
                 ApplicationPreference(ModuleSettings.SLIDER_ACTIVE_CORNERS, "音量/亮度条激活区域圆角")
             }
@@ -740,43 +738,6 @@ private fun LightBackgroundOpacityPreference() {
             onValueChange = {
                 opacity = (it * ModuleSettings.LIGHT_OPACITY_MAX).roundToInt().coerceIn(0, ModuleSettings.LIGHT_OPACITY_MAX)
                 preferences.edit().putInt(ModuleSettings.LIGHT_OPACITY, opacity).apply()
-                context.contentResolver.notifyChange(ModuleSettings.URI, null)
-            },
-            modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),
-        )
-    }
-}
-
-@Composable
-private fun WhiteActiveOpacityPreference() {
-    val context = LocalContext.current
-    val preferences = remember(context) { ModuleSettings.preferences(context) }
-    var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.WHITE_ACTIVE, false)) }
-    var opacity by remember { mutableStateOf(preferences.getInt(ModuleSettings.WHITE_ACTIVE_OPACITY, 90).coerceIn(50, 100)) }
-    var expanded by remember { mutableStateOf(false) }
-    FluixSwitchPreference(
-        title = "控制中心 ColorOS 全新焕彩配色",
-        checked = enabled,
-        onCheckedChange = {
-            enabled = it
-            expanded = it
-            preferences.edit().putBoolean(ModuleSettings.WHITE_ACTIVE, it).apply()
-            context.contentResolver.notifyChange(ModuleSettings.URI, null)
-        },
-        onTitleClick = if (enabled) ({ expanded = !expanded }) else null,
-        leftTrailingContent = {
-            if (enabled) BasicText(String.format(java.util.Locale.US, "%.2f", opacity / 100f),
-                style = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurfaceVariantSummary),
-                modifier = Modifier.padding(start = 12.dp))
-        },
-        showDivider = enabled,
-    )
-    AnimatedVisibility(visible = enabled && expanded, enter = expandVertically(), exit = shrinkVertically()) {
-        FluixSlider(
-            value = (opacity - 50) / 50f,
-            onValueChange = {
-                opacity = (it * 50).roundToInt().plus(50).coerceIn(50, 100)
-                preferences.edit().putInt(ModuleSettings.WHITE_ACTIVE_OPACITY, opacity).apply()
                 context.contentResolver.notifyChange(ModuleSettings.URI, null)
             },
             modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),

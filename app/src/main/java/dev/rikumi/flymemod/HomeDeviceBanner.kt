@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,7 +40,8 @@ internal fun HomeDeviceBanner() {
     val system = Build.DISPLAY.trim().let {
         if (it.contains("flyme", ignoreCase = true)) it else "Flyme $it"
     }
-    val shadow = Shadow(Color(0x66000000), Offset(0f, 1f), 10f)
+    val shadowOffset = with(LocalDensity.current) { 3.dp.toPx() }
+    val shadow = Shadow(Color(0x66000000), Offset(0f, shadowOffset), 10f)
     val textColor = if (isSystemInDarkTheme()) Color.White else MiuixTheme.colorScheme.onSurface
     Box(
         modifier = Modifier

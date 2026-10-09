@@ -80,7 +80,6 @@ public final class ModuleSettings {
     public static final int FOLDER_RADIUS_MAX = 32;
     public static final String FOLDER_CENTER = "folder_vertical_center";
     public static final String FOLDER_CLOSE_TARGET = "folder_restore_close_animation_target";
-    public static final String HOME_SWIPE_DAMPING = "home_swipe_damping_reduced";
     public static final String[] HIDE_STATUS_ICON_KEYS = {
             "status_icon_hide_zen", "status_icon_hide_vpn", "status_icon_hide_location",
             "status_icon_hide_bluetooth", "status_icon_hide_cast", "status_icon_hide_hotspot",
