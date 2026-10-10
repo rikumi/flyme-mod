@@ -17,7 +17,7 @@ public final class SettingsProvider extends ContentProvider {
                                   String[] selectionArgs, String sortOrder) {
         int uid = Binder.getCallingUid();
         boolean allowed = uid == Process.myUid();
-        for (String pkg : new String[]{"com.android.systemui", "com.meizu.flyme.launcher", "com.android.settings", "com.meizu.mstore", "com.meizu.flyme.weather", "com.android.packageinstaller"}) {
+        for (String pkg : new String[]{"com.android.systemui", "com.meizu.flyme.launcher", "com.android.settings", "com.meizu.mstore", "com.meizu.flyme.weather", "com.android.packageinstaller", "com.meizu.media.camera"}) {
             try {
                 allowed |= uid == getContext().getPackageManager().getPackageUid(pkg, 0);
             } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
@@ -74,9 +74,22 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.FOLDER_CLOSE_TARGET);
         columns.add(ModuleSettings.COLOROS_CONTOUR);
         columns.add(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
+        columns.add(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME);
         columns.add(ModuleSettings.NOTIFICATION_CONTOUR);
         columns.add(ModuleSettings.CONTROL_CENTER_STYLE);
         columns.add(ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR);
+        columns.add(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION);
+        columns.add(ModuleSettings.STORE_EMPTY_HOME);
+        columns.add(ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS);
+        columns.add(ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS);
+        columns.add(ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS);
+        columns.add(ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS);
+        columns.add(ModuleSettings.STORE_CLEAN_SEARCH);
+        columns.add(ModuleSettings.STORE_HIDE_YOU_MAY_LIKE);
+        columns.add(ModuleSettings.STORE_HIDE_DOWNLOAD_RECOMMENDATIONS);
+        columns.add(ModuleSettings.STORE_HIDE_STAR_APPS);
+        columns.add(ModuleSettings.STORE_HIDE_HIGH_RATED);
+        columns.add(ModuleSettings.STORE_HIDE_EVERYONE_WATCHING);
         MatrixCursor cursor = new MatrixCursor(columns.toArray(new String[0]));
         java.util.List<Object> values = new java.util.ArrayList<>(java.util.Arrays.asList(new Object[]{prefs.getBoolean(ModuleSettings.SCALE, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.LIGHT, false) ? 1 : 0,
@@ -169,9 +182,22 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.FOLDER_CLOSE_TARGET, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.COLOROS_CONTOUR, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.MBACK_SYSTEM_TIMEOUT, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CONTOUR, false) ? 1 : 0);
         values.add(ModuleSettings.controlCenterStyle(prefs));
         values.add(prefs.getInt(ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR, ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR_DEFAULT));
+        values.add(prefs.getBoolean(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_EMPTY_HOME, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_CLEAN_SEARCH, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_YOU_MAY_LIKE, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DOWNLOAD_RECOMMENDATIONS, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_STAR_APPS, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_HIGH_RATED, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_EVERYONE_WATCHING, false) ? 1 : 0);
         cursor.addRow(values);
         return cursor;
     }

@@ -78,12 +78,13 @@ private val CATEGORY_GROUPS: List<List<Category>> = listOf(
     ),
     listOf(
         Category("hidden_apps", "隐藏应用", R.drawable.ic_flyme_home_apps, SettingsHomeColors.yellowForeground, listOf("特殊应用隐藏")),
+        Category(DISABLED_APPS_ID, "停用应用", R.drawable.ic_flyme_home_disabled, SettingsHomeColors.yellowForeground, listOf("停用应用设置", "已停用的应用")),
         Category("navigation", "导航与手势", R.drawable.ic_flyme_home_gestures, SettingsHomeColors.yellowForeground, listOf("手势行为", "多任务切换")),
     ),
     listOf(
-        Category("system_cleanup", "系统净化", R.drawable.ic_flyme_home_cleaner, SettingsHomeColors.orangeForeground, listOf("应用商店内容", "应用商店搜索", "应用商店详情页", "天气", "应用安装器")),
+        Category("system_cleanup", "系统净化", R.drawable.ic_flyme_home_cleaner, SettingsHomeColors.orangeForeground, listOf("应用商店净化", "天气", "应用安装器")),
+        Category("camera", "相机与杂项", R.drawable.ic_flyme_home_install, SettingsHomeColors.orangeForeground, listOf("相机设置", "系统杂项")),
         Category("storage", "存储管理", R.drawable.ic_flyme_home_storage, SettingsHomeColors.redForeground, listOf("不自动创建以下文件夹")),
-        Category(DISABLED_APPS_ID, "停用应用", R.drawable.ic_flyme_home_disabled, SettingsHomeColors.redForeground, listOf("停用应用设置", "已停用的应用")),
     ),
 )
 
@@ -233,17 +234,21 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
         ) {
             category.groups.forEach { groupTitle ->
                 item { FluixSmallTitle(text = groupTitle) }
-                if (category.id == "system_cleanup" && groupTitle == "应用商店内容") {
+                if (category.id == "system_cleanup" && groupTitle == "应用商店净化") {
                     item { AppStoreContentPreferences() }
-                }
-                if (category.id == "system_cleanup" && groupTitle == "应用商店搜索") {
-                    item { AppStoreSearchPreferences() }
-                }
-                if (category.id == "system_cleanup" && groupTitle == "应用商店详情页") {
-                    item { AppStoreDetailPreferences() }
                 }
                 if (category.id == "system_cleanup" && groupTitle == "天气") {
                     item { WeatherPreferences() }
+                }
+                if (category.id == "camera" && groupTitle == "相机设置") {
+                    item { PreferenceCard(listOf(
+                        ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION to "图库预览跟随系统旋转锁定",
+                    )) }
+                }
+                if (category.id == "camera" && groupTitle == "系统杂项") {
+                    item { PreferenceCard(listOf(
+                        ModuleSettings.DARK_APP_SPECIAL_PACKAGES to "深色应用管理支持选择特殊应用",
+                    )) }
                 }
                 if (category.id == "system_cleanup" && groupTitle == "应用安装器") {
                     item {
@@ -297,7 +302,10 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 }
                 if (category.id == "navigation" && groupTitle == "手势行为") {
                     item { SystemSettingsPreferences() }
-                    item { PreferenceCard(listOf(ModuleSettings.MBACK_SYSTEM_TIMEOUT to "非压感 mBack 跟随系统长按超时")) }
+                    item { PreferenceCard(listOf(
+                        ModuleSettings.MBACK_SYSTEM_TIMEOUT to "非压感 mBack 跟随系统长按超时",
+                        ModuleSettings.MBACK_MISSING_ASSISTANT_HOME to "未安装助手长按 mBack 回桌面",
+                    )) }
                 }
                 if (category.id == "navigation" && groupTitle == "多任务切换") {
                     item {
@@ -579,34 +587,17 @@ private fun AppStoreContentPreferences() {
         FluixItemDivider()
         ApplicationPreference(ModuleSettings.STORE_HIDE_GAMES, "去除游戏 Tab")
         FluixItemDivider()
-        ApplicationPreference(ModuleSettings.STORE_EMPTY_APPLICATION_PAGE, "去除应用页所有内容")
+        ApplicationPreference(ModuleSettings.STORE_EMPTY_HOME, "去除首页全部内容")
         FluixItemDivider()
-        ApplicationPreference(ModuleSettings.STORE_HIDE_POPULAR, "去除大家都在用")
+        ApplicationPreference(ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS, "去除我的页推荐")
         FluixItemDivider()
-        ApplicationPreference(ModuleSettings.STORE_HIDE_COMMUNITY, "去除魅友安利")
+        ApplicationPreference(ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS, "去除应用详情页推荐")
         FluixItemDivider()
-        ApplicationPreference(ModuleSettings.STORE_HIDE_DAILY, "去除每日推荐")
+        ApplicationPreference(ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS, "去除下载管理页推荐")
         FluixItemDivider()
-    }
-}
-
-@Composable
-private fun AppStoreSearchPreferences() {
-    FluixCard {
-        ApplicationPreference(ModuleSettings.STORE_HIDE_SEARCH_HOT, "去除搜索框热词")
+        ApplicationPreference(ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS, "去除应用更新页推荐")
         FluixItemDivider()
-        ApplicationPreference(ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS, "去除搜索推荐")
-    }
-}
-
-@Composable
-private fun AppStoreDetailPreferences() {
-    FluixCard {
-        ApplicationPreference(ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL, "去除同机型用户喜爱")
-        FluixItemDivider()
-        ApplicationPreference(ModuleSettings.STORE_DETAIL_HIDE_TOPICS, "去除所在专题")
-        FluixItemDivider()
-        ApplicationPreference(ModuleSettings.STORE_DETAIL_HIDE_REVIEWS, "去除应用评测")
+        ApplicationPreference(ModuleSettings.STORE_CLEAN_SEARCH, "去除搜索框热词及搜索页推荐")
     }
 }
 

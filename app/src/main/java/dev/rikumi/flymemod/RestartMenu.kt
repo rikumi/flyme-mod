@@ -50,7 +50,7 @@ internal fun RestartMenu() {
     }
 
     fun restartScope() {
-        execute("pids=\$(pidof com.android.systemui com.meizu.flyme.launcher com.android.settings com.meizu.mstore com.meizu.flyme.weather com.android.packageinstaller); [ -n \"\$pids\" ] || exit 1; " +
+        execute("pids=\$(pidof com.android.systemui com.meizu.flyme.launcher com.android.settings com.meizu.mstore com.meizu.flyme.weather com.android.packageinstaller com.meizu.media.camera com.meizu.media.gallery com.meizu.flyme.sdkstage); [ -n \"\$pids\" ] || exit 1; " +
             "for pid in \$pids; do kill -TERM \"\$pid\" || exit 1; sleep 2; done")
     }
 

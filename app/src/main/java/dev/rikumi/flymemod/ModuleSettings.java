@@ -5,6 +5,9 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 
 public final class ModuleSettings {
+    public static final String DARK_APP_SPECIAL_PACKAGES = "dark_app_special_packages";
+    public static final String PHOTO_PREVIEW_SYSTEM_ROTATION = "photo_preview_system_rotation";
+    public static final String MBACK_MISSING_ASSISTANT_HOME = "mback_missing_assistant_home";
     public static final String MBACK_SYSTEM_TIMEOUT = "mback_system_long_press_timeout";
     public static final String NOTIFICATION_CONTOUR = "coloros_notification_contour";
     public static final String QS_TRANSLATION_ORIGIN = "control_center_translation_origin_fix";
@@ -107,11 +110,22 @@ public final class ModuleSettings {
     public static final String BLOCK_STORE_SPLASH = "block_store_splash_ads";
     public static final String BLOCK_WEATHER_RECOMMENDATIONS = "block_weather_recommendations";
     public static final String SLIDER_ACTIVE_CORNERS = "slider_active_top_corners";
+    public static final String STORE_EMPTY_HOME = "store_empty_home";
+    public static final String STORE_HIDE_MINE_RECOMMENDATIONS = "store_hide_mine_recommendations";
+    public static final String STORE_HIDE_DETAIL_RECOMMENDATIONS = "store_hide_detail_recommendations";
+    public static final String STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS = "store_hide_download_page_recommendations";
+    public static final String STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS = "store_hide_update_page_recommendations";
+    public static final String STORE_CLEAN_SEARCH = "store_clean_search";
     public static final String STORE_HIDE_FEATURED = "store_hide_featured";
     public static final String STORE_HIDE_GAMES = "store_hide_games";
     public static final String STORE_HIDE_POPULAR = "store_hide_popular";
     public static final String STORE_HIDE_COMMUNITY = "store_hide_community";
     public static final String STORE_HIDE_DAILY = "store_hide_daily";
+    public static final String STORE_HIDE_YOU_MAY_LIKE = "store_hide_you_may_like";
+    public static final String STORE_HIDE_DOWNLOAD_RECOMMENDATIONS = "store_hide_download_recommendations";
+    public static final String STORE_HIDE_STAR_APPS = "store_hide_star_apps";
+    public static final String STORE_HIDE_HIGH_RATED = "store_hide_high_rated";
+    public static final String STORE_HIDE_EVERYONE_WATCHING = "store_hide_everyone_watching";
     public static final String STORE_HIDE_SEARCH_HOT = "store_hide_search_hot";
     public static final String STORE_HIDE_SEARCH_RECOMMENDATIONS = "store_hide_search_recommendations";
     public static final String STORE_DETAIL_HIDE_SAME_MODEL = "store_detail_hide_same_model";
@@ -181,6 +195,27 @@ public final class ModuleSettings {
             }
             editor.putInt(CLOCK_SPACING_FORMAT_VERSION, 3).commit();
         }
+        migrateStoreSettings(preferences);
         return preferences;
+    }
+    static void migrateStoreSettings(SharedPreferences preferences) {
+        String[][] groups = {
+                {STORE_EMPTY_HOME, STORE_EMPTY_APPLICATION_PAGE},
+                {STORE_HIDE_MINE_RECOMMENDATIONS, STORE_HIDE_POPULAR, STORE_HIDE_COMMUNITY, STORE_HIDE_DAILY},
+                {STORE_HIDE_DETAIL_RECOMMENDATIONS, STORE_DETAIL_HIDE_SAME_MODEL, STORE_DETAIL_HIDE_TOPICS, STORE_DETAIL_HIDE_REVIEWS},
+                {STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS, STORE_HIDE_YOU_MAY_LIKE, STORE_HIDE_DOWNLOAD_RECOMMENDATIONS},
+                {STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS, STORE_HIDE_STAR_APPS, STORE_HIDE_HIGH_RATED, STORE_HIDE_EVERYONE_WATCHING},
+                {STORE_CLEAN_SEARCH, STORE_HIDE_SEARCH_HOT, STORE_HIDE_SEARCH_RECOMMENDATIONS},
+        };
+        SharedPreferences.Editor editor = null;
+        for (String[] group : groups) {
+            // Existing grouped values, including explicit false, must never be overwritten.
+            if (preferences.contains(group[0])) continue;
+            boolean enabled = false;
+            for (int i = 1; i < group.length; i++) enabled |= preferences.getBoolean(group[i], false);
+            if (editor == null) editor = preferences.edit();
+            editor.putBoolean(group[0], enabled);
+        }
+        if (editor != null) editor.commit();
     }
 }

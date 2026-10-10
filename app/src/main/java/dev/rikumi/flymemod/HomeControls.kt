@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val MODULE_SWITCHES = listOf(
+    ModuleSettings.DARK_APP_SPECIAL_PACKAGES,
     ModuleSettings.SECONDARY_EXPANSION_FIX, ModuleSettings.QS_TRANSLATION_ORIGIN,
     ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT,
     ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP, ModuleSettings.CONTROL_CENTER_BUTTONS_UP,
@@ -26,9 +27,6 @@ private val MODULE_SWITCHES = listOf(
     ModuleSettings.CIRCLE_SMALL_TILES,
     ModuleSettings.COMBINED_COLLAPSE_FIX, ModuleSettings.COMBINED_PULL_ANIMATION, ModuleSettings.LIMIT_AOD_MOVEMENT,
     ModuleSettings.INSTALLER_SKIP_WARNINGS,
-    ModuleSettings.STORE_DETAIL_HIDE_REVIEWS, ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS,
-    ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL, ModuleSettings.STORE_DETAIL_HIDE_TOPICS,
-    ModuleSettings.STORE_HIDE_SEARCH_HOT, ModuleSettings.STORE_EMPTY_APPLICATION_PAGE,
     ModuleSettings.WEATHER_DARK_BACKGROUND,
     ModuleSettings.HIDE_LUNAR, ModuleSettings.SCALE, ModuleSettings.LIGHT, ModuleSettings.DARKEN, ModuleSettings.WHITE_ACTIVE,
     ModuleSettings.HEADS_UP_WIDTH, ModuleSettings.NOTIFICATION_CORNERS, ModuleSettings.ORIGINAL_NOTIFICATION_ICONS,
@@ -36,8 +34,13 @@ private val MODULE_SWITCHES = listOf(
     ModuleSettings.SEPARATE_NETWORK_TYPE, ModuleSettings.BLUR_ENABLED, ModuleSettings.WALLPAPER_STARTUP_FIX,
     ModuleSettings.STACKED_RECENTS, ModuleSettings.RECENTS_SWIPE_UP_KILL, ModuleSettings.RECENTS_HIDE_NOT_RUNNING,
     ModuleSettings.FOLDER_CLOSE_TARGET, ModuleSettings.FOLDER_PAGING, ModuleSettings.FOLDER_CENTER, ModuleSettings.FOLDER_RESTORE_COLOR, ModuleSettings.FOLDER_RADIUS_ENABLED,
-    ModuleSettings.STORE_HIDE_FEATURED, ModuleSettings.STORE_HIDE_GAMES, ModuleSettings.STORE_HIDE_POPULAR, ModuleSettings.STORE_HIDE_COMMUNITY, ModuleSettings.STORE_HIDE_DAILY,
-    ModuleSettings.BLOCK_WEATHER_ADS, ModuleSettings.SLIDER_ACTIVE_CORNERS, ModuleSettings.HIDE_DISABLED_APPS, ModuleSettings.BLOCK_STORE_SPLASH, ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS,
+    ModuleSettings.STORE_EMPTY_HOME,
+    ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS,
+    ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS,
+    ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS,
+    ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS,
+    ModuleSettings.STORE_CLEAN_SEARCH,
+    ModuleSettings.STORE_HIDE_FEATURED, ModuleSettings.STORE_HIDE_GAMES, ModuleSettings.BLOCK_WEATHER_ADS, ModuleSettings.SLIDER_ACTIVE_CORNERS, ModuleSettings.HIDE_DISABLED_APPS, ModuleSettings.BLOCK_STORE_SPLASH, ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS,
 ) + ModuleSettings.MEDIA_FOLDERS.map { it[1] }
 
 @Composable

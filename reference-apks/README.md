@@ -167,3 +167,56 @@ SHA-256 `984b2c2ef55a2cd8b2af5e42e3248cab2a627c1fa299a67aab059beee83db1de`。
 PackageInstaller 会话。模块在安装启动至 `onPostExecute(Session)` 返回之间
 延后 `clearCachedApk()` 及源 APK 删除；提交后补做清理，避免立即关闭界面时
 删除仍在读取的安装文件。双击继续仅启动一次，不改变开关关闭时的安装流程。
+
+## 相机与图库参考实现
+
+2026-10-11 从已连接设备只读提取：
+
+| 包 | 版本 | versionCode | 设备路径 | SHA-256 |
+| --- | --- | --- | --- | --- |
+| `com.meizu.media.camera` | 12.7.2 | 12007002 | `/system/app/Camera/Camera.apk` | `1ccc1f9176760433f5865f0cb3aeedca37a4ef93aa185b80c0caa191d86cd6de` |
+| `com.meizu.media.gallery` | 12.7.3 | 1200070003 | `/system/priv-app/FlymeGallery/FlymeGallery.apk` | `00e727fb7ffbe24f03fd12eaa0a1e2b4c7fd77db59ee70593926dfa7e94652a6` |
+
+旋转：`CameraActivity#getMzGalleryIntent(Uri)` 传递 `Rotation`。
+`PhotoPagerFragment#onActivityCreated(Bundle)` 根据该值设置横屏或反向横屏；
+`K9()` 在来自相机时延迟 500ms 强制 `SCREEN_ORIENTATION_SENSOR`。
+仅将 `Rotation` 归零不能阻止后续强制旋转，因此增加图库作用域。
+相机仍使用原生 `CAMERA_VIEW` / `ExternalPhotoActivity`，只将锁定旋转时的 `Rotation`
+归零，不替换入口、不修改图片 URI、相册范围、SecureCamera 或缩略图过渡参数。
+图库 hook 仅匹配 `ExternalPhotoActivity` 且 Intent 为 `CAMERA_VIEW` 的旋转请求：
+开关开启且系统锁定旋转时，改为 `SCREEN_ORIENTATION_USER`，覆盖首次横屏请求及
+500ms 后的 SENSOR 请求；普通图库页面、开关关闭和系统自动旋转开启时保留原逻辑。
+
+相机因包可见性限制无法解析模块设置 Provider，偏好改由 libxposed 远程读取。
+相机与图库共用旋转开关，模块应用启动时同步已有偏好，之后同步变更。
+更新后需要打开一次模块设置页，并在 LSPosed 中勾选相机和图库作用域。
+
+取消增色处理：AI 场景滤镜及手动色调曲线两个方案均未达到用户要求，功能、设置项
+和对应 hook 已移除；不再改变取景、拍摄请求、AI 场景或厂商色彩处理。
+源码与构建核对不能替代相机普通入口、锁屏安全入口及旋转锁定的实机验证。
+
+## 深色应用管理
+
+设备包 `com.meizu.flyme.sdkstage` 5.0.01 / 50000001，路径
+`/system/priv-app/SDKStage/SDKStage.apk`，SHA-256
+`216176cc90e59b6819a764cd3969b1b6e1255f59a1de020fe8fcad3d35ef08e0`。
+系统设置 `FlymeDarkModeSettingsController#getResultPayload()` 通过
+`com.meizu.flyme.sdkstage.nightmode.intent.NIGHTMODE_SETTINGS` 进入此包，
+列表页为 `activity.AppManagerActivity`，因此 SDKStage 单独声明作用域。
+
+`common.d#g(ApplicationInfo,boolean)` 默认过滤系统/更新过的系统应用、特定 privateFlags、
+没有桌面入口的应用，随后调用 `common.a#d` 过滤已支持深色主题或游戏名单中的应用。
+“深色应用管理支持选择特殊应用”开启时，仅为 Shell、DocumentsUI，以及具有桌面
+入口的系统或魅族/Flyme 第一方应用绕过此过滤；后台服务仍走原逻辑。
+Shell 的 `AppInfo#setTitle(CharSequence)` 显示为 LSPosed，保留真实包名及原生图标，
+名称拼音排序仍由原方法生成，不改变其他页面或系统全局应用名称。
+
+开关改变时仅清除 `common.d#c` 列表缓存，下次读列表时重新生成。
+Context 字段原始名为 `b`、List 字段为 `c`；JADX 为避免名称冲突显示为
+`f8500b/f8501c`，这些显示名不能用于反射。设备日志已确认先前使用显示名导致
+`NoSuchFieldException`，已按关闭重命名的原始 DEX 名称及类型修正。
+原生 `common.a#t/s/j` 及 `flyme_night_mode_black_list` 写入保持不变，
+不重置用户逐应用的偏好。已核对 `e()`、`b(String)` 两个过滤/名称绑定调用者，
+并对它们 deoptimize，避免内联跳过 hook。
+新开关存于 LSPosed 远程偏好并参与一键启用，设置页位于“相机与杂项 / 系统杂项”。
+构建和源码核对不能替代 SDKStage 作用域启用后的实际列表与开关效果验证。

@@ -144,7 +144,7 @@ public final class XposedInit extends XposedModule {
     private CircleTileHooks activeCircleTileHooks;
     private boolean colorOsContourEnabled;
     private ColorOsMaterialHooks activeColorOsMaterialHooks;
-    private boolean notificationContourEnabled, mbackSystemTimeoutEnabled;
+    private boolean notificationContourEnabled, mbackSystemTimeoutEnabled, mbackMissingAssistantHomeEnabled;
     private int blurRadius = ModuleSettings.BLUR_DEFAULT;
     private boolean settingsErrorLogged;
     private final Map<View, Drawable> originalCenterBackgrounds = new WeakHashMap<>();
@@ -163,6 +163,38 @@ public final class XposedInit extends XposedModule {
     }
 
     private void installPackageHooks(String packageName, ClassLoader loader) {
+        if ("com.meizu.flyme.sdkstage".equals(packageName)) {
+            try {
+                new NightModeAppHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                        (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                        .install(loader, (name, method, hooker, parameters) ->
+                                install(loader, name, method, hooker, parameters), this::deoptimize);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve SDKStage dark app manager", error);
+            }
+            return;
+        }
+        if ("com.meizu.media.gallery".equals(packageName)) {
+            try {
+                new GalleryPreviewHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                        (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                        .install(loader, (name, method, hooker, parameters) ->
+                                install(loader, name, method, hooker, parameters));
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve camera gallery preview hooks", error);
+            }
+            return;
+        }
+        if ("com.meizu.media.camera".equals(packageName)) {
+            try {
+                CameraHooks hooks = new CameraHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE), (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error));
+                SignalHooks.Installer installer = (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters);
+                hooks.installCamera(loader, installer, this::deoptimize);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme camera hooks", error);
+            }
+            return;
+        }
         if ("com.android.packageinstaller".equals(packageName)) {
             try {
                 new InstallerHooks((message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(loader,
@@ -331,22 +363,15 @@ public final class XposedInit extends XposedModule {
         installWallpaperStartupFix(loader);
         installNotificationCorners(loader);
         try {
-            Class<?> mback = loader.loadClass("com.flyme.systemui.navigationbar.MBackButtonController");
-            java.lang.reflect.Field context = mback.getField("mContext");
-            java.lang.reflect.Field pressure = mback.getField("mPressureHomeKey");
-            java.lang.reflect.Field timeout = mback.getField("mLongClickTime");
-            install(loader, mback.getName(), "prepareLongClickTime", chain -> {
-                Object result = chain.proceed();
-                Object owner = chain.getThisObject();
-                Context ctx = (Context) context.get(owner);
-                loadSettings(ctx);
-                if (mbackSystemTimeoutEnabled && !pressure.getBoolean(owner)) {
-                    timeout.setInt(owner, Math.max(1, android.provider.Settings.Secure.getInt(
-                            ctx.getContentResolver(), "long_press_timeout", android.view.ViewConfiguration.getLongPressTimeout())));
-                }
-                return result;
-            });
-            deoptimize(mback.getDeclaredMethod("handleTouch", android.view.MotionEvent.class));
+            new MBackAssistantHooks(loader, this::loadSettings, () -> mbackMissingAssistantHomeEnabled).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve mBack assistant fallback", error);
+        }
+        try {
+            new MBackTimeoutHooks(loader, this::loadSettings, () -> mbackSystemTimeoutEnabled,
+                    (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error)).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
         } catch (ReflectiveOperationException error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve non-pressure mBack timeout", error);
         }
@@ -1742,6 +1767,8 @@ public final class XposedInit extends XposedModule {
                 notificationContourEnabled = notificationContourColumn >= 0 && cursor.getInt(notificationContourColumn) != 0;
                 int mbackColumn = cursor.getColumnIndex(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
                 mbackSystemTimeoutEnabled = mbackColumn >= 0 && cursor.getInt(mbackColumn) != 0;
+                int mbackAssistantColumn = cursor.getColumnIndex(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME);
+                mbackMissingAssistantHomeEnabled = mbackAssistantColumn >= 0 && cursor.getInt(mbackAssistantColumn) != 0;
                 int contourColumn = cursor.getColumnIndex(ModuleSettings.COLOROS_CONTOUR);
                 colorOsContourEnabled = contourColumn >= 0 && cursor.getInt(contourColumn) != 0;
                 int lightOpacityColumn = cursor.getColumnIndex(ModuleSettings.LIGHT_OPACITY);

@@ -16,20 +16,20 @@ import java.util.function.BiConsumer;
 
 /** Store 12.5.1 / 11.1.5: filter the shared navigation data and complete feed blocks. */
 final class StoreLayoutHooks {
-    private volatile boolean[] options = new boolean[11];
+    private volatile boolean[] options = new boolean[KEYS.length];
     private volatile int applicationPosition = -1;
     private volatile int applicationPageId = -1;
+    private volatile java.util.Map<Integer, Integer> homePages = java.util.Collections.emptyMap();
     private ContentObserver observer;
     private Context observerContext;
     private boolean readErrorLogged;
     private final BiConsumer<String, Throwable> log;
     private static final String[] KEYS = {
             ModuleSettings.STORE_HIDE_FEATURED, ModuleSettings.STORE_HIDE_GAMES,
-            ModuleSettings.STORE_HIDE_POPULAR, ModuleSettings.STORE_HIDE_COMMUNITY,
-            ModuleSettings.STORE_HIDE_DAILY, ModuleSettings.STORE_HIDE_SEARCH_HOT,
-            ModuleSettings.STORE_EMPTY_APPLICATION_PAGE,
-            ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL, ModuleSettings.STORE_DETAIL_HIDE_TOPICS,
-            ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS, ModuleSettings.STORE_DETAIL_HIDE_REVIEWS
+            ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS, ModuleSettings.STORE_CLEAN_SEARCH,
+            ModuleSettings.STORE_EMPTY_HOME, ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS,
+            ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS,
+            ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS
     };
 
     StoreLayoutHooks(BiConsumer<String, Throwable> log) { this.log = log; }
@@ -67,7 +67,8 @@ final class StoreLayoutHooks {
             }
             applicationPosition = application == null ? -1 : retained.indexOf(application);
             applicationPageId = application == null ? -1 : navItem.getField("page_id").getInt(application);
-            if (selected[6] && applicationPosition == 0) {
+            if (selected[4] && ("home".equals(pageType.get(retained.get(0)))
+                    || "app".equals(pageType.get(retained.get(0))))) {
                 blocks.set(value, null);
                 secondFloor.set(value, null);
             }
@@ -96,14 +97,17 @@ final class StoreLayoutHooks {
             applicationPosition = -1;
             applicationPageId = -1;
             List<?> tabs = (List<?>) chain.getArg(0);
+            java.util.Map<Integer, Integer> pages = new java.util.HashMap<>();
             if (tabs != null) for (int i = 0; i < tabs.size(); i++) {
                 Object tab = tabs.get(i);
-                if ("app".equals(pageType.get(tab))) {
+                String type = (String) pageType.get(tab);
+                if ("app".equals(type)) {
                     applicationPosition = i;
                     applicationPageId = pageId.getInt(tab);
-                    break;
                 }
+                if ("app".equals(type) || "home".equals(type)) pages.put(i, pageId.getInt(tab));
             }
+            homePages = pages;
             return chain.proceed();
         }, List.class, Class.forName("com.alibaba.fastjson.JSONArray", false, loader), boolean.class);
         try { installDetail(loader, installer); }
@@ -115,6 +119,8 @@ final class StoreLayoutHooks {
         catch (ReflectiveOperationException e) { log.accept("Cannot resolve store search landing page", e); }
         try { installApplicationPage(loader, installer); }
         catch (ReflectiveOperationException e) { log.accept("Cannot resolve store application page", e); }
+        try { installRecommendations(loader, installer); }
+        catch (ReflectiveOperationException e) { log.accept("Cannot resolve store download recommendations", e); }
     }
 
     private void installSettings(SignalHooks.Installer installer) {
@@ -146,20 +152,26 @@ final class StoreLayoutHooks {
         }
         Field hintActivity = hintController.getDeclaredField("k");
         hintActivity.setAccessible(true);
-        installer.hook(hintController.getName(), current ? "c" : "b", chain -> options[5]
+        installer.hook(hintController.getName(), current ? "c" : "b", chain -> options[3]
                 ? ((Context) hintActivity.get(chain.getThisObject())).getString(android.R.string.search_go)
                 : chain.proceed(), boolean.class);
-        installer.hook(hintController.getName(), current ? "f" : "d", chain -> options[5] ? null : chain.proceed());
+        installer.hook(hintController.getName(), current ? "f" : "d", chain -> options[3] ? null : chain.proceed());
         installer.hook("com.meizu.flyme.appcenter.activitys.AppMainActivity", "setHotHintStr",
-                chain -> options[5] ? null : chain.proceed(), List.class);
+                chain -> options[3] ? null : chain.proceed(), List.class);
         Method empty = Class.forName("io.reactivex.Observable", false, loader).getMethod("empty");
         // Retrofit creates a dynamic proxy, so stop the API call before its service method executes.
         installer.hook("retrofit2.Retrofit$1", "invoke", chain -> {
             Method request = (Method) chain.getArg(1);
-            if (options[5] && request.getName().equals("getSearchHotStr")
+            if (options[3] && request.getName().equals("getSearchHotStr")
                     && request.getDeclaringClass().getName().equals("com.meizu.mstore.data.net.api.MainApi")) {
                 return empty.invoke(null);
             }
+            if (options[6] && isDownloadRecommendationRequest(request.getDeclaringClass().getName(), request.getName()))
+                return empty.invoke(null);
+            if ((options[7] && request.getDeclaringClass().getName().equals("com.meizu.mstore.data.net.api.UpdateApi")
+                    && request.getName().equals("getUpdateRecommendApps"))
+                    || (options[5] && request.getDeclaringClass().getName().equals("com.meizu.mstore.data.net.api.AppDetailApi")
+                    && request.getName().equals("getRecommendAppData"))) return empty.invoke(null);
             return chain.proceed();
         }, Object.class, Method.class, Object[].class);
 
@@ -189,7 +201,7 @@ final class StoreLayoutHooks {
         // The empty-query landing page has its own entry point. Do not intercept
         // the search-result or query-suggestion pipelines which also call setData.
         installer.hook(fragment.getName(), "s", chain -> {
-            if (!options[9]) return chain.proceed();
+            if (!options[3]) return chain.proceed();
             Object view = chain.getThisObject();
             Object state = controller.get(view);
             cancel.invoke(state);
@@ -241,33 +253,52 @@ final class StoreLayoutHooks {
         Class<?> appMainActivity = Class.forName("com.meizu.flyme.appcenter.activitys.AppMainActivity", false, loader);
         Class<?> actionBar = Class.forName("flyme.support.v7.app.ActionBar", false, loader);
         HeaderBinding headerBinding = resolveHeaderBinding(loader, appMainActivity, actionBar);
+        Field selectedPosition = current ? appMainActivity.getDeclaredField("q") : null;
+        if (selectedPosition != null) selectedPosition.setAccessible(true);
+        if (current && headerBinding != null) {
+            // v9.e#a commits the new tab synchronously, then changes the toolbar.
+            // A plain Fragment cannot execute the multitab page's native rebind.
+            Class<?> tabs = loader.loadClass("v9.e");
+            Field tabActivity = findFieldByType(tabs, appMainActivity);
+            tabActivity.setAccessible(true);
+            installer.hook(tabs.getName(), "a", chain -> {
+                Object result = chain.proceed();
+                restoreApplicationHeader((Activity) tabActivity.get(chain.getThisObject()), headerBinding, selectedPosition);
+                return result;
+            }, int.class);
+        }
         installer.hook(current ? "com.meizu.cloud.app.utils.g" : "com.bumptech.glide.f", current ? "c" : "a", chain -> {
             Context context = (Context) chain.getArg(0);
-            if (!options[6] || applicationPosition < 0
+            if (!options[4] || homePages.isEmpty()
                     || !appMainActivity.isInstance(context)) {
                 return chain.proceed();
             }
             Object config = chain.getArg(1);
             Bundle bundle = (Bundle) arguments.get(config);
-            if (bundle.getInt("position", -1) != applicationPosition
-                    || pageId.getInt(resolvedPageInfo.get(config)) != applicationPageId) return chain.proceed();
+            Integer expectedPage = homePages.get(bundle.getInt("position", -1));
+            if (expectedPage == null || pageId.getInt(resolvedPageInfo.get(config)) != expectedPage) return chain.proceed();
             // Keep the activity's toolbar and navigation, without creating any feed or nested tabs.
             // Returning a plain Fragment skips the app page's menu callbacks. Rebind the
             // Activity-owned search/download header after the tab transaction, especially when
             // returning from Mine where its ActionBar custom view was replaced.
             new Handler(Looper.getMainLooper()).post(() -> {
-                try {
-                    Activity activity = (Activity) context;
-                    if (!options[6] || activity.isFinishing() || activity.isDestroyed()) return;
-                    if (headerBinding != null) headerBinding.restore(activity);
-                } catch (ReflectiveOperationException | RuntimeException error) {
-                    log.accept("Cannot restore store search/download header", error);
-                }
+                restoreApplicationHeader((Activity) context, headerBinding, selectedPosition);
             });
             Object blank = fragment.getConstructor().newInstance();
             setArguments.invoke(blank, getArguments.invoke(config));
             return blank;
         }, Context.class, pageConfig);
+    }
+
+    private void restoreApplicationHeader(Activity activity, HeaderBinding header, Field selectedPosition) {
+        try {
+            if (!options[4] || header == null || homePages.isEmpty() || activity.isFinishing() || activity.isDestroyed()) return;
+            // A previously posted restore must not overwrite Mine after a rapid tab switch.
+            if (selectedPosition != null && !homePages.containsKey(selectedPosition.getInt(activity))) return;
+            header.restore(activity);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log.accept("Cannot restore store search/download header", error);
+        }
     }
 
     private static Field findFieldByType(Class<?> owner, Class<?> targetType) throws NoSuchFieldException {
@@ -277,13 +308,50 @@ final class StoreLayoutHooks {
         throw new NoSuchFieldException(owner.getName() + " field of type " + targetType.getName());
     }
 
+    private void installRecommendations(ClassLoader loader, SignalHooks.Installer installer)
+            throws ReflectiveOperationException {
+        Class<?> assemble = loader.loadClass("com.meizu.mstore.tools.AssembleTool");
+        Class<?> block = loader.loadClass("com.meizu.mstore.data.net.requestitem.base.BlockItem");
+        Class<?> behavior = loader.loadClass("com.meizu.mstore.multtype.itemview.ExchangeAppItemView$Behavior");
+        Field name = block.getField("name");
+        Method title = behavior.getMethod("getTitle");
+        Method statType = behavior.getMethod("getStatType");
+        Method emptyRows = assemble.getMethod("assembleFeedBlock", List.class);
+        installer.hook(assemble.getName(), "assembleMineRecommendData", chain -> {
+            Object item = chain.getArg(0);
+            return options[2] || (item != null && hideBlock((String) name.get(item), options))
+                    ? emptyRows.invoke(null, java.util.Collections.emptyList()) : chain.proceed();
+        }, block, behavior);
+        installer.hook(assemble.getName(), "assembleRecommendData", chain -> {
+            Object layout = chain.getArg(1);
+            if (layout != null && (hideBlock((String) title.invoke(layout), options)
+                    || (options[6] && "recom_download".equals(statType.invoke(layout)))))
+                return emptyRows.invoke(null, java.util.Collections.emptyList());
+            return chain.proceed();
+        }, List.class, behavior);
+        installer.hook(assemble.getName(), "assembleSingleRowRecommendation", chain -> options[6]
+                ? emptyRows.invoke(null, java.util.Collections.emptyList()) : chain.proceed(), List.class);
+        // Legacy download-click recommendations: prevent requests and suppress
+        // already cached rows before their layout inserts a recommendation view.
+        Class<?> update = loader.loadClass("com.meizu.cloud.app.request.structitem.AppUpdateStructItem");
+        installer.hook("com.meizu.cloud.app.block.RecommendClickImpl", "isNeedShowRecommend",
+                chain -> options[6] ? false : chain.proceed(), update);
+        installer.hook(update.getName(), "isDisplayRecommend", chain -> options[6] ? false : chain.proceed());
+    }
+
+    private static boolean isDownloadRecommendationRequest(String api, String method) {
+        return ("com.meizu.mstore.data.net.api.DownloadManagerApi".equals(api) && "getRecommendData".equals(method))
+                || ("com.meizu.mstore.data.net.api.FeedApi".equals(api) && "getRecommendApps".equals(method));
+    }
+
     private HeaderBinding resolveHeaderBinding(ClassLoader loader, Class<?> activity, Class<?> actionBar) {
         for (String className : new String[] {"ge.e", "nc.d"}) {
             try {
                 Class<?> headerType = Class.forName(className, false, loader);
                 Field activityHeader = findFieldByType(activity, headerType);
                 activityHeader.setAccessible(true);
-                Field root = headerType.getDeclaredField(className.equals("ge.e") ? "f9767d" : "f15922d");
+                // Runtime field is d; f9767d/f15922d are JADX collision aliases.
+                Field root = headerType.getDeclaredField("d");
                 root.setAccessible(true);
                 Method getActionBar = activity.getMethod("getSupportActionBar");
                 Method bind = null;
@@ -322,48 +390,34 @@ final class StoreLayoutHooks {
                 showCustom.invoke(bar, true);
                 setCustom.invoke(bar, root.get(header));
             }
+            View content = (View) root.get(header);
+            content.setVisibility(View.VISIBLE);
+            content.requestLayout();
+            content.invalidate();
         }
     }
 
     private void installDetail(ClassLoader loader, SignalHooks.Installer installer)
             throws ReflectiveOperationException {
         Class<?> value = Class.forName("com.meizu.mstore.data.net.requestitem.detail.RecommendValue", false, loader);
-        Class<?> block = Class.forName(value.getName() + "$BlocksBean", false, loader);
-        Field blocks = value.getField("blocks");
-        Field title = block.getField("title");
-        Field type = block.getField("type");
-        // Filter before the recommendation mapper creates titles, rows and dividers,
-        // including its second pass and recommendation-id collection.
-        installer.hook("com.meizu.mstore.tools.AssembleTool", "assembleAppDetailRecommend", chain -> {
-            filterDetail(chain.getArg(0), blocks, title, type);
-            return chain.proceed();
-        }, value, boolean.class);
-    }
-
-    private void filterDetail(Object value, Field blocks, Field title, Field type) throws IllegalAccessException {
-        boolean[] selected = options;
-        if (value == null || (!selected[7] && !selected[8] && !selected[10])) return;
-        List<?> source = (List<?>) blocks.get(value);
-        if (source == null) return;
-        List<Object> retained = new ArrayList<>();
-        for (Object block : source) {
-            String heading = block == null ? null : (String) title.get(block);
-            boolean sameModel = heading != null && heading.contains("同机型")
-                    && (heading.contains("喜爱") || heading.contains("喜欢"));
-            boolean topics = block != null && "special".equals(type.get(block));
-            boolean reviews = block != null && "h5_ext".equals(type.get(block));
-            if (!(selected[7] && sameModel) && !(selected[8] && topics)
-                    && !(selected[10] && reviews)) retained.add(block);
-        }
-        blocks.set(value, retained);
+        Class<?> assemble = loader.loadClass("com.meizu.mstore.tools.AssembleTool");
+        Method emptyRows = assemble.getMethod("assembleFeedBlock", List.class);
+        // Skip the complete recommendation mapper, including its leading divider.
+        installer.hook(assemble.getName(), "assembleAppDetailRecommend", chain -> options[5]
+                ? emptyRows.invoke(null, java.util.Collections.emptyList()) : chain.proceed(), value, boolean.class);
     }
 
     private static boolean hideBlock(String name, boolean[] selected) {
         if (name == null) return false;
         return switch (name.trim()) {
             case "大家都在用" -> selected[2];
-            case "魅友安利" -> selected[3];
-            case "每日推荐" -> selected[4];
+            case "魅友安利" -> selected[2];
+            case "每日推荐" -> selected[2];
+            case "你可能喜欢" -> selected[6];
+            case "下载推荐" -> selected[6];
+            case "星选应用" -> selected[7];
+            case "高分精选" -> selected[7];
+            case "大家都在看" -> selected[7];
             default -> false;
         };
     }

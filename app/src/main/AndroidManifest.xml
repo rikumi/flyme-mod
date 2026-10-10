@@ -16,9 +16,13 @@
         <package android:name="com.meizu.flyme.weather" />
         <package android:name="com.android.packageinstaller" />
         <package android:name="com.meizu.flyme.launcher" />
+        <package android:name="com.meizu.media.camera" />
+        <package android:name="com.meizu.media.gallery" />
+        <package android:name="com.meizu.flyme.sdkstage" />
     </queries>
 
     <application
+        android:name=".CameraSettingsBridge"
         android:directBootAware="true"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
