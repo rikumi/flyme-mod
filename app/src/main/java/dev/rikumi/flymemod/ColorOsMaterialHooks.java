@@ -17,7 +17,9 @@ import java.util.function.*;
 /** ColorOS AGSL algorithms, with Flyme 16260625 view-local contour overlays. */
 final class ColorOsMaterialHooks {
     private final Consumer<Context> settings;
-    private final BooleanSupplier contourEnabled, splitNetworkEnabled;
+    private final BooleanSupplier contourEnabled, splitNetworkEnabled, notificationEnabled;
+    private final Map<View, Contour> notificationContours = new WeakHashMap<>();
+    private final Set<View> notificationErrors = Collections.newSetFromMap(new WeakHashMap<>());
     private final BiConsumer<String, Throwable> log;
     private final Map<View, Host> hosts = new WeakHashMap<>();
     private final ClassLoader loader;
@@ -25,9 +27,9 @@ final class ColorOsMaterialHooks {
     private Context assets;
 
     ColorOsMaterialHooks(ClassLoader loader, Consumer<Context> settings,
-            BooleanSupplier contour, BooleanSupplier splitNetwork, BiConsumer<String, Throwable> log)
+            BooleanSupplier contour, BooleanSupplier splitNetwork, BooleanSupplier notification, BiConsumer<String, Throwable> log)
             throws ReflectiveOperationException {
-        this.loader = loader; this.settings = settings; contourEnabled = contour; splitNetworkEnabled = splitNetwork; this.log = log;
+        this.loader = loader; this.settings = settings; contourEnabled = contour; splitNetworkEnabled = splitNetwork; notificationEnabled = notification; this.log = log;
 
     }
 
@@ -44,6 +46,49 @@ final class ColorOsMaterialHooks {
             }
             return result;
         });
+        // Render on the background view itself, below notification content, using
+        // the bounds produced by native drawing (including expand/clip geometry).
+        installer.hook("com.android.systemui.statusbar.notification.row.NotificationBackgroundView", "onDraw", chain -> {
+            Object result = chain.proceed();
+            View view = (View) chain.getThisObject();
+            settings.accept(view.getContext());
+            if (!notificationEnabled.getAsBoolean()) {
+                notificationContours.put(view, null);
+                return result;
+            }
+            try {
+                Drawable background = (Drawable) field(view, "mBackground");
+                if (background == null || background.getBounds().isEmpty()) return result;
+                Rect bounds = background.getBounds();
+                Canvas canvas = (Canvas) chain.getArg(0);
+                int saved = canvas.save();
+                try {
+                    if (!(Boolean) field(view, "mExpandAnimationRunning")) {
+                        int height = ((Number) field(view, "mActualHeight")).intValue();
+                        if (height < 0) height = view.getHeight();
+                        canvas.clipRect(0, ((Number) field(view, "mClipTopAmount")).intValue(), view.getWidth(),
+                                height - ((Number) field(view, "mClipBottomAmount")).intValue());
+                    }
+                    if ((Boolean) field(view, "mDrawDismissButtonCutout")) {
+                        canvas.clipPath((Path) view.getClass().getMethod("calculateDismissButtonCutoutPath", Rect.class)
+                                .invoke(view, bounds));
+                    }
+                    Contour contour = notificationContours.get(view);
+                    if (contour == null) {
+                        contour = new Contour(view);
+                        notificationContours.put(view, contour);
+                    }
+                    contour.setBounds(0, 0, bounds.width(), bounds.height());
+                    contour.setAlpha(((Number) field(view, "mDrawableAlpha")).intValue());
+                    canvas.translate(bounds.left, bounds.top);
+                    contour.draw(canvas);
+                } finally { canvas.restoreToCount(saved); }
+            } catch (Exception | LinkageError error) {
+                // Use the same once-per-host logging policy as control-center contours.
+                if (notificationErrors.add(view)) log.accept("Cannot render ColorOS notification contour", error);
+            }
+            return result;
+        }, Canvas.class);
         Class<?> state = loader.loadClass("com.android.systemui.plugins.qs.QSTile$State");
         for (String name : new String[]{"com.android.systemui.qs.tileimpl.QSTileViewImpl",
                 "com.flyme.systemui.qs.tileimpl.FlymeCustomQSTileView"}) {
@@ -83,6 +128,7 @@ final class ColorOsMaterialHooks {
 
     void refresh() {
         for (View view : new ArrayList<>(hosts.keySet())) if (view != null) apply(view);
+        for (View view : new ArrayList<>(notificationContours.keySet())) if (view != null) view.invalidate();
     }
 
     // Invoked after SplitNetworkCardHooks has applied/restored each row's native background.
@@ -158,6 +204,12 @@ final class ColorOsMaterialHooks {
     private static Object field(Object owner, String name) throws ReflectiveOperationException { return owner.getClass().getField(name).get(owner); }
     private static boolean night(View view) { return (view.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES; }
     private static Drawable nativeFill(View view, Drawable fallback) {
+        // NotificationBackgroundView draws mBackground itself; it does not
+        // assign that drawable to View.getBackground().
+        if (view.getClass().getName().endsWith(".NotificationBackgroundView")) {
+            try { if (field(view, "mBackground") instanceof Drawable drawable) return drawable; }
+            catch (ReflectiveOperationException ignored) { }
+        }
         try { if (field(view, "backgroundDrawable") instanceof Drawable drawable) return drawable; }
         catch (ReflectiveOperationException ignored) { }
         return fallback;
@@ -184,7 +236,9 @@ final class ColorOsMaterialHooks {
         }
         drawable = surface(view, drawable);
         if (drawable instanceof GradientDrawable gradient && gradient.getCornerRadius() > 0) return gradient.getCornerRadius();
-        try { return ((Number) field(drawable, "radius")).floatValue(); } catch (ReflectiveOperationException ignored) { }
+        if (drawable != null) {
+            try { return ((Number) field(drawable, "radius")).floatValue(); } catch (ReflectiveOperationException ignored) { }
+        }
         try { return ((Number) field(view, "mClipCornerRadius")).floatValue(); } catch (ReflectiveOperationException ignored) { }
         return 14f * view.getResources().getDisplayMetrics().density;
     }
@@ -202,6 +256,7 @@ final class ColorOsMaterialHooks {
         Path maskSource;
         int maskGeneration;
         float maskSmoothness;
+        float[] notificationRadii;
         final Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         int alpha = 255;
@@ -229,7 +284,24 @@ final class ColorOsMaterialHooks {
                 boolean slider = view.getClass().getName().equals("com.android.systemui.settings.brightness.BrightnessSliderView");
                 boolean naturalCard = surface != null && surface.getClass().getName()
                         .equals("com.android.systemui.qs.CustomSmoothCornerDrawable");
-                if (slider || naturalCard) {
+                if (view.getClass().getName().endsWith(".NotificationBackgroundView")) {
+                    Drawable notificationBackground = (Drawable) field(view, "mBackground");
+                    float[] radii = (float[]) field(view, "mCornerRadii");
+                    // Flyme blur drawables keep their own uniform radius; only
+                    // layered notification backgrounds use per-corner roundness.
+                    boolean uniform = !(notificationBackground instanceof LayerDrawable);
+                    if (uniform) radius = ((Number) field(view, "mClipCornerRadius")).floatValue();
+                    else {
+                        uniform = true;
+                        for (float corner : radii) if (corner != radii[0]) { uniform = false; break; }
+                        radius = radii[0];
+                    }
+                    if (uniform) shader = round;
+                    else {
+                        updateNotificationMask(view, bounds);
+                        shader = nativeCurve;
+                    }
+                } else if (slider || naturalCard) {
                     shader = updateNativeMask(view, bounds, radius, surface, slider) ? nativeCurve : round;
                 } else shader = round; // Native GradientDrawable/round-rect backgrounds retain their actual circular arcs.
                 shader.setFloatUniform("u_size", bounds.width(), bounds.height());
@@ -244,7 +316,11 @@ final class ColorOsMaterialHooks {
                 shader.setFloatUniform("uFarLineParams", farParams);
                 paint.setShader(shader); paint.setAlpha(alpha);
                 canvas.drawRect(bounds, paint);
-            } catch (Exception | LinkageError error) { fail(view, error); }
+            } catch (Exception | LinkageError error) {
+                if (view.getClass().getName().endsWith(".NotificationBackgroundView")) {
+                    if (notificationErrors.add(view)) log.accept("Cannot render ColorOS notification contour", error);
+                } else fail(view, error);
+            }
         }
         private boolean updateNativeMask(View view, Rect bounds, float radius, Drawable surface, boolean slider)
                 throws ReflectiveOperationException {
@@ -281,6 +357,24 @@ final class ColorOsMaterialHooks {
             else path = (Path) generatePath.invoke(null, 0f, 0f, (float) bounds.width(),
                     (float) bounds.height(), smoothness, radius, false);
             // Copy the native outline into a local mask; no compositor or background rendering is changed.
+            setNativeMask(path, bounds, stroke);
+            maskWidth = bounds.width(); maskHeight = bounds.height(); maskRadius = radius;
+            maskStroke = stroke; maskSmooth = natural;
+            maskSource = nativePath; maskSmoothness = smoothness; maskProvider = provider;
+            maskGeneration = nativePath == null ? 0 : nativePath.getGenerationId();
+            return true;
+        }
+        private void updateNotificationMask(View view, Rect bounds) throws ReflectiveOperationException {
+            float[] radii = (float[]) field(view, "mCornerRadii");
+            if (maskWidth == bounds.width() && maskHeight == bounds.height()
+                    && Arrays.equals(notificationRadii, radii)) return;
+            Path path = new Path();
+            path.addRoundRect(0, 0, bounds.width(), bounds.height(), radii, Path.Direction.CW);
+            setNativeMask(path, bounds, 2f * view.getResources().getDisplayMetrics().density);
+            notificationRadii = radii.clone();
+            maskWidth = bounds.width(); maskHeight = bounds.height();
+        }
+        private void setNativeMask(Path path, Rect bounds, float stroke) {
             Bitmap bitmap = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888);
             Canvas mask = new Canvas(bitmap);
             mask.clipPath(path);
@@ -294,11 +388,6 @@ final class ColorOsMaterialHooks {
                 mask.drawPath(path, maskPaint);
             }
             nativeCurve.setInputBuffer("uMask", new BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
-            maskWidth = bounds.width(); maskHeight = bounds.height(); maskRadius = radius;
-            maskStroke = stroke; maskSmooth = natural;
-            maskSource = nativePath; maskSmoothness = smoothness; maskProvider = provider;
-            maskGeneration = nativePath == null ? 0 : nativePath.getGenerationId();
-            return true;
         }
         public void setAlpha(int value) { alpha = value; invalidateSelf(); }
         public void setColorFilter(ColorFilter filter) { paint.setColorFilter(filter); invalidateSelf(); }

@@ -355,7 +355,7 @@ public final class XposedInit extends XposedModule {
         }
         try {
             activeColorOsMaterialHooks = new ColorOsMaterialHooks(loader, this::loadSettings,
-                    () -> colorOsContourEnabled, () -> networkSplitStyle != 0,
+                    () -> colorOsContourEnabled, () -> networkSplitStyle != 0, () -> notificationContourEnabled,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
             activeColorOsMaterialHooks.install(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));

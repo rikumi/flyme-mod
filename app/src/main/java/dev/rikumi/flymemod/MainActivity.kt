@@ -449,6 +449,7 @@ private fun NotificationPreferences() {
     PreferenceCard(
         listOf(
             ModuleSettings.HEADS_UP_WIDTH to "增加浮动通知宽度",
+            ModuleSettings.NOTIFICATION_CONTOUR to "ColorOS 通知轮廓光",
             ModuleSettings.NOTIFICATION_CORNERS to "增大通知圆角",
             ModuleSettings.NATIVE_NOTIFICATION_EXPANSION to "恢复原生通知下滑展开",
             ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS to "通知操作按钮改为黑白色",
