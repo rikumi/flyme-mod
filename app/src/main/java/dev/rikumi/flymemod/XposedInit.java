@@ -48,6 +48,9 @@ public final class XposedInit extends XposedModule {
     private static final String PHONE = "com.flyme.systemui.controlcenter.phone.";
     private static final int DARK_BACKGROUND = 0x73000000;
     private static final float OPERATION_SCALE = 1.06f;
+    private final Map<View, Integer> scaledNotificationWidths = new WeakHashMap<>();
+    private final Map<View, OperationArea> operationAreas = new WeakHashMap<>();
+    private final Set<View> notificationWidthStacks = Collections.newSetFromMap(new WeakHashMap<>());
     private static final int ACTIVE_FOREGROUND = 0x99000000;
     // ColorOS QsColorfulConfigUtil's native radiant palette; keep its opaque tints.
     private static final int ACTIVE_BLUE_COLOR = 0xFF0066FF;
@@ -518,25 +521,6 @@ public final class XposedInit extends XposedModule {
             });
             return result;
         });
-        install(loader, "com.flyme.systemui.controlcenter.phone.MzQQSPanelController", "setQsExpansion", chain -> {
-            Object result = chain.proceed();
-            Object controller = chain.getThisObject();
-            View panel = (View) controller.getClass().getMethod("getView").invoke(controller);
-            if (panel == null) return result;
-            loadSettings(panel.getContext());
-            if (!scaleEnabled) return result;
-            // Keep the mini connectivity card's animated endpoints in the same scale space.
-            View connectivity = (View) panel.getClass().getField("mConnectivityTilesWrapper").get(panel);
-            if (connectivity != null) {
-                float expansion = ((Number) chain.getArg(0)).floatValue();
-                float endpoint = 0.85f + 0.15f * Math.max(0f,
-                        Math.min(1f, (0.43f - expansion) / 0.43f));
-                float scale = endpoint * OPERATION_SCALE;
-                connectivity.setScaleX(scale);
-                connectivity.setScaleY(scale);
-            }
-            return result;
-        }, float.class);
         install(loader, "com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout",
                 "updateSidePadding", chain -> {
                     Object result = chain.proceed();
@@ -548,20 +532,18 @@ public final class XposedInit extends XposedModule {
                     boolean combined = Boolean.TRUE.equals(mode.getClass().getMethod("getValue").invoke(mode));
                     int width = (Integer) chain.getArg(0);
                     if (combined && width > 0) {
-                        var padding = stack.getClass().getField("mSidePaddings");
-                        int original = padding.getInt(stack);
-                        if (stack.getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
-                            // Notification padding can switch between 20dp and 32dp as QS expands.
-                            // Use the QS padding itself so both areas retain exactly the same width.
-                            int id = stack.getResources().getIdentifier("control_center_side_paddings",
-                                    "dimen", "com.android.systemui");
-                            if (id != 0) original = stack.getResources().getDimensionPixelSize(id);
+                        notificationWidthStacks.add(stack);
+                        View container = findQsContainer(stack);
+                        if (container != null) {
+                            int target = notificationTargetWidth(container);
+                            if (target > 0) {
+                                // Use the measured mini-panel content, not a screen-width
+                                // assumption or a resource from a different density context.
+                                target = Math.min(width, target);
+                                stack.getClass().getField("mSidePaddings").setInt(stack,
+                                        Math.max(0, Math.round((width - target) / 2f)));
+                            }
                         }
-                        // Increase the measured card width, leaving its height and text unchanged.
-                        // The original method recalculates padding on each measure, preventing accumulation.
-                        int contentWidth = width - original * 2;
-                        padding.setInt(stack, Math.max(0,
-                                Math.round((width - contentWidth * OPERATION_SCALE) / 2f)));
                     }
                     return result;
                 }, int.class);
@@ -584,7 +566,7 @@ public final class XposedInit extends XposedModule {
                     // Recalculate from the original QS height on each frame, without accumulation.
                     float operatingHeight = Math.max(0f,
                             original - container.getY() - container.getPaddingTop());
-                    return original + operatingHeight * (OPERATION_SCALE - 1f);
+                    return original + operatingHeight * (operationScale(container) - 1f);
                 }, boolean.class, int.class, float.class);
 
         XposedInterface.Hooker background = chain -> {
@@ -1305,8 +1287,89 @@ public final class XposedInit extends XposedModule {
         container.setPivotX(container.getWidth() / 2f);
         // The full-screen container reserves the header space as top padding.
         container.setPivotY(container.getPaddingTop());
-        container.setScaleX(OPERATION_SCALE);
-        container.setScaleY(OPERATION_SCALE);
+        float scale = computeOperationScale(container);
+        container.setScaleX(scale);
+        container.setScaleY(scale);
+        int target = notificationTargetWidth(container);
+        Integer previous = scaledNotificationWidths.put(container, target);
+        if (previous == null || previous != target) {
+            // The stack may have measured before QS; refresh once after QS dimensions settle.
+            for (View stack : new ArrayList<>(notificationWidthStacks)) {
+                if (stack != null && stack.getRootView() == container.getRootView()) stack.requestLayout();
+            }
+        }
+    }
+
+    private View findQsContainer(View view) {
+        if (view.getClass().getName().equals(PHONE + "MzQSContainerImpl")) return view;
+        int id = view.getResources().getIdentifier("mz_quick_settings_container", "id", "com.android.systemui");
+        return id == 0 ? null : view.getRootView().findViewById(id);
+    }
+
+    private OperationArea operationArea(View container) {
+        OperationArea area = operationAreas.get(container);
+        if (area != null && area.mini.get() != null && area.pager.get() != null) return area;
+        int miniId = container.getResources().getIdentifier("mz_quick_settings_panel_mini", "id", "com.android.systemui");
+        int pagerId = container.getResources().getIdentifier("paged_unified_tile_layout", "id", "com.android.systemui");
+        View mini = miniId == 0 ? null : container.findViewById(miniId);
+        View pager = pagerId == 0 ? null : container.findViewById(pagerId);
+        area = new OperationArea(mini, pager);
+        if (mini != null && pager != null) {
+            operationAreas.put(container, area);
+            java.lang.ref.WeakReference<View> owner = new java.lang.ref.WeakReference<>(container);
+            View.OnLayoutChangeListener layout = (view, l, t, r, b, ol, ot, or, ob) -> {
+                View target = owner.get();
+                if (target != null && scaleEnabled) applyScale(target);
+            };
+            mini.addOnLayoutChangeListener(layout);
+            pager.addOnLayoutChangeListener(layout);
+        }
+        return area;
+    }
+
+    private int miniPanelContentWidth(View container) {
+        View mini = operationArea(container).mini.get();
+        return mini == null ? 0 : Math.max(0, mini.getMeasuredWidth() - mini.getPaddingLeft() - mini.getPaddingRight());
+    }
+
+    private int expandedPanelContentWidth(View container) {
+        OperationArea area = operationArea(container);
+        View pager = area.pager.get();
+        if (pager == null || area.contentWidth == null) return 0;
+        try { return ((Number) area.contentWidth.invoke(pager)).intValue(); }
+        catch (ReflectiveOperationException | RuntimeException error) { return 0; }
+    }
+
+    private static final class OperationArea {
+        final java.lang.ref.WeakReference<View> mini, pager;
+        final java.lang.reflect.Method contentWidth;
+        OperationArea(View mini, View pager) {
+            this.mini = new java.lang.ref.WeakReference<>(mini);
+            this.pager = new java.lang.ref.WeakReference<>(pager);
+            java.lang.reflect.Method method = null;
+            try { if (pager != null) method = pager.getClass().getMethod("getContentWidth"); }
+            catch (ReflectiveOperationException ignored) { }
+            contentWidth = method;
+        }
+    }
+
+    private float operationScale(View container) {
+        // Height compensation runs per animation frame; width is resolved on layout.
+        return scaledNotificationWidths.containsKey(container) ? container.getScaleX() : computeOperationScale(container);
+    }
+
+    private float computeOperationScale(View container) {
+        int contentWidth = Math.max(miniPanelContentWidth(container), expandedPanelContentWidth(container));
+        if (contentWidth <= 0) return 1f;
+        int screenWidth = container.getRootView().getMeasuredWidth();
+        if (screenWidth <= 0) screenWidth = container.getResources().getDisplayMetrics().widthPixels;
+        float maximum = Math.max(1f, screenWidth - 40f * container.getResources().getDisplayMetrics().density);
+        return Math.min(OPERATION_SCALE, maximum / contentWidth);
+    }
+
+    private int notificationTargetWidth(View container) {
+        int contentWidth = miniPanelContentWidth(container);
+        return contentWidth > 0 ? Math.round(contentWidth * operationScale(container)) : 0;
     }
 
     private void installLauncherIconHiding(ClassLoader loader) {
