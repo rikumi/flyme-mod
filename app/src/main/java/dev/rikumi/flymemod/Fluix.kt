@@ -196,7 +196,7 @@ internal val FLUIX_ROW_VPADDING = 12.dp
 internal val FLUIX_ROW_MIN_HEIGHT = 56.dp
 
 // 下拉菜单宽度。
-private val FLUIX_DROPDOWN_WIDTH = 232.dp
+private val FLUIX_DROPDOWN_WIDTH = 200.dp
 private val FLUIX_DROPDOWN_TRANSFORM_ORIGIN = TransformOrigin(0.85f, 0f)
 
 // 右上角下拉菜单的阴影: 抬升值取对话框级别(Material 的菜单通常只有 3~8dp), 扩散范围随抬升
@@ -1015,8 +1015,8 @@ private fun FluixDropdownItem(
         modifier = modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .heightIn(min = 48.dp)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .heightIn(min = 56.dp)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BasicText(
