@@ -403,7 +403,7 @@ public final class XposedInit extends XposedModule {
         try {
             new RowRevealHooks(loader, this::loadSettings, () -> combinedPullAnimationEnabled,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(
-                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
             ReboundTimingHooks rebound = new ReboundTimingHooks(() -> combinedPullAnimationEnabled);
             rebound.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));

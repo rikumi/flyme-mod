@@ -90,7 +90,16 @@ final class RowRevealHooks {
         notificationTop = notificationStack.getType().getMethod("getTopPadding");
     }
 
-    void install(SignalHooks.Installer installer) {
+    void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
+        // Launcher handoff calls fling(open), then onTrackingStopped(false).
+        // Preserve those hook boundaries even if ART compiled the small wrappers.
+        for (Class<?> owner : new Class<?>[]{centerAlpha.getDeclaringClass(), panelAlpha.getDeclaringClass()}) {
+            for (Method method : owner.getDeclaredMethods()) {
+                if (method.getName().equals("finishInputFocusTransfer")
+                        || method.getName().equals("endMotionEvent")
+                        || method.getName().equals("fling")) deoptimize.accept(method);
+            }
+        }
         installer.hook(CENTER + "$TouchHandler", "onTouch", chain -> {
             MotionEvent previous = touch.get(); touch.set((MotionEvent) chain.getArg(1));
             try { return chain.proceed(); }
@@ -110,6 +119,7 @@ final class RowRevealHooks {
                     boolean tracking = separate ? centerTracking.getBoolean(owner) : (Boolean) panelTracking.invoke(owner);
                     if (!reveal.gesture || !tracking) {
                         reveal.gesture = true;
+                        reveal.settling = false;
                         reveal.opening = (separate ? centerClosed : panelClosed).getBoolean(owner)
                                 || (separate ? centerFraction : panelFraction).getFloat(owner) <= 0f;
                         // Start from the last rendered pose when interrupting an animation.
@@ -138,7 +148,14 @@ final class RowRevealHooks {
                                 .getDisplayMetrics().density, reveal.opening), separate);
                     }
                 }
-                return chain.proceed();
+                Object result = chain.proceed();
+                if (reveal != null && reveal.settling) {
+                    float fraction = (separate ? centerFraction : panelFraction).getFloat(owner);
+                    // Retire the release guard only after native height reaches its
+                    // chosen endpoint, after the old height thresholds have run.
+                    if (reveal.target ? fraction >= 1f : fraction <= 0f) reveal.settling = false;
+                }
+                return result;
             }, float.class);
             installer.hook(name, "onTrackingStopped", chain -> {
                 Object owner = chain.getThisObject();
@@ -153,10 +170,11 @@ final class RowRevealHooks {
                 Object owner = chain.getThisObject();
                 if (active(owner, separate)) {
                     Reveal reveal = reveals.computeIfAbsent(owner, ignored -> new Reveal());
-                    request(owner, reveal, (Boolean) chain.getArg(1), separate);
+                    settle(owner, reveal, (Boolean) chain.getArg(1), separate);
                 }
                 return chain.proceed();
-            }, float.class, boolean.class);
+            }, separate ? new Class<?>[]{float.class, boolean.class}
+                    : new Class<?>[]{float.class, boolean.class, float.class, boolean.class});
         }
 
         // Native animators read the visible (already eased) alpha to seed their next
@@ -170,7 +188,7 @@ final class RowRevealHooks {
                 boolean separate = owner.equals(CENTER);
                 if (active(ownerObject, separate)) {
                     Reveal reveal = reveals.computeIfAbsent(ownerObject, ignored -> new Reveal());
-                    if (!reveal.gesture) request(ownerObject, reveal, true, separate);
+                    if (!reveal.gesture && !reveal.settling) request(ownerObject, reveal, true, separate);
                 }
                 AlphaSeed previous = alphaSeed.get();
                 Float progress = rawAlpha.get(chain.getThisObject());
@@ -184,7 +202,7 @@ final class RowRevealHooks {
                 boolean separate = owner.equals(CENTER);
                 if (active(ownerObject, separate)) {
                     Reveal reveal = reveals.computeIfAbsent(ownerObject, ignored -> new Reveal());
-                    if (!reveal.gesture) request(ownerObject, reveal, false, separate);
+                    if (!reveal.gesture && !reveal.settling) request(ownerObject, reveal, false, separate);
                 }
                 AlphaSeed previous = alphaSeed.get();
                 Float progress = rawAlpha.get(chain.getThisObject());
@@ -292,6 +310,13 @@ final class RowRevealHooks {
             request(owner, reveal, input > .18f, separate);
         return reveal;
     }
+    private void settle(Object owner, Reveal reveal, boolean visible, boolean separate) {
+        // fling is the actual release decision. onTrackingStopped's boolean is
+        // merely bookkeeping on launcher input-focus transfer, not another goal.
+        reveal.gesture = false;
+        reveal.settling = true;
+        request(owner, reveal, visible, separate);
+    }
     private void request(Object owner, Reveal reveal, boolean visible, boolean separate) {
         if (reveal.initialized && reveal.target == visible) return;
         reveal.initialized = true; reveal.target = visible;
@@ -321,7 +346,7 @@ final class RowRevealHooks {
         return progress <= 0f ? 0f : .18f + .82f * progress;
     }
     private static final class Reveal {
-        boolean initialized, target, gesture, opening;
+        boolean initialized, target, gesture, opening, settling;
         float progress;
         ValueAnimator animator;
     }
