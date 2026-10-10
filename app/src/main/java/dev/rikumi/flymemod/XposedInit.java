@@ -401,7 +401,8 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve combined empty-shade hooks", e);
         }
         try {
-            new RowRevealHooks(loader, this::loadSettings, () -> combinedPullAnimationEnabled).install(
+            new RowRevealHooks(loader, this::loadSettings, () -> combinedPullAnimationEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
             ReboundTimingHooks rebound = new ReboundTimingHooks(() -> combinedPullAnimationEnabled);
             rebound.install(

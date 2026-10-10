@@ -2,7 +2,11 @@ package dev.rikumi.flymemod;
 
 import android.content.Context;
 import android.animation.ValueAnimator;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.view.View;
+import android.view.MotionEvent;
+import android.view.animation.LinearInterpolator;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.graphics.Rect;
@@ -15,6 +19,7 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /** Whole-shade row reveal/dismissal; secondary QS expansion keeps its geometry animation. */
 final class RowRevealHooks {
@@ -22,13 +27,14 @@ final class RowRevealHooks {
     private static final String QS = "com.flyme.systemui.qs.MzQSImpl";
     private static final String PANEL_CONTROLLER = "com.flyme.systemui.controlcenter.phone.MzQSPanelController";
     private static final String SHADE = "com.android.systemui.shade.NotificationPanelViewController";
-    // Short row stagger within the existing opening transition, with no extra animator.
+    // One time-driven content transition; native geometry and blur remain independent.
     private static final float ROW_DELAY = .22f;
     private final Consumer<Context> settings;
+    private final BiConsumer<String, Throwable> log;
     private final BooleanSupplier enabled;
     private final Field separateController, fullController, miniController, controllerView;
     private final Field separateHeader, separateStatusBar, combinedHeader, combinedStatusBar;
-    private final Field miniNetwork, miniSliders;
+    private final Field miniNetwork, miniSliders, nativeScale;
     private final Field notificationStack, shadeInteractor;
     private final Method combinedMode, flowValue, notificationTop;
     private final ThreadLocal<View> currentNotifications = new ThreadLocal<>();
@@ -36,10 +42,30 @@ final class RowRevealHooks {
     private final Map<Object, State> states = new WeakHashMap<>();
     private final Map<Object, Float> rawAlpha = new WeakHashMap<>();
     private final ThreadLocal<AlphaSeed> alphaSeed = new ThreadLocal<>();
+    private final Map<Object, Reveal> reveals = new WeakHashMap<>();
+    private final ThreadLocal<MotionEvent> touch = new ThreadLocal<>();
+    private final ThreadLocal<Reveal> currentReveal = new ThreadLocal<>();
+    private final ThreadLocal<Boolean> writingReveal = new ThreadLocal<>();
+    private final Field centerTracking, centerClosed, centerY, centerPointer, centerContext, centerFraction;
+    private final Field panelY, panelPointer, panelClosed, panelView, panelFraction;
+    private final Method panelTracking, centerAlpha, panelAlpha;
+    private static final long CONTENT_DURATION_MS = 300L;
 
-    RowRevealHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled)
+    RowRevealHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled, BiConsumer<String, Throwable> log)
             throws ReflectiveOperationException {
-        this.settings = settings;
+        Class<?> center = loader.loadClass(CENTER);
+        Class<?> shade = loader.loadClass(SHADE);
+        centerTracking = field(center, "mTracking"); centerClosed = field(center, "mCenterClosedOnDown");
+        centerY = field(center, "mInitialTouchY"); centerPointer = field(center, "mTrackingPointer");
+        centerContext = field(center, "mContext"); centerFraction = field(center, "mExpandedFraction");
+        panelY = field(shade, "mInitialExpandY"); panelPointer = field(shade, "mTrackingPointer");
+        panelClosed = field(shade, "mPanelClosedOnDown"); panelView = field(shade, "mView");
+        panelFraction = field(shade, "mExpandedFraction");
+        panelTracking = shade.getDeclaredMethod("isTracking"); panelTracking.setAccessible(true);
+        centerAlpha = center.getDeclaredMethod("setAnimationAlpha", float.class);
+        panelAlpha = shade.getDeclaredMethod("setAnimationAlpha", float.class);
+        centerAlpha.setAccessible(true); panelAlpha.setAccessible(true);
+        this.settings = settings; this.log = log;
         this.enabled = enabled;
         separateController = field(loader.loadClass(CENTER), "mQsController");
         separateHeader = field(loader.loadClass(CENTER), "mHeader");
@@ -50,6 +76,7 @@ final class RowRevealHooks {
         fullController = field(qs, "mMzQSPanelController");
         miniController = field(qs, "mMzQQSPanelController");
         controllerView = field(loader.loadClass(PANEL_CONTROLLER), "mView");
+        nativeScale = field(loader.loadClass(PANEL_CONTROLLER), "mQSScale");
         Class<?> miniPanel = loader.loadClass("com.flyme.systemui.controlcenter.phone.MzQQSPanel");
         miniNetwork = field(miniPanel, "mConnectivityTilesWrapper");
         miniSliders = field(miniPanel, "mSliderWrapper");
@@ -64,6 +91,74 @@ final class RowRevealHooks {
     }
 
     void install(SignalHooks.Installer installer) {
+        installer.hook(CENTER + "$TouchHandler", "onTouch", chain -> {
+            MotionEvent previous = touch.get(); touch.set((MotionEvent) chain.getArg(1));
+            try { return chain.proceed(); }
+            finally { if (previous == null) touch.remove(); else touch.set(previous); }
+        }, View.class, MotionEvent.class);
+        installer.hook(SHADE + "$TouchHandler", "handleTouch", chain -> {
+            MotionEvent previous = touch.get(); touch.set((MotionEvent) chain.getArg(0));
+            try { return chain.proceed(); }
+            finally { if (previous == null) touch.remove(); else touch.set(previous); }
+        }, MotionEvent.class);
+        for (String name : new String[]{CENTER, SHADE}) {
+            boolean separate = name.equals(CENTER);
+            installer.hook(name, "onTrackingStarted", chain -> {
+                Object owner = chain.getThisObject();
+                if (active(owner, separate)) {
+                    Reveal reveal = reveals.computeIfAbsent(owner, ignored -> new Reveal());
+                    boolean tracking = separate ? centerTracking.getBoolean(owner) : (Boolean) panelTracking.invoke(owner);
+                    if (!reveal.gesture || !tracking) {
+                        reveal.gesture = true;
+                        reveal.opening = (separate ? centerClosed : panelClosed).getBoolean(owner)
+                                || (separate ? centerFraction : panelFraction).getFloat(owner) <= 0f;
+                        // Start from the last rendered pose when interrupting an animation.
+                        if (!reveal.initialized) {
+                            reveal.progress = reveal.opening ? 0f : 1f;
+                            reveal.target = !reveal.opening;
+                            reveal.initialized = true;
+                        }
+                    }
+                }
+                return chain.proceed();
+            });
+            installer.hook(name, "updateHeightAnimation", chain -> {
+                Object owner = chain.getThisObject();
+                Reveal reveal = reveals.get(owner);
+                MotionEvent event = touch.get();
+                if (active(owner, separate) && reveal != null && reveal.gesture && event != null
+                        && event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                    int index = event.findPointerIndex((separate ? centerPointer : panelPointer).getInt(owner));
+                    if (index >= 0) {
+                        float drag = event.getY(index) - (separate ? centerY : panelY).getFloat(owner);
+                        Context context = context(owner, separate);
+                        // A single physical boundary relative to the open position.
+                        // Neither native alpha nor origin/overscroll branches can retrigger it.
+                        request(owner, reveal, RevealBoundary.visible(drag / context.getResources()
+                                .getDisplayMetrics().density, reveal.opening), separate);
+                    }
+                }
+                return chain.proceed();
+            }, float.class);
+            installer.hook(name, "onTrackingStopped", chain -> {
+                Object owner = chain.getThisObject();
+                Reveal reveal = reveals.get(owner);
+                if (active(owner, separate) && reveal != null && reveal.gesture) {
+                    request(owner, reveal, (Boolean) chain.getArg(0), separate);
+                    reveal.gesture = false;
+                }
+                return chain.proceed();
+            }, boolean.class);
+            installer.hook(name, "fling", chain -> {
+                Object owner = chain.getThisObject();
+                if (active(owner, separate)) {
+                    Reveal reveal = reveals.computeIfAbsent(owner, ignored -> new Reveal());
+                    request(owner, reveal, (Boolean) chain.getArg(1), separate);
+                }
+                return chain.proceed();
+            }, float.class, boolean.class);
+        }
+
         // Native animators read the visible (already eased) alpha to seed their next
         // transition. Feeding it back through contentProgress/revealCurve a second
         // time can reset a partially revealed shade to zero on launcher handoff.
@@ -71,6 +166,12 @@ final class RowRevealHooks {
         for (String owner : new String[]{CENTER, SHADE}) {
             int contentIndex = owner.equals(CENTER) ? 1 : 0;
             installer.hook(owner, "startExpandAnimator", chain -> {
+                Object ownerObject = chain.getThisObject();
+                boolean separate = owner.equals(CENTER);
+                if (active(ownerObject, separate)) {
+                    Reveal reveal = reveals.computeIfAbsent(ownerObject, ignored -> new Reveal());
+                    if (!reveal.gesture) request(ownerObject, reveal, true, separate);
+                }
                 AlphaSeed previous = alphaSeed.get();
                 Float progress = rawAlpha.get(chain.getThisObject());
                 if (enabled.getAsBoolean() && progress != null) alphaSeed.set(new AlphaSeed(contentIndex, progress));
@@ -79,6 +180,12 @@ final class RowRevealHooks {
                 finally { if (previous == null) alphaSeed.remove(); else alphaSeed.set(previous); }
             });
             installer.hook(owner, "startCollapseAnimator", chain -> {
+                Object ownerObject = chain.getThisObject();
+                boolean separate = owner.equals(CENTER);
+                if (active(ownerObject, separate)) {
+                    Reveal reveal = reveals.computeIfAbsent(ownerObject, ignored -> new Reveal());
+                    if (!reveal.gesture) request(ownerObject, reveal, false, separate);
+                }
                 AlphaSeed previous = alphaSeed.get();
                 Float progress = rawAlpha.get(chain.getThisObject());
                 if (enabled.getAsBoolean() && progress != null) alphaSeed.set(new AlphaSeed(contentIndex, progress));
@@ -103,7 +210,13 @@ final class RowRevealHooks {
             // and new animators cannot inherit a stale, individually centered scale.
             // Our pre-draw renderer supplies the shared row pivots and transition
             // scale; outside that transition the tiles remain at their open size.
-            return enabled.getAsBoolean() ? chain.proceed(new Object[]{1f}) : chain.proceed();
+            if (!enabled.getAsBoolean()) return chain.proceed();
+            // The renderer owns the tile scales until pre-draw. Native expansion
+            // used to reset every tile to 1 each frame, immediately undone below.
+            // Keep its stored endpoint (also used when adding a tile), without
+            // invalidating every tile twice on every merged-shade height update.
+            if (nativeScale.getFloat(chain.getThisObject()) == 1f) return null;
+            return chain.proceed(new Object[]{1f});
         }, float.class);
         installer.hook(CENTER, "setAnimationScale", chain -> {
             Object result = chain.proceed();
@@ -120,40 +233,101 @@ final class RowRevealHooks {
             return result;
         }, float.class);
         installer.hook(SHADE, "setAnimationAlpha", chain -> {
-            View previous = currentNotifications.get();
             Object panel = chain.getThisObject();
-            rememberAlpha(panel, (Float) chain.getArg(0));
-            boolean combined = enabled.getAsBoolean()
-                    && Boolean.TRUE.equals(flowValue.invoke(combinedMode.invoke(shadeInteractor.get(panel))));
-            currentNotifications.set(combined ? (View) notificationStack.get(panel) : null);
+            float input = (Float) chain.getArg(0);
+            rememberAlpha(panel, input);
+            if (!active(panel, false)) { retire(panel); return chain.proceed(); }
+            Reveal reveal = visual(panel, input, false);
+            View previous = currentNotifications.get();
+            Reveal previousReveal = currentReveal.get();
+            currentNotifications.set((View) notificationStack.get(panel));
+            currentReveal.set(reveal);
             try {
-                Object result = chain.proceed();
-                // The single pre-draw callback runs after native notification and QS writes.
-                if (combined && contentProgress((Float) chain.getArg(0)) <= 0f) {
-                    View notifications = currentNotifications.get();
-                    if (notifications != null) notifications.setAlpha(0f);
-                }
-                return result;
+                return chain.proceed(new Object[]{encodedProgress(reveal.progress)});
             } finally {
                 if (previous == null) currentNotifications.remove(); else currentNotifications.set(previous);
+                if (previousReveal == null) currentReveal.remove(); else currentReveal.set(previousReveal);
             }
         }, float.class);
         installer.hook(CENTER, "setAnimationAlpha", chain -> {
             float progress = (Float) chain.getArg(0);
             rememberAlpha(chain.getThisObject(), progress);
+            if (enabled.getAsBoolean()) progress = encodedProgress(visual(chain.getThisObject(), progress, true).progress);
+            else retire(chain.getThisObject());
             Object result = chain.proceed(new Object[]{enabled.getAsBoolean() ? revealCurve(contentProgress(progress)) : progress});
             update(chain.getThisObject(), progress, true);
             return result;
         }, float.class);
         installer.hook(QS, "setQsPanelAlpha", chain -> {
             float progress = (Float) chain.getArg(0);
+            Reveal reveal = currentReveal.get();
+            if (reveal != null) reveals.put(chain.getThisObject(), reveal);
+            else reveal = reveals.get(chain.getThisObject());
+            if (enabled.getAsBoolean() && reveal != null) progress = encodedProgress(reveal.progress);
             Object result = chain.proceed(new Object[]{enabled.getAsBoolean() ? revealCurve(contentProgress(progress)) : progress});
             update(chain.getThisObject(), progress, false);
             return result;
         }, float.class);
     }
 
+    private void retire(Object owner) {
+        Reveal reveal = reveals.get(owner);
+        if (reveal == null) return;
+        reveals.values().removeIf(value -> value == reveal);
+        ValueAnimator animator = reveal.animator;
+        reveal.animator = null;
+        if (animator != null) animator.cancel();
+    }
+    private Context context(Object owner, boolean separate) throws IllegalAccessException {
+        return separate ? (Context) centerContext.get(owner) : ((View) panelView.get(owner)).getContext();
+    }
+    private boolean active(Object owner, boolean separate) throws ReflectiveOperationException {
+        settings.accept(context(owner, separate));
+        return enabled.getAsBoolean() && (separate || Boolean.TRUE.equals(
+                flowValue.invoke(combinedMode.invoke(shadeInteractor.get(owner)))));
+    }
+    private Reveal visual(Object owner, float input, boolean separate) throws ReflectiveOperationException {
+        Reveal reveal = reveals.computeIfAbsent(owner, ignored -> new Reveal());
+        if (!reveal.initialized && !Boolean.TRUE.equals(writingReveal.get()))
+            request(owner, reveal, input > .18f, separate);
+        return reveal;
+    }
+    private void request(Object owner, Reveal reveal, boolean visible, boolean separate) {
+        if (reveal.initialized && reveal.target == visible) return;
+        reveal.initialized = true; reveal.target = visible;
+        ValueAnimator old = reveal.animator;
+        reveal.animator = null;
+        if (old != null) old.cancel();
+        ValueAnimator animator = ValueAnimator.ofFloat(reveal.progress, visible ? 1f : 0f);
+        reveal.animator = animator;
+        animator.setDuration(CONTENT_DURATION_MS);
+        animator.setInterpolator(new LinearInterpolator()); // Row curves provide ease-out / reverse ease-in.
+        animator.addUpdateListener(frame -> {
+            if (reveal.animator != frame || !enabled.getAsBoolean()) return;
+            reveal.progress = (Float) frame.getAnimatedValue();
+            writingReveal.set(true);
+            try { (separate ? centerAlpha : panelAlpha).invoke(owner, encodedProgress(reveal.progress)); }
+            catch (ReflectiveOperationException error) { log.accept("Cannot apply content reveal", error); }
+            finally { writingReveal.remove(); }
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) {
+                if (reveal.animator == animation) reveal.animator = null;
+            }
+        });
+        animator.start();
+    }
+    private static float encodedProgress(float progress) {
+        return progress <= 0f ? 0f : .18f + .82f * progress;
+    }
+    private static final class Reveal {
+        boolean initialized, target, gesture, opening;
+        float progress;
+        ValueAnimator animator;
+    }
+
     private void rememberAlpha(Object owner, float progress) {
+        if (Boolean.TRUE.equals(writingReveal.get())) return;
         if (enabled.getAsBoolean()) rawAlpha.put(owner, progress);
         else rawAlpha.remove(owner);
     }
@@ -193,8 +367,8 @@ final class RowRevealHooks {
             restore(state);
             return;
         }
-        // The same progress mapping runs backwards during dismissal and gesture reversal.
-        // It introduces no new duration limit: alpha still reaches zero with the shade.
+        // Only the fixed content timeline drives this mapping. Physical gesture
+        // reversal selects an endpoint; it never writes per-tile animation progress.
         state.animating = true;
         state.fullRoot = root;
         watch(root, state);
