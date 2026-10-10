@@ -297,6 +297,7 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 }
                 if (category.id == "navigation" && groupTitle == "手势行为") {
                     item { SystemSettingsPreferences() }
+                    item { PreferenceCard(listOf(ModuleSettings.MBACK_SYSTEM_TIMEOUT to "非压感 mBack 跟随系统长按超时")) }
                 }
                 if (category.id == "navigation" && groupTitle == "多任务切换") {
                     item {

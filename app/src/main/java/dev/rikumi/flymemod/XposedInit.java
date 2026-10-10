@@ -141,6 +141,7 @@ public final class XposedInit extends XposedModule {
     private CircleTileHooks activeCircleTileHooks;
     private boolean colorOsContourEnabled;
     private ColorOsMaterialHooks activeColorOsMaterialHooks;
+    private boolean notificationContourEnabled, mbackSystemTimeoutEnabled;
     private int blurRadius = ModuleSettings.BLUR_DEFAULT;
     private boolean settingsErrorLogged;
     private final Map<View, Drawable> originalCenterBackgrounds = new WeakHashMap<>();
@@ -319,6 +320,26 @@ public final class XposedInit extends XposedModule {
         }
         installWallpaperStartupFix(loader);
         installNotificationCorners(loader);
+        try {
+            Class<?> mback = loader.loadClass("com.flyme.systemui.navigationbar.MBackButtonController");
+            java.lang.reflect.Field context = mback.getField("mContext");
+            java.lang.reflect.Field pressure = mback.getField("mPressureHomeKey");
+            java.lang.reflect.Field timeout = mback.getField("mLongClickTime");
+            install(loader, mback.getName(), "prepareLongClickTime", chain -> {
+                Object result = chain.proceed();
+                Object owner = chain.getThisObject();
+                Context ctx = (Context) context.get(owner);
+                loadSettings(ctx);
+                if (mbackSystemTimeoutEnabled && !pressure.getBoolean(owner)) {
+                    timeout.setInt(owner, Math.max(1, android.provider.Settings.Secure.getInt(
+                            ctx.getContentResolver(), "long_press_timeout", android.view.ViewConfiguration.getLongPressTimeout())));
+                }
+                return result;
+            });
+            deoptimize(mback.getDeclaredMethod("handleTouch", android.view.MotionEvent.class));
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve non-pressure mBack timeout", error);
+        }
         try {
             new NotificationExpansionHooks(loader, this::loadSettings, () -> nativeNotificationExpansionEnabled,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(
@@ -1594,6 +1615,10 @@ public final class XposedInit extends XposedModule {
                 }
                 scaleEnabled = cursor.getInt(0) != 0;
                 lightEnabled = cursor.getInt(1) != 0;
+                int notificationContourColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CONTOUR);
+                notificationContourEnabled = notificationContourColumn >= 0 && cursor.getInt(notificationContourColumn) != 0;
+                int mbackColumn = cursor.getColumnIndex(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
+                mbackSystemTimeoutEnabled = mbackColumn >= 0 && cursor.getInt(mbackColumn) != 0;
                 int contourColumn = cursor.getColumnIndex(ModuleSettings.COLOROS_CONTOUR);
                 colorOsContourEnabled = contourColumn >= 0 && cursor.getInt(contourColumn) != 0;
                 int lightOpacityColumn = cursor.getColumnIndex(ModuleSettings.LIGHT_OPACITY);
