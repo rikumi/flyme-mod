@@ -18,3 +18,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "flyme-mod"
 include ':app'
+
+include ':installer'
