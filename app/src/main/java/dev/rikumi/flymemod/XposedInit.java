@@ -297,6 +297,13 @@ public final class XposedInit extends XposedModule {
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme clock font classes", error);
         }
+        try {
+            new CombinedShadeRefreshRateHooks(loader,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve merged shade refresh rate policy", error);
+        }
         new HeaderDateHooks(this::loadSettings, () -> hideLunarEnabled).install(
                 (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         try {

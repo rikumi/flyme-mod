@@ -131,20 +131,26 @@ final class SecondaryExpansionHooks {
             View view = (View) root.get(owner);
             if (view == null) return result;
             settings.accept(view.getContext());
-            View full = find(view, "mz_quick_settings_panel"), mini = find(view, "mz_quick_settings_panel_mini");
+            Panels state = panels.get(owner);
+            View full = state != null && state.full.getRootView() == view.getRootView()
+                    ? state.full : find(view, "mz_quick_settings_panel");
+            View mini = state != null && state.mini.getRootView() == view.getRootView()
+                    ? state.mini : find(view, "mz_quick_settings_panel_mini");
             if (full == null || mini == null) return result;
             boolean active = enabled.getAsBoolean() && Boolean.TRUE.equals(flow.invoke(mode.invoke(implShade.get(owner))));
             float f = ((Number) chain.getArg(0)).floatValue();
             if (Float.isNaN(f)) return result;
-            Panels state = panels.get(owner);
             if (active && (state == null || state.mini != mini || state.full != full)) {
                 if (state != null) restoreClips(state);
-                state = new Panels(full, mini);
+                state = new Panels(full, mini, miniCards);
                 panels.put(owner, state); miniPanels.put(mini, state);
             }
             if (state == null) return result;
             state.fraction = f; state.active = active;
-            alignMini(state);
+            if (state.geometryDirty || !active) {
+                state.geometryDirty = false;
+                alignMini(state);
+            }
             render(state);
             if (!active) { panels.remove(owner); miniPanels.remove(mini); }
             return result;
@@ -282,20 +288,18 @@ final class SecondaryExpansionHooks {
         }
         Object layout = tileLayout.get(state.full);
         ViewGroup first = layout == null ? null : (ViewGroup) pageAt.invoke(layout, 0);
-        if (first == null || first.getWidth() <= 0 || cellWidth.getInt(first) <= 0) return;
+        if (first == null || first.getWidth() <= 0 || cellWidth.getInt(first) <= 0) { state.geometryDirty = true; return; }
         int cw = cellWidth.getInt(first), spacing = gap.getInt(first);
         View common = state.full.getRootView();
         int left = coordinate(first, common, false) + first.getPaddingLeft() + alignOffset.getInt(first)
                 - coordinate(mini, common, false);
         int top = coordinate(first, common, true) + first.getPaddingTop() - coordinate(mini, common, true);
         int right = mini.getWidth() - left - (4 * cw + 3 * spacing);
-        if (left < 0 || top < 0 || right < 0) return;
+        if (left < 0 || top < 0 || right < 0) { state.geometryDirty = true; return; }
         if (mini.getPaddingLeft() != left || mini.getPaddingTop() != top || mini.getPaddingRight() != right)
             mini.setPadding(left, top, right, state.bottom);
-        View wrapper = find(mini, "connectivity_slider_wrapper");
-        View sliders = find(mini, "slider_wrapper");
-        alignSpacers(state, wrapper, spacing);
-        alignSpacers(state, sliders, spacing);
+        alignSpacers(state, state.wrapper, spacing);
+        alignSpacers(state, state.sliders, spacing);
     }
 
     private static void restoreGeometry(Panels state) {
@@ -328,10 +332,12 @@ final class SecondaryExpansionHooks {
         float miniFade = clamp(1f - state.fraction / .43f);
         boolean transitioning = state.active && state.fraction > 0f && state.fraction < 1f;
         if (!transitioning) restoreClips(state);
-        boolean[] matched = new boolean[miniCards.length];
-        View[] collapsed = new View[miniCards.length];
-        for (int i = 0; i < miniCards.length; i++) collapsed[i] = (View) miniCards[i].get(state.mini);
-        int count = ((Number) pageCount.invoke(layout)).intValue();
+        boolean[] matched = state.matched;
+        java.util.Arrays.fill(matched, false);
+        View[] collapsed = state.collapsed;
+        // During the initial merged-shade reveal QS expansion remains zero.
+        // Its hidden all-tiles panel does not need a traversal on every height frame.
+        int count = state.active && state.fraction <= 0f ? 0 : ((Number) pageCount.invoke(layout)).intValue();
         for (int page = 0; page < count; page++) {
             ViewGroup group = (ViewGroup) pageAt.invoke(layout, page);
             if (group == null) continue;
@@ -498,7 +504,10 @@ final class SecondaryExpansionHooks {
     private static float clamp(float value) { return Math.max(0f, Math.min(1f, value)); }
 
     private static final class Panels {
-        final View full, mini;
+        final View full, mini, wrapper, sliders;
+        final View[] collapsed;
+        final boolean[] matched;
+        boolean geometryDirty = true;
         int left, top, right, bottom;
         final Map<View, Integer> spacers = new WeakHashMap<>();
         final Map<ViewGroup, Clip> clips = new WeakHashMap<>();
@@ -506,8 +515,13 @@ final class SecondaryExpansionHooks {
         ViewTreeObserver.OnPreDrawListener clipListener;
         boolean active;
         float fraction;
-        Panels(View full, View mini) {
+        Panels(View full, View mini, Field[] cards) throws IllegalAccessException {
             this.full = full; this.mini = mini;
+            wrapper = find(mini, "connectivity_slider_wrapper");
+            sliders = find(mini, "slider_wrapper");
+            collapsed = new View[cards.length];
+            matched = new boolean[cards.length];
+            for (int i = 0; i < cards.length; i++) collapsed[i] = (View) cards[i].get(mini);
             capturePadding();
         }
         void capturePadding() {

@@ -1,5 +1,6 @@
 package dev.rikumi.flymemod;
 
+import android.view.View;
 import java.util.function.BooleanSupplier;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -61,16 +62,29 @@ final class ReboundTimingHooks {
             }
             Field shared = notifications;
             Method setSharedTranslation = notificationTranslation;
+            // MzQSImpl's native method only moves these three roots and emits
+            // notification translation. Avoid allocating animator groups and
+            // emitting .6 followed by .57 to the notification StateFlow each frame.
+            Field[] mergedRoots = shared == null ? null : new Field[]{
+                    owner.getField("mQSStatusBar"), owner.getField("mHeader"),
+                    owner.getField("mMzQSContainer")};
             installer.hook(name, "setQSTranslationY", chain -> {
                 if (!enabled.getAsBoolean()) return chain.proceed();
+                if (mergedRoots != null) {
+                    Object target = chain.getThisObject();
+                    float distance = (Float) chain.getArg(0);
+                    int index = 0;
+                    for (Field field : mergedRoots) {
+                        View view = (View) field.get(target);
+                        if (view != null) view.setTranslationY(distance * reduced[Math.min(index++, reduced.length - 1)]);
+                    }
+                    Object interactor = shared.get(target);
+                    if (interactor != null) setSharedTranslation.invoke(interactor, distance * .57f);
+                    return null;
+                }
                 System.arraycopy(reduced, 0, coefficients, 0, reduced.length);
                 try {
-                    Object result = chain.proceed();
-                    if (shared != null) {
-                        Object interactor = shared.get(chain.getThisObject());
-                        if (interactor != null) setSharedTranslation.invoke(interactor, (Float) chain.getArg(0) * .57f);
-                    }
-                    return result;
+                    return chain.proceed();
                 } finally { System.arraycopy(originals, 0, coefficients, 0, originals.length); }
             }, float.class);
         }
