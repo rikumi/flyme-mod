@@ -53,6 +53,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import java.text.Collator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -79,14 +80,33 @@ private data class DisabledAppEntry(
     val icon: Bitmap? = null,
 )
 
-// 读取已停用与用户级卸载的应用列表(只读 pm 命令, IO 线程调用)。无 root 或输出异常时返回 null。
+// 保留启动异常及命令输出，让界面能显示真正的失败原因。
+private fun runAppCommand(command: String): String {
+    val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
+    try {
+        process.outputStream.close()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        val code = process.waitFor()
+        check(code == 0) { output.trim().ifEmpty { "命令执行失败，退出码：$code" } }
+        return output
+    } finally { process.destroy() }
+}
+
+private fun showAppError(ctx: Context, operation: String, error: Exception) {
+    if (error is CancellationException) throw error
+    android.widget.Toast.makeText(ctx,
+        "$operation：${error.message ?: error.javaClass.simpleName}",
+        android.widget.Toast.LENGTH_LONG).show()
+}
+
+// 读取已停用与用户级卸载的应用列表(只读 pm 命令, IO 线程调用)。
 // -d: 已停用; -u: 含已卸载但保留数据的包; 无参: 当前用户已安装。用户级卸载 = -u 与已安装的差集;
 // 同一包只归入一个类别, 卸载优先(停用列表剔除已卸载项)。
-private fun listDisabledApps(ctx: Context): List<DisabledAppEntry>? {
+private fun listDisabledApps(ctx: Context): List<DisabledAppEntry> {
     val marker = "---FLYMEMOD-SECTION---"
-    val out = runRoot(
-        "pm list packages -f -d --user 0; echo $marker; pm list packages -f -u --user 0; echo $marker; pm list packages -f --user 0"
-    ) ?: return null
+    val out = runAppCommand(
+        "pm list packages -f -d --user 0 && echo $marker && pm list packages -f -u --user 0 && echo $marker && pm list packages -f --user 0"
+    )
     // 按分隔行切成三段; 每段解析 -f 输出: package:/路径/base.apk=包名。
     val sections = mutableListOf<List<Pair<String, String>>>()
     var current = mutableListOf<Pair<String, String>>()
@@ -97,15 +117,14 @@ private fun listDisabledApps(ctx: Context): List<DisabledAppEntry>? {
             current = mutableListOf()
         } else if (t.startsWith("package:")) {
             val eq = t.lastIndexOf('=')
-            if (eq > "package:".length) {
-                val pkg = t.substring(eq + 1)
-                if (Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*").matches(pkg))
-                    current.add(t.substring("package:".length, eq) to pkg)
-            }
-        }
+            check(eq > "package:".length) { "应用列表格式无效：$t" }
+            val pkg = t.substring(eq + 1)
+            check(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*").matches(pkg)) { "应用列表中的包名无效：$pkg" }
+            current.add(t.substring("package:".length, eq) to pkg)
+        } else if (t.isNotEmpty()) error(t)
     }
     sections.add(current)
-    if (sections.size != 3) return null
+    check(sections.size == 3) { "应用列表输出缺少分隔标记" }
     val (disabled, withUninstalled, installed) = sections
     val installedPkgs = installed.map { it.second }.toSet()
     val uninstalled = withUninstalled.filter { it.second !in installedPkgs }
@@ -127,16 +146,17 @@ private fun listDisabledApps(ctx: Context): List<DisabledAppEntry>? {
     }
 }
 
-/** Root enumeration includes system apps and packages without launcher activities. */
-private fun listAllApps(ctx: Context): List<DisabledAppEntry>? {
-    val output = runRoot("pm list packages -f --user 0") ?: return null
+/** Root enumeration excludes user-installed apps while retaining system apps without launcher activities. */
+private fun listSystemApps(ctx: Context): List<DisabledAppEntry> {
+    val output = runAppCommand("pm list packages -f -s --user 0")
     val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*")
     val entries = output.lineSequence().mapNotNull { line ->
         val text = line.trim()
         val separator = text.lastIndexOf('=')
-        if (!text.startsWith("package:") || separator <= "package:".length) return@mapNotNull null
+        if (text.isEmpty()) return@mapNotNull null
+        check(text.startsWith("package:") && separator > "package:".length) { text }
         val pkg = text.substring(separator + 1)
-        if (!packagePattern.matches(pkg)) return@mapNotNull null
+        check(packagePattern.matches(pkg)) { "应用列表中的包名无效：$pkg" }
         appEntry(ctx, text.substring("package:".length, separator), pkg, uninstalled = false)
     }.distinctBy { it.pkg }.toList()
     val collator = Collator.getInstance(ctx.resources.configuration.locales[0])
@@ -151,20 +171,22 @@ private enum class AppOperation(val title: String) {
 
     fun execute(pkg: String): Boolean {
         // Validate again at the command boundary; never interpolate an arbitrary label.
-        if (!Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*").matches(pkg)) return false
+        require(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*").matches(pkg)) { "包名无效：$pkg" }
         val command = when (this) {
             DISABLE -> "pm disable-user --user 0 $pkg"
             UNINSTALL -> "pm uninstall -k --user 0 $pkg"
             ENABLE -> "pm enable --user 0 $pkg"
             INSTALL_EXISTING -> "cmd package install-existing --user 0 $pkg"
         }
-        val result = runRoot(command) ?: return false
-        return when (this) {
+        val result = runAppCommand(command)
+        val success = when (this) {
             DISABLE -> result.lineSequence().any { it.trim() == "Package $pkg new state: disabled-user" }
             UNINSTALL -> result.lineSequence().any { it.trim() == "Success" }
             ENABLE -> result.lineSequence().any { it.trim() == "Package $pkg new state: enabled" }
             INSTALL_EXISTING -> result.lineSequence().any { it.trim() == "Package $pkg installed for user: 0" }
         }
+        check(success) { result.trim().ifEmpty { "系统未返回操作成功结果" } }
+        return true
     }
 }
 
@@ -223,43 +245,52 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
     var apps by remember { mutableStateOf<List<DisabledAppEntry>?>(null) }
     LaunchedEffect(Unit) {
         val generation = loadGeneration
-        val result = withContext(Dispatchers.IO) { listDisabledApps(ctx) }
-        // A quick operation must not be overwritten by the earlier initial scan.
-        if (generation != loadGeneration) return@LaunchedEffect
-        if (result == null) {
-            android.widget.Toast.makeText(ctx, "未授予 root 权限", android.widget.Toast.LENGTH_SHORT).show()
+        android.widget.Toast.makeText(ctx, "加载中…", android.widget.Toast.LENGTH_SHORT).show()
+        try {
+            val result = withContext(Dispatchers.IO) { listDisabledApps(ctx) }
+            // A quick operation must not be overwritten by the earlier initial scan.
+            if (generation == loadGeneration) apps = result
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            if (generation == loadGeneration) {
+                apps = emptyList()
+                showAppError(ctx, "读取已停用应用失败", error)
+            }
         }
-        apps = result.orEmpty()
     }
     LaunchedEffect(picking) {
         overscrollOffset.floatValue = 0f
         if (picking) {
             choices = null
             pickerState.scrollToItem(0)
-            val result = withContext(Dispatchers.IO) { listAllApps(ctx) }
-            choices = result.orEmpty()
-            if (result == null) android.widget.Toast.makeText(ctx,
-                "读取失败，请检查 root 授权", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(ctx, "加载中…", android.widget.Toast.LENGTH_SHORT).show()
+            try {
+                choices = withContext(Dispatchers.IO) { listSystemApps(ctx) }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                choices = emptyList()
+                showAppError(ctx, "读取系统应用失败", error)
+            }
         }
     }
     fun perform(app: DisabledAppEntry, action: AppOperation) {
         if (busy) return
         busy = true
         loadGeneration++
+        android.widget.Toast.makeText(ctx, "${action.title}…", android.widget.Toast.LENGTH_SHORT).show()
         scope.launch {
             try {
-                val success = withContext(Dispatchers.IO) { action.execute(app.pkg) }
-                val reloaded = withContext(Dispatchers.IO) { listDisabledApps(ctx) }
-                if (reloaded != null) apps = reloaded
-                if (picking) {
-                    // Refresh in place without resetting the picker or its scroll position.
-                    val refreshedChoices = withContext(Dispatchers.IO) { listAllApps(ctx) }
-                    if (refreshedChoices != null) choices = refreshedChoices
-                }
-                android.widget.Toast.makeText(ctx, when {
-                    !success -> "${action.title}失败，请检查 root 授权或系统限制"
-                    else -> "成功"
-                }, android.widget.Toast.LENGTH_SHORT).show()
+                withContext(Dispatchers.IO) { action.execute(app.pkg) }
+                android.widget.Toast.makeText(ctx, "成功", android.widget.Toast.LENGTH_SHORT).show()
+                try {
+                    apps = withContext(Dispatchers.IO) { listDisabledApps(ctx) }
+                    if (picking) {
+                        // Refresh in place without resetting the picker or its scroll position.
+                        choices = withContext(Dispatchers.IO) { listSystemApps(ctx) }
+                    }
+                } catch (error: Exception) { showAppError(ctx, "刷新列表失败", error) }
+            } catch (error: Exception) {
+                showAppError(ctx, "${action.title}失败", error)
             } finally { busy = false }
         }
     }
@@ -270,17 +301,16 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
         if (uri != null) {
             val current = apps.orEmpty()
             scope.launch(Dispatchers.IO) {
-                val ok = runCatching {
-                    ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                val result = runCatching {
+                    checkNotNull(ctx.contentResolver.openOutputStream(uri)) { "无法打开导出文件" }.use { out ->
                         out.write(buildExportScript(current).toByteArray())
-                    } != null
-                }.getOrDefault(false)
+                    }
+                }
                 withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(
-                        ctx,
-                        if (ok) "已导出" else "导出失败",
-                        android.widget.Toast.LENGTH_SHORT,
-                    ).show()
+                    val error = result.exceptionOrNull()
+                    if (error is Exception) showAppError(ctx, "导出失败", error)
+                    else if (error != null) throw error
+                    else android.widget.Toast.makeText(ctx, "已导出", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -288,7 +318,7 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             FluixTopAppBar(
-                title = if (busy) "执行中…" else if (picking) "选择应用" else "停用应用",
+                title = if (picking) "选择系统应用" else "停用应用",
                 dividerProgress = fluixTopBarDividerProgress(currentListState, overscrollOffset),
                 navigationIcon = {
                     IconButton(onClick = { if (!busy) { if (picking) picking = false else onBack() } }) {
@@ -329,10 +359,10 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
                 .fluixOverscroll(currentListState, overscrollOffset),
         ) {
             if (picking) {
-                item { FluixSmallTitle(text = "所有应用") }
+                item { FluixSmallTitle(text = "系统应用") }
                 val current = choices
                 when {
-                    current == null -> item { FluixSmallTitle(text = "加载中…") }
+                    current == null -> Unit
                     current.isEmpty() -> item { FluixSmallTitle(text = "暂无应用") }
                     else -> itemsIndexed(current, key = { _, entry -> entry.pkg }) { index, entry ->
                         FluixCardRow(first = index == 0, last = index == current.lastIndex) {
@@ -351,7 +381,7 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
                 item { FluixSmallTitle(text = "已停用的应用") }
                 val current = apps
                 when {
-                    current == null -> item { FluixSmallTitle(text = "加载中…") }
+                    current == null -> Unit
                     current.isEmpty() -> item { FluixSmallTitle(text = "无已停用或用户级卸载的应用") }
                     // 每行一个独立的惰性 item: 行数上百时不能共用一个容器(见 FluixCardRow 注释)。
                     else -> itemsIndexed(current, key = { _, entry -> entry.pkg }) { index, entry ->
