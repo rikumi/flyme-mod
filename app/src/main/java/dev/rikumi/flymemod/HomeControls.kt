@@ -86,6 +86,17 @@ internal fun HomeModuleControls() {
                                 editor.putInt(ModuleSettings.STATUS_BAR_CLOCK_FONT, if (enabled) 2 else 0)
                                 editor.putInt(ModuleSettings.CONTROL_CENTER_CLOCK_FONT, if (enabled) 2 else 0)
                                 editor.putInt(ModuleSettings.CLOCK_FONT_WEIGHT, if (enabled) 300 else 0)
+                                editor.putBoolean(ModuleSettings.LOCK_CLOCK_MONOSPACE, enabled)
+                                editor.putBoolean(ModuleSettings.AOD_CLOCK_MONOSPACE, enabled)
+                                editor.putBoolean(ModuleSettings.LOCK_CLOCK_SPACING_ENABLED, enabled)
+                                editor.putBoolean(ModuleSettings.AOD_CLOCK_SPACING_ENABLED, enabled)
+                                // Spacing is stored in hundredths of an em.
+                                editor.putInt(ModuleSettings.LOCK_CLOCK_SPACING, if (enabled) -4 else 0)
+                                editor.putInt(ModuleSettings.AOD_CLOCK_SPACING, if (enabled) -4 else 0)
+                                editor.putBoolean(ModuleSettings.STATUS_BAR_CLOCK_MONOSPACE, false)
+                                editor.putBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_MONOSPACE, false)
+                                editor.putBoolean(ModuleSettings.STATUS_BAR_CLOCK_SPACING_ENABLED, false)
+                                editor.putBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_SPACING_ENABLED, false)
                                 if (!enabled) editor.putInt(ModuleSettings.BLUR_RADIUS, ModuleSettings.BLUR_DEFAULT)
                             }.commit()
                             ModuleSettings.MEDIA_FOLDERS.forEach { updateMediaFolder(it[0], enabled) }
