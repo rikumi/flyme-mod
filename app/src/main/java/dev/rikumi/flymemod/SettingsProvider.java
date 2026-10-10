@@ -32,7 +32,7 @@ public final class SettingsProvider extends ContentProvider {
         java.util.List<String> columns = new java.util.ArrayList<>(java.util.Arrays.asList(new String[]{ModuleSettings.SCALE, ModuleSettings.LIGHT,
                 ModuleSettings.DARKEN, ModuleSettings.WHITE_ACTIVE, ModuleSettings.NETWORK_DARK_SPINNER, ModuleSettings.HEADS_UP_WIDTH, ModuleSettings.NOTIFICATION_CORNERS,
                 ModuleSettings.BLUR_ENABLED, ModuleSettings.BLUR_RADIUS, ModuleSettings.WALLPAPER_STARTUP_FIX,
-                ModuleSettings.HIDE_GBOARD, ModuleSettings.RECENTS_SWIPE_UP_KILL, ModuleSettings.RECENTS_HIDE_NOT_RUNNING, ModuleSettings.FOLDER_PAGING, ModuleSettings.FOLDER_CENTER, ModuleSettings.FOLDER_RESTORE_COLOR, ModuleSettings.FOLDER_RADIUS_ENABLED, ModuleSettings.FOLDER_RADIUS,
+                ModuleSettings.HIDE_GBOARD, ModuleSettings.RECENTS_SWIPE_UP_KILL, ModuleSettings.RECENTS_HIDE_NOT_RUNNING, ModuleSettings.STACKED_RECENTS, ModuleSettings.FOLDER_PAGING, ModuleSettings.FOLDER_CENTER, ModuleSettings.FOLDER_RESTORE_COLOR, ModuleSettings.FOLDER_RADIUS_ENABLED, ModuleSettings.FOLDER_RADIUS,
                 ModuleSettings.ORIGINAL_NOTIFICATION_ICONS, ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS,
                 ModuleSettings.MERGE_DUAL_SIGNAL, ModuleSettings.SEPARATE_NETWORK_TYPE, ModuleSettings.HIDE_DISABLED_APPS, ModuleSettings.HIDE_LUNAR, ModuleSettings.BLOCK_STORE_SPLASH, ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS, ModuleSettings.SLIDER_ACTIVE_CORNERS, ModuleSettings.STORE_HIDE_FEATURED, ModuleSettings.STORE_HIDE_GAMES, ModuleSettings.STORE_HIDE_POPULAR, ModuleSettings.STORE_HIDE_COMMUNITY, ModuleSettings.STORE_HIDE_DAILY, ModuleSettings.BLOCK_WEATHER_ADS, ModuleSettings.WEATHER_DARK_BACKGROUND, ModuleSettings.STORE_HIDE_SEARCH_HOT, ModuleSettings.STORE_EMPTY_APPLICATION_PAGE, ModuleSettings.INSTALLER_SKIP_WARNINGS, ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL, ModuleSettings.STORE_DETAIL_HIDE_TOPICS, ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS, ModuleSettings.STORE_DETAIL_HIDE_REVIEWS, ModuleSettings.COMBINED_PULL_ANIMATION, ModuleSettings.LIMIT_AOD_MOVEMENT, ModuleSettings.COMBINED_COLLAPSE_FIX, ModuleSettings.VOLUME_FIRST_FOUR, ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT, ModuleSettings.QS_TRANSLATION_ORIGIN, ModuleSettings.SECONDARY_EXPANSION_FIX, ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN}));
         for (String[] folder : ModuleSettings.MEDIA_FOLDERS) columns.add(folder[1]);
@@ -73,11 +73,15 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION);
         columns.add(ModuleSettings.FOLDER_CLOSE_TARGET);
         columns.add(ModuleSettings.COLOROS_CONTOUR);
+        columns.add(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
+        columns.add(ModuleSettings.NOTIFICATION_CONTOUR);
+        columns.add(ModuleSettings.CONTROL_CENTER_STYLE);
+        columns.add(ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR);
         MatrixCursor cursor = new MatrixCursor(columns.toArray(new String[0]));
         java.util.List<Object> values = new java.util.ArrayList<>(java.util.Arrays.asList(new Object[]{prefs.getBoolean(ModuleSettings.SCALE, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.LIGHT, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.DARKEN, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.WHITE_ACTIVE, false) ? 1 : 0,
+                ModuleSettings.controlCenterStyle(prefs) != 0 ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.NETWORK_DARK_SPINNER, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.HEADS_UP_WIDTH, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.NOTIFICATION_CORNERS, false) ? 1 : 0,
@@ -87,6 +91,7 @@ public final class SettingsProvider extends ContentProvider {
                 prefs.getBoolean(ModuleSettings.HIDE_GBOARD, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.RECENTS_SWIPE_UP_KILL, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.RECENTS_HIDE_NOT_RUNNING, false) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STACKED_RECENTS, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.FOLDER_PAGING, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.FOLDER_CENTER, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.FOLDER_RESTORE_COLOR, false) ? 1 : 0,
@@ -163,6 +168,10 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.FOLDER_CLOSE_TARGET, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.COLOROS_CONTOUR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.MBACK_SYSTEM_TIMEOUT, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CONTOUR, false) ? 1 : 0);
+        values.add(ModuleSettings.controlCenterStyle(prefs));
+        values.add(prefs.getInt(ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR, ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR_DEFAULT));
         cursor.addRow(values);
         return cursor;
     }

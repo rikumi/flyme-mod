@@ -5,6 +5,8 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 
 public final class ModuleSettings {
+    public static final String MBACK_SYSTEM_TIMEOUT = "mback_system_long_press_timeout";
+    public static final String NOTIFICATION_CONTOUR = "coloros_notification_contour";
     public static final String QS_TRANSLATION_ORIGIN = "control_center_translation_origin_fix";
     public static final String SECONDARY_EXPANSION_FIX = "combined_secondary_expansion_fix";
     public static final String COMBINED_EMPTY_SHADE_KEEP_OPEN = "combined_empty_shade_keep_open";
@@ -55,6 +57,13 @@ public final class ModuleSettings {
     public static final int LIGHT_OPACITY_MAX = 30;
     public static final String NETWORK_DARK_SPINNER = "network_tile_dark_spinner_fix";
     public static final String DARKEN = "dark_mode_background_darken";
+    public static final String CONTROL_CENTER_STYLE = "coloros_control_center_style";
+    public static final String CONTROL_CENTER_ACTIVE_COLOR = "coloros_control_center_active_color";
+    public static final int CONTROL_CENTER_ACTIVE_COLOR_DEFAULT = 0x80E6F2FF;
+    public static int controlCenterStyle(SharedPreferences preferences) {
+        return Math.max(0, Math.min(2, preferences.getInt(CONTROL_CENTER_STYLE,
+                preferences.getBoolean(WHITE_ACTIVE, false) ? 1 : 0)));
+    }
     public static final String WHITE_ACTIVE = "white_active_tiles";
     public static final String WHITE_ACTIVE_OPACITY = "white_active_opacity";
     public static final String HEADS_UP_WIDTH = "wider_heads_up_notifications";
@@ -71,6 +80,7 @@ public final class ModuleSettings {
     public static final String HIDDEN_LAUNCHER_APPS = "hidden_launcher_apps";
     public static final String HIDDEN_LAUNCHER_APPS_ENABLED = "hidden_launcher_apps_enabled";
     public static final String RECENTS_SWIPE_UP_KILL = "recents_swipe_up_kill_enabled";
+    public static final String STACKED_RECENTS = "stacked_recents_enabled";
     public static final String RECENTS_HIDE_NOT_RUNNING = "recents_hide_not_running_enabled";
     public static final String FOLDER_PAGING = "folder_horizontal_paging";
     public static final String FOLDER_RESTORE_COLOR = "folder_restore_background_color";
@@ -127,6 +137,10 @@ public final class ModuleSettings {
     public static SharedPreferences preferences(Context context) {
         SharedPreferences preferences = context.createDeviceProtectedStorageContext()
                 .getSharedPreferences(FILE, Context.MODE_PRIVATE);
+        if (!preferences.contains(CONTROL_CENTER_STYLE)) {
+            preferences.edit().putInt(CONTROL_CENTER_STYLE,
+                    preferences.getBoolean(WHITE_ACTIVE, false) ? 1 : 0).commit();
+        }
         if (!preferences.contains(SPLIT_NETWORK_CARD)) {
             int oldStyle = preferences.getInt(NETWORK_SPLIT_STYLE, 0);
             preferences.edit().putBoolean(SPLIT_NETWORK_CARD, oldStyle != 0).commit();

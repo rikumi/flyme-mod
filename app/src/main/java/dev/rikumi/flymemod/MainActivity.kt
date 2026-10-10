@@ -301,6 +301,8 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 if (category.id == "navigation" && groupTitle == "多任务切换") {
                     item {
                         FluixCard {
+                            ApplicationPreference(ModuleSettings.STACKED_RECENTS, "ColorOS 堆叠多任务")
+                            FluixItemDivider()
                             ApplicationPreference(ModuleSettings.RECENTS_SWIPE_UP_KILL, "多任务上划彻底结束进程")
                             FluixItemDivider()
                             ApplicationPreference(ModuleSettings.RECENTS_HIDE_NOT_RUNNING, "多任务隐藏未在运行的应用")

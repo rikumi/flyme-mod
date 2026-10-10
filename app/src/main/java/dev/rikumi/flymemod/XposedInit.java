@@ -119,6 +119,7 @@ public final class XposedInit extends XposedModule {
     private boolean wallpaperStartupReadLogged;
     private volatile Set<String> hiddenLauncherPackages = Collections.emptySet();
     private Set<String> appliedLauncherHiddenPackages = Collections.emptySet();
+    private volatile boolean stackedRecentsEnabled;
     private volatile boolean folderPagingEnabled;
     private volatile boolean folderCenterEnabled;
     private volatile boolean folderCloseTargetEnabled;
@@ -216,6 +217,14 @@ public final class XposedInit extends XposedModule {
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
             } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve folder app-close animation target", error);
+            }
+            try {
+                new StackedRecentsHooks(loader, this::loadSettings, () -> stackedRecentsEnabled,
+                        (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error)).install(
+                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                        loader, this::deoptimize);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme stacked recent-task classes", error);
             }
             try {
                 new RecentsHooks(
@@ -1578,6 +1587,8 @@ public final class XposedInit extends XposedModule {
                 whiteActiveOpacity = opacityColumn < 0 ? 90 : Math.max(50, Math.min(100, cursor.getInt(opacityColumn)));
                 int sliderCornersColumn = cursor.getColumnIndex(ModuleSettings.SLIDER_ACTIVE_CORNERS);
                 sliderActiveCornersEnabled = sliderCornersColumn >= 0 && cursor.getInt(sliderCornersColumn) != 0;
+                int stackedRecentsColumn = cursor.getColumnIndex(ModuleSettings.STACKED_RECENTS);
+                stackedRecentsEnabled = stackedRecentsColumn >= 0 && cursor.getInt(stackedRecentsColumn) != 0;
                 int headsUpWidthColumn = cursor.getColumnIndex(ModuleSettings.HEADS_UP_WIDTH);
                 headsUpWidthEnabled = headsUpWidthColumn >= 0 && cursor.getInt(headsUpWidthColumn) != 0;
                 int cornersColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CORNERS);
