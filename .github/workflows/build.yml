@@ -83,7 +83,7 @@ jobs:
           print(f'Next version: {name} ({code})')
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug
+        run: ./gradlew :app:assembleDebug :installer:assembleDebug
 
       - name: Commit version bump and create tag
         env:
@@ -102,7 +102,13 @@ jobs:
       - name: Generate release changelog
         env:
           PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
+          NOTES="docs/releases/$VERSION.md"
+          if [ -f "$NOTES" ]; then
+            cp "$NOTES" release-notes.md
+            exit 0
+          fi
           RANGE=HEAD
           if [ -n "$PREVIOUS_TAG" ]; then
             RANGE="${PREVIOUS_TAG}..HEAD"
@@ -114,7 +120,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: flyme-mod-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            installer/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
       - name: Create GitHub Release
@@ -123,7 +131,9 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
           body_path: release-notes.md
-          files: app/build/outputs/apk/debug/*.apk
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            installer/build/outputs/apk/debug/*.apk
           fail_on_unmatched_files: true
 
       - name: Sync README to Xposed-Modules-Repo
@@ -159,5 +169,7 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
           body_path: release-notes.md
-          files: app/build/outputs/apk/debug/*.apk
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            installer/build/outputs/apk/debug/*.apk
           fail_on_unmatched_files: true
