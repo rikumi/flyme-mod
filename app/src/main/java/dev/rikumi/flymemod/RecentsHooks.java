@@ -5,8 +5,13 @@ import android.database.Cursor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Iterator;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import io.github.libxposed.api.XposedInterface;
 
@@ -21,6 +26,7 @@ final class RecentsHooks {
     private final Installer installer;
     private final Supplier<Context> context;
     private final BiConsumer<String, Throwable> log;
+    private final Map<Object, Boolean> filteredLists = new WeakHashMap<>();
 
     RecentsHooks(Installer installer, Supplier<Context> context, BiConsumer<String, Throwable> log) {
         this.installer = installer;
@@ -28,16 +34,51 @@ final class RecentsHooks {
         this.log = log;
     }
 
-    void install() throws ReflectiveOperationException {
+    void install(ClassLoader loader, Consumer<Method> deoptimize) throws ReflectiveOperationException {
+        Class<?> recentTasksList = loader.loadClass("com.android.quickstep.RecentTasksList");
+        Method invalidate = recentTasksList.getDeclaredMethod("invalidateLoadedTasks");
+        invalidate.setAccessible(true);
+        installer.hook(recentTasksList.getName(), "isTaskListValid", chain -> {
+            boolean filter = enabled(ModuleSettings.RECENTS_HIDE_NOT_RUNNING);
+            synchronized (filteredLists) {
+                if (filter || Boolean.TRUE.equals(filteredLists.get(chain.getThisObject()))) return false;
+            }
+            return chain.proceed();
+        }, int.class);
+        // Native UI/background caches outlive an overview session and preference
+        // changes. Refresh through the native loader, including when switched off.
+        installer.hook(recentTasksList.getName(), "getTasks", chain -> {
+            boolean filter = enabled(ModuleSettings.RECENTS_HIDE_NOT_RUNNING);
+            Object owner = chain.getThisObject();
+            boolean wasFiltered;
+            synchronized (filteredLists) {
+                wasFiltered = Boolean.TRUE.equals(filteredLists.put(owner, filter));
+            }
+            if (filter || wasFiltered) invalidate.invoke(owner);
+            return chain.proceed();
+        }, boolean.class, Consumer.class, Predicate.class,
+                loader.loadClass("com.meizu.flyme.launcher.quickstep.util.TaskLoadState"));
+        // getRecentTasks is small enough to be inlined in the background loader.
+        for (Method method : recentTasksList.getDeclaredMethods()) {
+            if (method.getName().equals("loadTasksInBackground")
+                    || method.getName().equals("getTasks")
+                    || method.getName().equals("lambda$getTasks$7")) deoptimize.accept(method);
+        }
+        deoptimize.accept(loader.loadClass("com.android.quickstep.RecentsModel")
+                .getDeclaredMethod("isTaskListValid", int.class));
+        deoptimize.accept(loader.loadClass("com.android.quickstep.views.RecentsView")
+                .getDeclaredMethod("reloadIfNeeded"));
         // Verified in the Flyme 12.6.0.0A MEIZU 21 Pro launcher reference APK.
         installer.hook(SYSTEM_UI_PROXY, "getRecentTasks", chain -> {
             Object result = chain.proceed();
             if (!(result instanceof List<?> tasks) || !enabled(ModuleSettings.RECENTS_HIDE_NOT_RUNNING)) return result;
             try {
-                Iterator<?> iterator = tasks.iterator();
+                ArrayList<?> filtered = new ArrayList<>(tasks);
+                Iterator<?> iterator = filtered.iterator();
                 while (iterator.hasNext()) {
                     if (!containsRunningTask(iterator.next())) iterator.remove();
                 }
+                return filtered;
             } catch (ReflectiveOperationException | RuntimeException e) {
                 log.accept("Cannot filter non-running recent tasks", e);
             }

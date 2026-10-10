@@ -236,7 +236,7 @@ public final class XposedInit extends XposedModule {
                 new RecentsHooks(
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                         () -> launcherContext,
-                        (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install();
+                        (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(loader, this::deoptimize);
             } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme recent-task classes", e);
             }
