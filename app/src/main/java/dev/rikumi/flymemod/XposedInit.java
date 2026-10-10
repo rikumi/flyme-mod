@@ -988,6 +988,32 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve active tile state", e);
             return;
         }
+        try {
+            String helperName = "com.meizu.common.animator.MzPressAnimationHelper";
+            Class<?> helper = loader.loadClass(helperName);
+            Class<?> spring = loader.loadClass("androidx.dynamicanimation.animation.SpringAnimation");
+            java.lang.reflect.Field hardware = helper.getField("mUseHardwareLayer");
+            install(loader, helperName, "useHardwareLayer", chain -> {
+                View target = (View) chain.getArg(0);
+                return isColorOsCircleIcon(target) ? false : chain.proceed();
+            }, View.class);
+            // Helpers already created before a style change retain their hardware flag.
+            // Suppress only the per-press layer promotion, preserving the native spring.
+            install(loader, helperName, "doScale", chain -> {
+                View target = (View) chain.getArg(0);
+                if (!isColorOsCircleIcon(target)) return chain.proceed();
+                Object owner = chain.getThisObject();
+                boolean previous = hardware.getBoolean(owner);
+                hardware.setBoolean(owner, false);
+                try { return chain.proceed(); }
+                finally { hardware.setBoolean(owner, previous); }
+            }, View.class, android.view.MotionEvent.class, spring);
+            deoptimize(helper.getDeclaredMethod("addTargetView", View.class, boolean.class));
+            deoptimize(helper.getDeclaredMethod("handleCustomTouch", View.class, android.view.MotionEvent.class));
+            deoptimize(loader.loadClass(helperName + "$1").getDeclaredMethod("onTouch", View.class, android.view.MotionEvent.class));
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve circular icon press layers", error);
+        }
         install(loader, "com.android.systemui.qs.tileimpl.QSIconViewImpl", "setIcon", chain -> {
             Object result = chain.proceed();
             ImageView icon = (ImageView) chain.getArg(0);
@@ -1088,6 +1114,12 @@ public final class XposedInit extends XposedModule {
         } catch (ClassNotFoundException e) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve active icon classes", e);
         }
+    }
+
+    private boolean isColorOsCircleIcon(View view) throws ReflectiveOperationException {
+        if (!view.getClass().getName().equals("com.android.systemui.qs.tileimpl.QSIconViewImpl")) return false;
+        loadSettings(view.getContext());
+        return whiteActiveEnabled && view.getClass().getField("mAddCircleIconBg").getBoolean(view);
     }
 
     private int activeTileIconColor(View icon, String spec) {
