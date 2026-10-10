@@ -67,6 +67,8 @@ public final class XposedInit extends XposedModule {
     private final ThreadLocal<Object> blurDimOwner = new ThreadLocal<>();
     private boolean surfaceDarkBackground;
     private boolean whiteActiveEnabled;
+    private int controlCenterStyle;
+    private int customActiveColor = ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR_DEFAULT;
     private int whiteActiveOpacity = 90;
     private final Set<View> whiteActiveTileViews = Collections.newSetFromMap(new WeakHashMap<>());
     private final Set<ImageView> whiteActiveTintedIcons = Collections.newSetFromMap(new WeakHashMap<>());
@@ -573,7 +575,7 @@ public final class XposedInit extends XposedModule {
             if (whiteActiveEnabled && !hasCircularCardActivation((View) chain.getThisObject())
                     && (Integer) chain.getArg(0) == 2 && !policyDisabled) {
                 whiteActiveTileViews.add((View) chain.getThisObject());
-                return activeBackgroundColor();
+                return activeTileBackgroundColor();
             }
             return lightEnabled ? lightBackgroundColor() : chain.proceed();
         };
@@ -831,12 +833,22 @@ public final class XposedInit extends XposedModule {
             if (background != null) background.setColor(lightBackgroundColor());
     }
 
+    private int activeTileBackgroundColor() {
+        return controlCenterStyle == 2 ? customActiveColor : activeBackgroundColor();
+    }
+
+    private int activeTileForegroundColor() {
+        return controlCenterStyle == 2 ? Color.WHITE : ACTIVE_FOREGROUND;
+    }
+
     private int activeBackgroundColor() {
         return Color.argb(Math.round(whiteActiveOpacity * 255f / 100f), 255, 255, 255);
     }
 
     private void refreshWhiteActiveOpacity() {
-        for (View tile : new ArrayList<>(whiteActiveTileViews)) {
+        java.util.Set<View> tiles = new java.util.HashSet<>(lightBackgroundTiles);
+        tiles.addAll(whiteActiveTileViews);
+        for (View tile : new ArrayList<>(tiles)) {
             if (tile == null) continue;
             try { tile.getClass().getMethod("updateResources").invoke(tile); }
             catch (ReflectiveOperationException | RuntimeException error) {
@@ -848,13 +860,14 @@ public final class XposedInit extends XposedModule {
             try {
                 Object state = icon.getClass().getField("mIconState").get(icon);
                 if (state != null && state.getClass().getField("state").getInt(state) == 2) {
-                    icon.getClass().getMethod("setCircleIconBg", int.class).invoke(icon, activeBackgroundColor());
+                    icon.getClass().getMethod("setCircleIconBg", int.class).invoke(icon, icon.getClass().getMethod("getCircleIconBgColor", String.class, int.class)
+                                    .invoke(icon, state.getClass().getField("spec").get(state), 2));
                 }
             } catch (ReflectiveOperationException | RuntimeException error) {
                 log(Log.ERROR, "FlymeMod", "Cannot refresh active circle opacity", error);
             }
         }
-        for (GradientDrawable progress : new ArrayList<>(whiteActiveProgress)) {
+        if (whiteActiveEnabled) for (GradientDrawable progress : new ArrayList<>(whiteActiveProgress)) {
             if (progress != null) progress.setColor(activeBackgroundColor());
         }
     }
@@ -958,17 +971,17 @@ public final class XposedInit extends XposedModule {
         }, ImageView.class, tileStateClass, boolean.class);
         install(loader, "com.android.systemui.qs.tileimpl.QSIconViewImpl", "getCircleIconBgColor", chain -> {
             loadSettings(((View) chain.getThisObject()).getContext());
+            whiteActiveCircleViews.add((View) chain.getThisObject());
             if (whiteActiveEnabled && (Integer) chain.getArg(1) == 2) {
-                whiteActiveCircleViews.add((View) chain.getThisObject());
-                return activeBackgroundColor();
+                return activeTileBackgroundColor();
             }
             return chain.proceed();
         }, String.class, int.class);
         install(loader, "com.android.systemui.qs.tileimpl.QSIconViewImpl", "getIconColorForState", chain -> {
             View icon = (View) chain.getThisObject();
             loadSettings(icon.getContext());
-            if (!whiteActiveEnabled || (Integer) chain.getArg(0) != 2) return chain.proceed();
             whiteActiveCircleViews.add(icon);
+            if (!whiteActiveEnabled || (Integer) chain.getArg(0) != 2) return chain.proceed();
             Object state = icon.getClass().getField("mIconState").get(icon);
             String spec = state == null ? null : (String) state.getClass().getField("spec").get(state);
             return activeTileIconColor(icon, spec);
@@ -1051,6 +1064,8 @@ public final class XposedInit extends XposedModule {
     }
 
     private int activeTileIconColor(String spec) {
+        if (controlCenterStyle == 2 && !("brightness".equals(spec) || "volume".equals(spec) || "sound".equals(spec)))
+            return Color.WHITE;
         if (spec == null) return ACTIVE_BLUE_COLOR;
         String normalized = spec.toLowerCase(java.util.Locale.ROOT);
         if (normalized.equals("mobile") || normalized.equals("mobile_data") || normalized.equals("cellular")) {
@@ -1198,7 +1213,7 @@ public final class XposedInit extends XposedModule {
             View view = (View) chain.getThisObject();
             loadSettings(view.getContext());
             if (whiteActiveEnabled && !hasCircularCardActivation(view) && (Integer) chain.getArg(0) == 2
-                    && !(chain.getArgs().size() > 1 && Boolean.TRUE.equals(chain.getArg(1)))) return ACTIVE_FOREGROUND;
+                    && !(chain.getArgs().size() > 1 && Boolean.TRUE.equals(chain.getArg(1)))) return activeTileForegroundColor();
             return shouldDarken(view.getContext()) && isControlCenterView(view)
                     ? Color.WHITE : chain.proceed();
         };
@@ -1214,7 +1229,7 @@ public final class XposedInit extends XposedModule {
                 View view = (View) chain.getThisObject();
                 loadSettings(view.getContext());
                 int tileState = chain.getArg(0).getClass().getField("state").getInt(chain.getArg(0));
-                if (whiteActiveEnabled && tileState == 2) return ACTIVE_FOREGROUND;
+                if (whiteActiveEnabled && tileState == 2) return activeTileForegroundColor();
                 return shouldDarken(view.getContext()) && isControlCenterView(view) ? Color.WHITE : chain.proceed();
             }, state);
         } catch (ClassNotFoundException e) {
@@ -1544,6 +1559,8 @@ public final class XposedInit extends XposedModule {
                 @Override public void onChange(boolean selfChange) {
                     boolean previousWhiteActive = whiteActiveEnabled;
                     int previousOpacity = whiteActiveOpacity;
+                    int previousStyle = controlCenterStyle;
+                    int previousActiveColor = customActiveColor;
                     int previousLightOpacity = lightBackgroundOpacity;
                     synchronized (XposedInit.this) { settingsLoaded = false; }
                     loadSettings(appContext);
@@ -1556,8 +1573,11 @@ public final class XposedInit extends XposedModule {
                     if (activeFoldIdleMediaHooks != null) activeFoldIdleMediaHooks.refresh();
                     if (activeCircleTileHooks != null) activeCircleTileHooks.refresh();
                     if (activeColorOsMaterialHooks != null) activeColorOsMaterialHooks.refresh();
-                    if (previousWhiteActive != whiteActiveEnabled) refreshActiveIconTheme();
-                    if (whiteActiveEnabled && previousOpacity != whiteActiveOpacity) refreshWhiteActiveOpacity();
+                    boolean activeThemeChanged = previousWhiteActive != whiteActiveEnabled
+                            || previousStyle != controlCenterStyle || previousActiveColor != customActiveColor;
+                    if (activeThemeChanged) refreshActiveIconTheme();
+                    if (activeThemeChanged || (whiteActiveEnabled && previousOpacity != whiteActiveOpacity))
+                        refreshWhiteActiveOpacity();
                     if (lightEnabled && previousLightOpacity != lightBackgroundOpacity) refreshLightBackgroundOpacity();
                 }
             };
@@ -1582,7 +1602,13 @@ public final class XposedInit extends XposedModule {
                 int darkenColumn = cursor.getColumnIndex(ModuleSettings.DARKEN);
                 darkenEnabled = darkenColumn >= 0 && cursor.getInt(darkenColumn) != 0;
                 int activeColumn = cursor.getColumnIndex(ModuleSettings.WHITE_ACTIVE);
-                whiteActiveEnabled = activeColumn >= 0 && cursor.getInt(activeColumn) != 0;
+                int styleColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_STYLE);
+                controlCenterStyle = styleColumn >= 0 ? Math.max(0, Math.min(2, cursor.getInt(styleColumn)))
+                        : activeColumn >= 0 && cursor.getInt(activeColumn) != 0 ? 1 : 0;
+                whiteActiveEnabled = controlCenterStyle != 0;
+                int activeColorColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR);
+                customActiveColor = activeColorColumn >= 0 ? cursor.getInt(activeColorColumn)
+                        : ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR_DEFAULT;
                 int opacityColumn = cursor.getColumnIndex(ModuleSettings.WHITE_ACTIVE_OPACITY);
                 whiteActiveOpacity = opacityColumn < 0 ? 90 : Math.max(50, Math.min(100, cursor.getInt(opacityColumn)));
                 int sliderCornersColumn = cursor.getColumnIndex(ModuleSettings.SLIDER_ACTIVE_CORNERS);

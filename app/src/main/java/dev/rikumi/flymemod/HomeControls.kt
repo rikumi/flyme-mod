@@ -80,6 +80,7 @@ internal fun HomeModuleControls() {
                         val success = withContext(Dispatchers.IO) {
                             val saved = preferences.edit().also { editor ->
                                 MODULE_SWITCHES.forEach { editor.putBoolean(it, enabled) }
+                                editor.putInt(ModuleSettings.CONTROL_CENTER_STYLE, if (enabled) 1 else 0)
                                 editor.putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, enabled)
                                 editor.putInt(ModuleSettings.VOLUME_FIRST_FOUR, 0)
                                 editor.putInt(ModuleSettings.LOCK_CLOCK_FONT, if (enabled) 2 else 0)

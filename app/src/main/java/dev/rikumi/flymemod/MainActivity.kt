@@ -477,7 +477,7 @@ private fun ControlCenterPreferences(group: String) {
                 FluixItemDivider()
                 LightBackgroundOpacityPreference()
                 FluixItemDivider()
-                ApplicationPreference(ModuleSettings.WHITE_ACTIVE, "控制中心 ColorOS 全新焕彩配色")
+                ControlCenterStylePreference()
                 FluixItemDivider()
                 ApplicationPreference(ModuleSettings.SLIDER_ACTIVE_CORNERS, "音量/亮度条激活区域圆角")
             }
