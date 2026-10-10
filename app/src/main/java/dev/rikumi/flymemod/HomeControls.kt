@@ -5,7 +5,6 @@ import android.os.Build
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,18 +46,17 @@ internal fun HomeModuleControls() {
     val preferences = remember(context) { ModuleSettings.preferences(context) }
     val scope = rememberCoroutineScope()
     var version by remember { mutableStateOf(0) }
-    var systemEnabled by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     DisposableEffect(preferences) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> version++ }
         preferences.registerOnSharedPreferenceChangeListener(listener)
         onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
-    LaunchedEffect(context) {
-        systemEnabled = withContext(Dispatchers.IO) { SystemSetting.entries.any { it.read(context).first } }
-    }
-    val checked = remember(version, systemEnabled) {
-        systemEnabled || ModuleSettings.networkSplitStyle(preferences) != 0 ||
+    // System animation/long-press values may be customized before installing
+    // the module. They must not make a fresh module appear already enabled.
+    val checked = remember(version) {
+        ModuleSettings.controlCenterStyle(preferences) != 0 ||
+        ModuleSettings.networkSplitStyle(preferences) != 0 ||
             preferences.getInt(ModuleSettings.VOLUME_FIRST_FOUR, 0) != 0 ||
             preferences.getInt(ModuleSettings.LOCK_CLOCK_FONT, 0) != 0 ||
             preferences.getInt(ModuleSettings.AOD_CLOCK_FONT, 0) != 0 ||
@@ -95,7 +93,6 @@ internal fun HomeModuleControls() {
                             saved && rootResults.all { it }
                         }
                         context.contentResolver.notifyChange(ModuleSettings.URI, null)
-                        systemEnabled = withContext(Dispatchers.IO) { SystemSetting.entries.any { it.read(context).first } }
                         version++
                         if (!success) Toast.makeText(context, "部分设置修改失败，请检查 root 授权", Toast.LENGTH_LONG).show()
                     } finally {
