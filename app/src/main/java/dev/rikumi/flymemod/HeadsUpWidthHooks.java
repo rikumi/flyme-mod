@@ -4,6 +4,9 @@ import android.content.Context;
 import android.view.View;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
@@ -17,6 +20,7 @@ final class HeadsUpWidthHooks {
     private final Class<?> stack;
     private final Field expanded;
     private final Method pinned, animatingAway;
+    private final Set<View> widened = Collections.newSetFromMap(new WeakHashMap<>());
 
     HeadsUpWidthHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled)
             throws ReflectiveOperationException {
@@ -36,14 +40,33 @@ final class HeadsUpWidthHooks {
             settings.accept(row.getContext());
             if (!enabled.getAsBoolean() || !(row.getParent() instanceof View parent)
                     || !stack.isInstance(parent) || expanded.getBoolean(parent)
-                    || !((Boolean) pinned.invoke(row) || (Boolean) animatingAway.invoke(row)))
+                    || !((Boolean) pinned.invoke(row) || (Boolean) animatingAway.invoke(row))) {
+                widened.remove(row);
                 return chain.proceed();
+            }
             int available = parent.getMeasuredWidth();
             if (available <= 0) return chain.proceed();
+            widened.add(row);
             return chain.proceed(new Object[]{View.MeasureSpec.makeMeasureSpec(
                     contentWidth(available, row.getResources().getDisplayMetrics().density),
                     View.MeasureSpec.EXACTLY), chain.getArg(1)});
         }, int.class, int.class);
+        installer.hook(STACK, "setIsExpanded", chain -> {
+            View parent = (View) chain.getThisObject();
+            boolean changed = expanded.getBoolean(parent) != (Boolean) chain.getArg(0);
+            Object result = chain.proceed();
+            if (changed) {
+                // Flyme requests a notification state update here, but no measurement.
+                // A pinned row can otherwise retain its floating width inside the shade.
+                for (View row : widened) {
+                    if (row.getParent() == parent) {
+                        parent.requestLayout();
+                        break;
+                    }
+                }
+            }
+            return result;
+        }, boolean.class);
         installer.hook("android.widget.LinearLayout", "onMeasure", chain -> {
             View view = (View) chain.getThisObject();
             if (!LANDSCAPE.equals(view.getClass().getName())) return chain.proceed();
