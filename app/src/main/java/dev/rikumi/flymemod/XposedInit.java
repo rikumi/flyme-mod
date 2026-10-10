@@ -721,18 +721,38 @@ public final class XposedInit extends XposedModule {
                 }
                 notificationContentInsets.put(content, new int[]{start, top, end, bottom});
             }
-            // Expanded measurement subtracts container padding from a fixed cap,
-            // unlike the contracted path which already compensates for it.
+            // measureChildWithMargins subtracts outer padding from both expanded and
+            // heads-up caps. Contracted measurement already adds it before measuring.
             java.lang.reflect.Field maxHeight = content.getClass().getField("mNotificationMaxHeight");
+            java.lang.reflect.Field headsHeight = content.getClass().getField("mHeadsUpHeight");
             int originalMaxHeight = maxHeight.getInt(content);
-            boolean compensate = notificationCornersEnabled
-                    && !content.getClass().getField("mIsHeadsUp").getBoolean(content)
-                    && content.getClass().getField("mExpandedChild").get(content) != null;
-            if (compensate) maxHeight.setInt(content, originalMaxHeight + notificationAddedVerticalPadding(content));
+            int originalHeadsHeight = headsHeight.getInt(content);
+            int extra = notificationCornersEnabled ? notificationAddedVerticalPadding(content) : 0;
+            android.view.ViewGroup.LayoutParams[] fixedParams = new android.view.ViewGroup.LayoutParams[2];
+            int[] fixedHeights = new int[2];
+            if (extra > 0) {
+                String[] children = {"mExpandedChild", "mHeadsUpChild"};
+                for (int index = 0; index < children.length; index++) {
+                    View child = (View) content.getClass().getField(children[index]).get(content);
+                    if (child != null && child.getLayoutParams().height >= 0) {
+                        fixedParams[index] = child.getLayoutParams();
+                        fixedHeights[index] = fixedParams[index].height;
+                        // Fixed remote-view heights are another cap before padding subtraction.
+                        fixedParams[index].height += extra;
+                    }
+                }
+                maxHeight.setInt(content, originalMaxHeight + extra);
+                headsHeight.setInt(content, originalHeadsHeight + extra);
+            }
             try {
                 return chain.proceed();
             } finally {
-                if (compensate) maxHeight.setInt(content, originalMaxHeight);
+                if (extra > 0) {
+                    maxHeight.setInt(content, originalMaxHeight);
+                    headsHeight.setInt(content, originalHeadsHeight);
+                    for (int index = 0; index < fixedParams.length; index++)
+                        if (fixedParams[index] != null) fixedParams[index].height = fixedHeights[index];
+                }
             }
         }, int.class, int.class);
         install(loader, row + "wrapper.NotificationTemplateViewWrapper", "updateActionOffset", chain -> {
