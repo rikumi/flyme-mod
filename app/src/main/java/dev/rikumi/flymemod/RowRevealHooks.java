@@ -103,7 +103,7 @@ final class RowRevealHooks {
         installer.hook(SHADE, "instantCollapsePanel", chain -> {
             Object owner = chain.getThisObject();
             if (active(owner, false)) {
-                retire(owner);
+                closeImmediately(owner);
                 for (BiConsumer<Object, Float> listener : progressListeners) listener.accept(owner, 0f);
             }
             return chain.proceed();
@@ -347,6 +347,11 @@ final class RowRevealHooks {
             if (enabled.getAsBoolean()) {
                 Reveal reveal = visual(chain.getThisObject(), progress, true);
                 bindHeaders(chain.getThisObject(), reveal, true);
+                // The content timer can finish while tracking still retains a
+                // positive height/radius. Publish its actual pose so release
+                // callbacks cannot keep or recreate a dismissed dim surface.
+                for (BiConsumer<Object, Float> listener : progressListeners)
+                    listener.accept(chain.getThisObject(), reveal.progress);
                 progress = encodedProgress(reveal.progress);
             }
             else retire(chain.getThisObject());
@@ -374,6 +379,19 @@ final class RowRevealHooks {
         ValueAnimator animator = reveal.animator;
         reveal.animator = null;
         if (animator != null) animator.cancel();
+    }
+
+    private void closeImmediately(Object owner) {
+        // Keep an initialized zero pose, including its QS/header aliases. Removing
+        // the entry lets a delayed native alpha=1 callback initialize a new reveal.
+        Reveal reveal = reveals.computeIfAbsent(owner, ignored -> new Reveal());
+        ValueAnimator animator = reveal.animator;
+        reveal.animator = null;
+        reveal.initialized = true;
+        reveal.target = reveal.gesture = reveal.settling = reveal.hasApplied = false;
+        reveal.progress = reveal.nativeInput = reveal.closingHeaderAlpha = 0f;
+        if (animator != null) animator.cancel();
+        for (BiConsumer<Object, Boolean> listener : visibilityListeners) listener.accept(owner, false);
     }
     static float headerAlpha(float progress, boolean separate) {
         float alpha = revealCurve((progress - .20f) / .80f);
@@ -448,6 +466,12 @@ final class RowRevealHooks {
     boolean hasVisibleContent(Object owner) {
         Reveal reveal = reveals.get(owner);
         return enabled.getAsBoolean() && reveal != null && reveal.progress > 0f;
+    }
+
+    float backdropProgress(Object owner) {
+        Reveal reveal = reveals.get(owner);
+        return enabled.getAsBoolean() && reveal != null && reveal.initialized
+                ? reveal.progress : Float.NaN;
     }
 
     private void request(Object owner, Reveal reveal, boolean visible, boolean separate) {

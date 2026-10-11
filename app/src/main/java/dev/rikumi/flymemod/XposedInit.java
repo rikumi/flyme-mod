@@ -1334,11 +1334,29 @@ public final class XposedInit extends XposedModule {
                 Field surfaceField = controller.getClass().getField("mBackgroundSurface");
                 Object surface = surfaceField.get(controller);
                 float fraction = locked ? 0f : (Float) chain.getArg(0);
+                if (active && activeRowRevealHooks != null && combinedPullAnimationEnabled) {
+                    Object shade = controller.getClass().getField("mShadeInteractor").get(controller);
+                    Object mode = Class.forName("com.android.systemui.shade.domain.interactor.ShadeInteractor", false, loader)
+                            .getMethod("isExpandToQsEnabled").invoke(shade);
+                    boolean combined = Boolean.TRUE.equals(Class.forName("kotlinx.coroutines.flow.StateFlow", false, loader)
+                            .getMethod("getValue").invoke(mode));
+                    Object owner = combined ? controller
+                            : controller.getClass().getField("mCenterController").get(controller);
+                    fraction = ShadeDimFrame.effectiveFraction(fraction,
+                            activeRowRevealHooks.backdropProgress(owner));
+                }
                 int color = controller.getClass().getField("mDimColor").getInt(controller);
                 ShadeDimFrame frame = dimFrames.computeIfAbsent(controller, ignored -> new ShadeDimFrame());
                 Object result = null;
                 if (!active || !frame.matches(surface, fraction, color)) {
-                    result = locked ? chain.proceed(new Object[]{0f}) : chain.proceed();
+                    if (fraction <= 0f && (active || locked || surfaceDarkBackground)) {
+                        // Native removal uses applyTransactionOnDraw. The window can
+                        // stop drawing when ACTION_UP hides it, leaving a color layer
+                        // over the app. Removal must not depend on another shade frame.
+                        ShadeDimFrame.removeImmediately(controller, surfaceField);
+                    } else {
+                        result = chain.proceed(new Object[]{fraction});
+                    }
                     surface = surfaceField.get(controller);
                     frame.record(active ? surface : null, fraction, color);
                 }

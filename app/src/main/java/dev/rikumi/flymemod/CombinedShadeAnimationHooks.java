@@ -101,7 +101,7 @@ final class CombinedShadeAnimationHooks {
     void setVisibleContent(Predicate<Object> visible) { visibleContent = visible; }
 
     void onRevealProgress(Object panel, float progress) {
-        if (progress > 0f) return;
+        if (progress > 0f || !panel.getClass().getName().equals(PANEL)) return;
         try {
             Gesture gesture = gestures.get(qs.get(panel));
             if (gesture != null && gesture.settling && !gesture.expanding) resetIfCollapsed(panel);
@@ -494,6 +494,10 @@ final class CombinedShadeAnimationHooks {
         settings.accept(((View) view.get(panel)).getContext());
         if (enabled.getAsBoolean() && fraction.getFloat(panel) <= 0f && isCombined(panel)
                 && !filter.getBoolean(panel)) {
+            // A held upward drag can finish both the height and content fade.
+            // Keep its owner until ACTION_UP: dropping it here makes fling take
+            // the instant-collapse fallback instead of the gesture's release path.
+            if ((Boolean) tracking.invoke(panel)) return;
             // Native height can finish before the row fade. Resetting translation
             // now moves still-visible headers and controls back to their rest pose.
             if (visibleContent.test(panel)) return;

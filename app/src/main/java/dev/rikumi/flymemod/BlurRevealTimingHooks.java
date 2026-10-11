@@ -25,6 +25,8 @@ final class BlurRevealTimingHooks {
     private final Method combined, value;
     private final Field shade;
     private final Method panelSetter, panelBarState;
+    private final Method centerSetter, centerVisible, keyguardShowing;
+    private final Field centerKeyguard;
     private WeakReference<Object> combinedOwner = new WeakReference<>(null);
 
     BlurRevealTimingHooks(ClassLoader loader, BooleanSupplier enabled, BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
@@ -36,6 +38,13 @@ final class BlurRevealTimingHooks {
         panelSetter = panel.getDeclaredMethod("setBlurRadius", float.class);
         panelSetter.setAccessible(true);
         panelBarState = panel.getMethod("getBarState");
+        Class<?> center = loader.loadClass("com.flyme.systemui.controlcenter.phone.CenterController");
+        centerSetter = center.getDeclaredMethod("setBlurRadius", float.class);
+        centerSetter.setAccessible(true);
+        centerVisible = center.getMethod("shouldPanelBeVisible");
+        centerKeyguard = center.getField("mKeyguardStateController");
+        keyguardShowing = loader.loadClass("com.android.systemui.statusbar.policy.KeyguardStateController")
+                .getMethod("isShowing");
         combined = loader.loadClass("com.android.systemui.shade.domain.interactor.ShadeInteractor")
                 .getMethod("isExpandToQsEnabled");
         value = loader.loadClass("kotlinx.coroutines.flow.StateFlow").getMethod("getValue");
@@ -77,7 +86,7 @@ final class BlurRevealTimingHooks {
                         && (!panel || Boolean.TRUE.equals(value.invoke(combined.invoke(shade.get(owner)))));
                 State state = states.computeIfAbsent(owner, ignored -> new State());
                 state.active = active;
-                if (panel && active && state.rowDriven) return chain.proceed();
+                if (active && state.rowDriven) return chain.proceed();
                 float content = Math.max(0f, Math.min(1f, (Float) chain.getArg(0)));
                 if (!active) cancelExit(state);
                 else if (!state.visibilityKnown) {
@@ -125,9 +134,9 @@ final class BlurRevealTimingHooks {
                 }
                 float maximum = ((Number) max.get(null)).floatValue();
                 if (maximum <= 0f) return chain.proceed();
-                if (panel && state.rowDriven) {
+                if (state.rowDriven) {
                     // Native springs keep their own state, but only row frames
-                    // publish the merged backdrop. No second easing/exit animator.
+                    // publish the backdrop. No second easing/exit animator.
                     if (!Boolean.TRUE.equals(writing.get())) {
                         radius.setFloat(owner, nativeRadius);
                         return null;
@@ -213,12 +222,24 @@ final class BlurRevealTimingHooks {
                     Object owner = chain.getThisObject();
                     State state = states.get(owner);
                     boolean owned = state != null && state.active;
+                    boolean rowOwned = owned && state.rowDriven;
                     if (state != null) reset(state);
                     Object result = chain.proceed();
+                    state = states.get(owner);
+                    owned |= state != null && state.active;
+                    rowOwned |= state != null && state.active && state.rowDriven;
                     if (state != null) reset(state);
                     // Both controllers publish to the same blur interactor. An idle
                     // notification panel must not clear the separate control center.
-                    if (owned) setter.invoke(owner, 0f);
+                    if (rowOwned) {
+                        // instantCollapsePanel aborts height animation, but does not
+                        // stop the native radius spring. Retain the zero row owner
+                        // so its remaining positive frames cannot recreate blur/dim.
+                        state.active = state.rowDriven = state.visibilityKnown = true;
+                        state.contentVisible = false;
+                        state.closing = true;
+                        writeBlur(owner, setter, state);
+                    } else if (owned) setter.invoke(owner, 0f);
                     return result;
                 });
             }
@@ -234,19 +255,23 @@ final class BlurRevealTimingHooks {
     }
 
     void onRevealProgress(Object owner, float progress) {
-        if (!panelSetter.getDeclaringClass().isInstance(owner)) return;
+        boolean panel = panelSetter.getDeclaringClass().isInstance(owner);
+        if (!panel && !centerSetter.getDeclaringClass().isInstance(owner)) return;
         try {
-            if (!enabled.getAsBoolean() || (Integer) panelBarState.invoke(owner) != 0
-                    || !Boolean.TRUE.equals(value.invoke(combined.invoke(shade.get(owner))))) return;
+            if (!enabled.getAsBoolean()) return;
+            if (panel ? (Integer) panelBarState.invoke(owner) != 0
+                    || !Boolean.TRUE.equals(value.invoke(combined.invoke(shade.get(owner))))
+                    : (Boolean) keyguardShowing.invoke(centerKeyguard.get(owner))
+                        && !(Boolean) centerVisible.invoke(owner)) return;
             State state = states.computeIfAbsent(owner, ignored -> new State());
             if (!state.rowDriven) cancelExit(state);
             state.rowDriven = true;
             state.active = true;
             state.content = Math.max(0f, Math.min(1f, progress));
-            combinedOwner = new WeakReference<>(owner);
-            writeBlur(owner, panelSetter, state);
+            if (panel) combinedOwner = new WeakReference<>(owner);
+            writeBlur(owner, panel ? panelSetter : centerSetter, state);
         } catch (ReflectiveOperationException error) {
-            log.accept("Cannot synchronize merged shade backdrop", error);
+            log.accept("Cannot synchronize shade backdrop", error);
         }
     }
 
