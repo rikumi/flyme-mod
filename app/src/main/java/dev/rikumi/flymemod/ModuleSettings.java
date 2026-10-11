@@ -82,6 +82,11 @@ public final class ModuleSettings {
     public static final String LIGHT_OPACITY = "light_tile_background_opacity";
     public static final int LIGHT_OPACITY_DEFAULT = 15;
     public static final int LIGHT_OPACITY_MAX = 30;
+    public static final String TILE_CORNERS = "control_center_tile_corners";
+    public static final String TILE_CORNER_PERCENT = "control_center_tile_corner_percent";
+    public static final int TILE_CORNER_PERCENT_DEFAULT = 30;
+    public static final int TILE_CORNER_PERCENT_MIN = 10;
+    public static final int TILE_CORNER_PERCENT_MAX = 50;
     public static final String TILE_BACKGROUND_COLOR = "tile_background_color";
     public static final String TILE_BACKGROUND_SATURATION = "tile_background_saturation";
     public static final int TILE_BACKGROUND_SATURATION_DEFAULT = 100;
@@ -99,6 +104,10 @@ public final class ModuleSettings {
     public static final String WHITE_ACTIVE = "white_active_tiles";
     public static final String WHITE_ACTIVE_OPACITY = "white_active_opacity";
     public static final String HEADS_UP_WIDTH = "wider_heads_up_notifications";
+    public static final String NOTIFICATION_LIGHT = "notification_light_background";
+    public static final String NOTIFICATION_LIGHT_OPACITY = "notification_light_background_opacity";
+    public static final String NOTIFICATION_CUSTOM_CORNERS = "notification_custom_corners";
+    public static final String NOTIFICATION_CORNER_PERCENT = "notification_corner_percent";
     public static final String NOTIFICATION_CORNERS = "larger_notification_corners";
     public static final String ORIGINAL_NOTIFICATION_ICONS = "original_third_party_notification_icons";
     public static final String NATIVE_NOTIFICATION_EXPANSION = "native_notification_pull_expansion";
@@ -228,6 +237,14 @@ public final class ModuleSettings {
                 editor.putInt(LOCK_CLOCK_SPACING, preferences.getInt(AOD_CLOCK_SPACING, 0));
             }
             editor.putInt(CLOCK_SPACING_FORMAT_VERSION, 3).commit();
+        }
+        if (preferences.contains(NOTIFICATION_CORNERS)) {
+            SharedPreferences.Editor editor = preferences.edit();
+            if (!preferences.contains(NOTIFICATION_CUSTOM_CORNERS))
+                editor.putBoolean(NOTIFICATION_CUSTOM_CORNERS, preferences.getBoolean(NOTIFICATION_CORNERS, false));
+            if (!preferences.contains(NOTIFICATION_CORNER_PERCENT))
+                editor.putInt(NOTIFICATION_CORNER_PERCENT, TILE_CORNER_PERCENT_DEFAULT);
+            editor.remove(NOTIFICATION_CORNERS).commit();
         }
         migrateStoreSettings(preferences);
         return preferences;

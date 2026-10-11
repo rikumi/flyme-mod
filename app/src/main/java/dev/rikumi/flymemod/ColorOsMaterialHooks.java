@@ -16,6 +16,7 @@ import java.util.function.*;
 
 /** ColorOS AGSL algorithms, with Flyme 16260625 view-local contour overlays. */
 final class ColorOsMaterialHooks {
+    private final TileCornerHooks corners;
     private final Consumer<Context> settings;
     private final BooleanSupplier contourEnabled, splitNetworkEnabled, notificationEnabled;
     private final Map<View, Contour> notificationContours = new WeakHashMap<>();
@@ -27,9 +28,9 @@ final class ColorOsMaterialHooks {
     private Context assets;
 
     ColorOsMaterialHooks(ClassLoader loader, Consumer<Context> settings,
-            BooleanSupplier contour, BooleanSupplier splitNetwork, BooleanSupplier notification, BiConsumer<String, Throwable> log)
+            BooleanSupplier contour, BooleanSupplier splitNetwork, BooleanSupplier notification, TileCornerHooks corners, BiConsumer<String, Throwable> log)
             throws ReflectiveOperationException {
-        this.loader = loader; this.settings = settings; contourEnabled = contour; splitNetworkEnabled = splitNetwork; notificationEnabled = notification; this.log = log;
+        this.corners = corners; this.loader = loader; this.settings = settings; contourEnabled = contour; splitNetworkEnabled = splitNetwork; notificationEnabled = notification; this.log = log;
 
     }
 
@@ -147,6 +148,7 @@ final class ColorOsMaterialHooks {
     private void track(View view) { track(view, 0); }
     private void track(View view, int networkRole) {
         settings.accept(view.getContext());
+        if (corners != null && !view.getClass().getName().endsWith(".MediaCarouseTransitionLayout")) corners.observe(view, networkRole);
         if (!hosts.containsKey(view)) {
             hosts.put(view, new Host());
             view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> apply(v));
@@ -228,7 +230,10 @@ final class ColorOsMaterialHooks {
         }
         return drawable;
     }
-    private static float radius(View view, Drawable drawable) {
+    private float radius(View view, Drawable drawable) {
+        if (corners != null && corners.isEnabled() && !view.getClass().getName().endsWith(".NotificationBackgroundView")
+                && !view.getClass().getName().endsWith(".MediaCarouseTransitionLayout"))
+            return corners.radius(view, view.getWidth(), view.getHeight());
         // Both slider cards use the root's native outline rather than the progress Drawable's rectangle.
         if (view.getClass().getName().equals("com.android.systemui.settings.brightness.BrightnessSliderView")) {
             int id = view.getResources().getIdentifier("qs_corner_radius", "dimen", "com.android.systemui");

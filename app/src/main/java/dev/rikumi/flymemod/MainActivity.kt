@@ -80,7 +80,7 @@ private val CATEGORY_GROUPS: List<List<Category>> = listOf(
     listOf(
         Category("desktop", "桌面", R.drawable.ic_flyme_home_apps, SettingsHomeColors.blueForeground, listOf("桌面图标设置", "壁纸设置", "桌面动画设置", "桌面文件夹设置")),
         Category("quick_settings", "控制中心", R.drawable.ic_flyme_home_wireless, SettingsHomeColors.cyanForeground, listOf("控制中心背景", "控制中心主题", "控制中心布局", "控制中心动画", "音量调节设置")),
-        Category("notification", "通知中心与状态栏", R.drawable.ic_flyme_home_notifications, SettingsHomeColors.cyanForeground, listOf("通知中心设置", "状态栏设置")),
+        Category("notification", "通知中心与状态栏", R.drawable.ic_flyme_home_notifications, SettingsHomeColors.cyanForeground, listOf("通知中心主题", "通知中心设置", "状态栏设置")),
         Category("lockscreen", "锁屏", R.drawable.ic_flyme_home_security, SettingsHomeColors.greenForeground, listOf("锁屏操作", "锁屏视觉")),
     ),
     listOf(
@@ -358,6 +358,9 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 if (category.id == "quick_settings" && groupTitle == "音量调节设置") {
                     item { VolumeStepsPreference() }
                 }
+                if (category.id == "notification" && groupTitle == "通知中心主题") {
+                    item { NotificationThemePreferences() }
+                }
                 if (category.id == "notification" && groupTitle == "通知中心设置") {
                     item { NotificationPreferences() }
                 }
@@ -584,17 +587,26 @@ private fun StatusBarPreferences() {
 }
 
 @Composable
+private fun NotificationThemePreferences() {
+    FluixCard {
+        LightBackgroundOpacityPreference(notification = true)
+        FluixItemDivider()
+        TileCornerPreference(notification = true)
+        FluixItemDivider()
+        ApplicationPreference(ModuleSettings.NOTIFICATION_CONTOUR, "ColorOS 通知轮廓光")
+    }
+}
+
+@Composable
 private fun NotificationPreferences() {
-    PreferenceCard(
-        listOf(
-            ModuleSettings.HEADS_UP_WIDTH to "增加浮动通知宽度",
-            ModuleSettings.NOTIFICATION_CONTOUR to "ColorOS 通知轮廓光",
-            ModuleSettings.NOTIFICATION_CORNERS to "增大通知圆角",
-            ModuleSettings.NATIVE_NOTIFICATION_EXPANSION to "恢复原生通知下滑展开",
-            ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS to "通知操作按钮改为黑白色",
-            ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS to "禁用 Google 通知建议操作",
-        ),
-    )
+        PreferenceCard(
+            listOf(
+                ModuleSettings.HEADS_UP_WIDTH to "增加浮动通知宽度",
+                ModuleSettings.NATIVE_NOTIFICATION_EXPANSION to "恢复原生通知下滑展开",
+                ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS to "通知操作按钮改为黑白色",
+                ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS to "禁用 Google 通知建议操作",
+            ),
+        )
 }
 
 @Composable
@@ -621,9 +633,13 @@ private fun ControlCenterPreferences(group: String) {
                 FluixItemDivider()
                 TileBackgroundColorPreference()
                 FluixItemDivider()
+                TileCornerPreference()
+                FluixItemDivider()
                 ControlCenterStylePreference()
                 FluixItemDivider()
                 ApplicationPreference(ModuleSettings.SLIDER_ACTIVE_CORNERS, "音量/亮度条激活区域圆角")
+                FluixItemDivider()
+                ApplicationPreference(ModuleSettings.CIRCLE_SMALL_TILES, "1×1 磁贴强制圆形")
             }
             FluixCard {
                 ClockFontPreference(ModuleSettings.CONTROL_CENTER_CLOCK_FONT, "控制中心时钟字体")
@@ -648,7 +664,6 @@ private fun ControlCenterPreferences(group: String) {
                 ModuleSettings.SPLIT_NETWORK_CARD to "网络卡片分离",
                 ModuleSettings.ANIMATED_MUTE_SLASH to "动画式斜划线静音图标",
                 ModuleSettings.OPTIMIZE_2X1_TEXT to "2×1 卡片文字布局优化",
-                ModuleSettings.CIRCLE_SMALL_TILES to "1×1 磁贴改为圆形",
             ),
         )
         "控制中心动画" -> PreferenceCard(
@@ -867,20 +882,22 @@ private fun ClockWeightPreference(key: String = ModuleSettings.CLOCK_FONT_WEIGHT
 }
 
 @Composable
-private fun LightBackgroundOpacityPreference() {
+private fun LightBackgroundOpacityPreference(notification: Boolean = false) {
+    val enabledKey = if (notification) ModuleSettings.NOTIFICATION_LIGHT else ModuleSettings.LIGHT
+    val amountKey = if (notification) ModuleSettings.NOTIFICATION_LIGHT_OPACITY else ModuleSettings.LIGHT_OPACITY
     val context = LocalContext.current
     val preferences = remember(context) { ModuleSettings.preferences(context) }
-    var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.LIGHT, false)) }
-    var opacity by remember { mutableStateOf(preferences.getInt(ModuleSettings.LIGHT_OPACITY,
+    var enabled by remember { mutableStateOf(preferences.getBoolean(enabledKey, false)) }
+    var opacity by remember { mutableStateOf(preferences.getInt(amountKey,
         ModuleSettings.LIGHT_OPACITY_DEFAULT).coerceIn(0, ModuleSettings.LIGHT_OPACITY_MAX)) }
     var expanded by remember { mutableStateOf(false) }
     FluixSwitchPreference(
-        title = "控制中心磁贴亮色背景",
+        title = if (notification) "通知亮色背景" else "控制中心磁贴亮色背景",
         checked = enabled,
         onCheckedChange = {
             enabled = it
             expanded = it
-            preferences.edit().putBoolean(ModuleSettings.LIGHT, it).apply()
+            preferences.edit().putBoolean(enabledKey, it).apply()
             context.contentResolver.notifyChange(ModuleSettings.URI, null)
         },
         onTitleClick = if (enabled) ({ expanded = !expanded }) else null,
@@ -896,7 +913,7 @@ private fun LightBackgroundOpacityPreference() {
             value = opacity / ModuleSettings.LIGHT_OPACITY_MAX.toFloat(),
             onValueChange = {
                 opacity = (it * ModuleSettings.LIGHT_OPACITY_MAX).roundToInt().coerceIn(0, ModuleSettings.LIGHT_OPACITY_MAX)
-                preferences.edit().putInt(ModuleSettings.LIGHT_OPACITY, opacity).apply()
+                preferences.edit().putInt(amountKey, opacity).apply()
                 context.contentResolver.notifyChange(ModuleSettings.URI, null)
             },
             modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),
@@ -940,6 +957,50 @@ private fun TileBackgroundColorPreference() {
                 amount = (minimum + it * range).roundToInt().coerceIn(
                     minimum, ModuleSettings.TILE_BACKGROUND_SATURATION_MAX)
                 preferences.edit().putInt(ModuleSettings.TILE_BACKGROUND_SATURATION, amount).apply()
+                context.contentResolver.notifyChange(ModuleSettings.URI, null)
+            },
+            modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),
+        )
+    }
+}
+
+@Composable
+private fun TileCornerPreference(notification: Boolean = false) {
+    val enabledKey = if (notification) ModuleSettings.NOTIFICATION_CUSTOM_CORNERS else ModuleSettings.TILE_CORNERS
+    val amountKey = if (notification) ModuleSettings.NOTIFICATION_CORNER_PERCENT else ModuleSettings.TILE_CORNER_PERCENT
+    val context = LocalContext.current
+    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    var enabled by remember { mutableStateOf(preferences.getBoolean(enabledKey, false)) }
+    var amount by remember { mutableStateOf(preferences.getInt(amountKey,
+        ModuleSettings.TILE_CORNER_PERCENT_DEFAULT).coerceIn(
+        ModuleSettings.TILE_CORNER_PERCENT_MIN, ModuleSettings.TILE_CORNER_PERCENT_MAX)) }
+    var expanded by remember { mutableStateOf(false) }
+    FluixSwitchPreference(
+        title = if (notification) "通知圆角大小" else "控制中心磁贴圆角大小",
+        checked = enabled,
+        onCheckedChange = {
+            enabled = it
+            expanded = it
+            preferences.edit().putBoolean(enabledKey, it).apply()
+            context.contentResolver.notifyChange(ModuleSettings.URI, null)
+        },
+        onTitleClick = if (enabled) ({ expanded = !expanded }) else null,
+        leftTrailingContent = {
+            if (enabled) BasicText("${amount}%",
+                style = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurfaceVariantSummary),
+                modifier = Modifier.padding(start = 12.dp))
+        },
+        showDivider = enabled,
+    )
+    AnimatedVisibility(visible = enabled && expanded, enter = expandVertically(), exit = shrinkVertically()) {
+        val minimum = ModuleSettings.TILE_CORNER_PERCENT_MIN
+        val range = ModuleSettings.TILE_CORNER_PERCENT_MAX - minimum
+        FluixSlider(
+            value = (amount - minimum) / range.toFloat(),
+            onValueChange = {
+                amount = (minimum + it * range).roundToInt().coerceIn(
+                    minimum, ModuleSettings.TILE_CORNER_PERCENT_MAX)
+                preferences.edit().putInt(amountKey, amount).apply()
                 context.contentResolver.notifyChange(ModuleSettings.URI, null)
             },
             modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),

@@ -65,6 +65,9 @@ public final class XposedInit extends XposedModule {
     private boolean lightEnabled;
     private boolean tileBackgroundColorEnabled;
     private int tileBackgroundSaturation = ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT;
+    private TileCornerHooks activeTileCornerHooks;
+    private boolean tileCornersEnabled;
+    private int tileCornerPercent = ModuleSettings.TILE_CORNER_PERCENT_DEFAULT;
     private TileBackdropHooks activeTileBackdropHooks;
     private int lightBackgroundOpacity = ModuleSettings.LIGHT_OPACITY_DEFAULT;
     private final Map<View, Object[]> lightBackgroundWrappers = new WeakHashMap<>();
@@ -83,7 +86,10 @@ public final class XposedInit extends XposedModule {
     private final Set<View> whiteActiveCircleViews = Collections.newSetFromMap(new WeakHashMap<>());
     private final Set<GradientDrawable> whiteActiveProgress = Collections.newSetFromMap(new WeakHashMap<>());
     private boolean sliderActiveCornersEnabled;
-    private boolean notificationCornersEnabled;
+    private boolean notificationLightEnabled, notificationCustomCornersEnabled;
+    private int notificationLightOpacity = ModuleSettings.LIGHT_OPACITY_DEFAULT;
+    private int notificationCornerPercent = ModuleSettings.TILE_CORNER_PERCENT_DEFAULT;
+    private NotificationAppearanceHooks activeNotificationAppearanceHooks;
     private boolean nativeNotificationExpansionEnabled;
     private boolean headsUpWidthEnabled;
     private boolean originalNotificationIconsEnabled;
@@ -166,12 +172,6 @@ public final class XposedInit extends XposedModule {
     private final Map<ImageView, Integer> sliderIconColors = new WeakHashMap<>();
     private final Set<ImageView> volumeSliderIcons = Collections.newSetFromMap(new WeakHashMap<>());
     private final Map<View, int[]> notificationContentInsets = new WeakHashMap<>();
-    private final ViewOutlineProvider mediaOutline = new ViewOutlineProvider() {
-        @Override
-        public void getOutline(View view, Outline outline) {
-            outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), controlCardRadius(view));
-        }
-    };
 
     @Override public void onPackageReady(PackageReadyParam param) {
         installPackageHooks(param.getPackageName(), param.getClassLoader());
@@ -473,7 +473,7 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme physical volume key classes", e);
         }
         installWallpaperStartupFix(loader);
-        installNotificationCorners(loader);
+        installNotificationAppearanceLayout(loader);
         try {
             new NotificationSuggestionHooks(loader, this::loadSettings,
                     () -> disableGoogleNotificationSuggestionsEnabled).install(
@@ -508,8 +508,27 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve heads-up width classes", e);
         }
         try {
+            activeTileCornerHooks = new TileCornerHooks(loader, this::loadSettings,
+                    () -> tileCornersEnabled, () -> tileCornerPercent, () -> networkSplitStyle, () -> circleSmallTilesEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve tile corner shapes", error);
+        }
+        try {
+            if (activeTileCornerHooks != null) {
+                activeNotificationAppearanceHooks = new NotificationAppearanceHooks(loader, this::loadSettings,
+                        () -> notificationLightEnabled, () -> notificationLightOpacity,
+                        () -> notificationCustomCornersEnabled, () -> notificationCornerPercent, activeTileCornerHooks,
+                        (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+                activeNotificationAppearanceHooks.install(
+                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+            }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve notification appearance classes", error);
+        }
+        try {
             activeColorOsMaterialHooks = new ColorOsMaterialHooks(loader, this::loadSettings,
-                    () -> colorOsContourEnabled, () -> networkSplitStyle != 0, () -> notificationContourEnabled,
+                    () -> colorOsContourEnabled, () -> networkSplitStyle != 0, () -> notificationContourEnabled, activeTileCornerHooks,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
             activeColorOsMaterialHooks.install(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
@@ -617,7 +636,10 @@ public final class XposedInit extends XposedModule {
                     () -> networkSplitStyle, () -> optimize2x1TextEnabled, this::applyIconColor,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
             if (activeColorOsMaterialHooks != null)
-                activeSplitNetworkCardHooks.setContourListener(activeColorOsMaterialHooks::updateNetworkRows);
+                activeSplitNetworkCardHooks.setContourListener(card -> {
+                    activeColorOsMaterialHooks.updateNetworkRows(card);
+                    if (activeTileCornerHooks != null) activeTileCornerHooks.observeNetwork(card);
+                });
             activeSplitNetworkCardHooks.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
             activeFoldIdleMediaHooks = new FoldIdleMediaHooks(loader, this::loadSettings,
@@ -739,7 +761,7 @@ public final class XposedInit extends XposedModule {
 
         try {
             activeTileBackdropHooks = new TileBackdropHooks(loader, () -> tileBackgroundColorEnabled,
-                    () -> tileBackgroundSaturation / 100.0, () -> networkSplitStyle,
+                    () -> tileBackgroundSaturation / 100.0, () -> networkSplitStyle, activeTileCornerHooks,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error),
                     message -> log(Log.INFO, "FlymeMod", message));
             activeTileBackdropHooks.install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
@@ -841,66 +863,28 @@ public final class XposedInit extends XposedModule {
         }
     }
 
-    private int controlCardRadius(View view) {
-        int id = view.getResources().getIdentifier("qs_corner_radius", "dimen", "com.android.systemui");
-        return id == 0 ? 0 : view.getResources().getDimensionPixelSize(id);
-    }
-
-    private boolean isNotificationRow(View view) {
-        for (Class<?> type = view.getClass(); type != null; type = type.getSuperclass()) {
-            if (type.getName().equals("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow")) return true;
-        }
-        return false;
-    }
-
-    private void installNotificationCorners(ClassLoader loader) {
+    private void installNotificationAppearanceLayout(ClassLoader loader) {
         String row = "com.android.systemui.statusbar.notification.row.";
-        install(loader, row + "ActivatableNotificationView", "setBackground", chain -> {
-            View view = (View) chain.getThisObject();
-            loadSettings(view.getContext());
-            int radius = notificationCornersEnabled && isNotificationRow(view) ? controlCardRadius(view) : 0;
-            if (radius > 0) {
-                // Flyme's outline/blur use a separate hard-coded 14dp radius.
-                view.getClass().getField("mClipCornerRadius").setInt(view, radius);
-                Object roundable = view.getClass().getField("mRoundableState").get(view);
-                // Avoid calling into background views before their initial inflation completes.
-                if (roundable != null) roundable.getClass().getField("maxRadius").setFloat(roundable, radius);
-            }
-            Object result = chain.proceed();
-            if (radius > 0) view.getClass().getMethod("applyRoundnessAndInvalidate").invoke(view);
-            return result;
-        });
-        install(loader, row + "NotificationBackgroundView", "setBlurBackground", chain -> {
-            View view = (View) chain.getThisObject();
-            loadSettings(view.getContext());
-            if (!notificationCornersEnabled) return chain.proceed();
-            int radius = controlCardRadius(view);
-            if (radius == 0) return chain.proceed();
-            Object[] args = chain.getArgs().toArray();
-            args[2] = radius;
-            return chain.proceed(args);
-        }, boolean.class, int.class, int.class);
         // The content container includes padding in measured, collapsed, expanded
         // and heads-up heights. Header-only padding cannot enlarge the card.
         install(loader, row + "NotificationContentView", "onMeasure", chain -> {
             View content = (View) chain.getThisObject();
             loadSettings(content.getContext());
-            if (notificationCornersEnabled) {
-                int extra = Math.round(4 * content.getResources().getDisplayMetrics().density);
-                int[] last = notificationContentInsets.get(content);
-                int start = content.getPaddingStart();
-                int top = content.getPaddingTop();
-                int end = content.getPaddingEnd();
-                int bottom = content.getPaddingBottom();
-                if (last == null || start != last[0]) start += extra;
-                if (last == null || top != last[1]) top += extra;
-                if (last == null || end != last[2]) end += extra;
-                if (last == null || bottom != last[3]) bottom += extra;
-                if (start != content.getPaddingStart() || top != content.getPaddingTop()
-                        || end != content.getPaddingEnd() || bottom != content.getPaddingBottom()) {
-                    content.setPaddingRelative(start, top, end, bottom);
+            int requestedPadding = notificationCustomCornersEnabled && activeNotificationAppearanceHooks != null
+                    ? Math.round(activeNotificationAppearanceHooks.radius(content) * .25f) : 0;
+            int[] last = notificationContentInsets.get(content);
+            if (requestedPadding > 0 || last != null) {
+                int[] padding = {content.getPaddingStart(), content.getPaddingTop(), content.getPaddingEnd(), content.getPaddingBottom()};
+                for (int index=0; index<4; index++) {
+                    // Remove our previous addition only while native code has retained it.
+                    if (last != null && padding[index] == last[index]) padding[index] -= last[4];
+                    padding[index] += requestedPadding;
                 }
-                notificationContentInsets.put(content, new int[]{start, top, end, bottom});
+                if (padding[0] != content.getPaddingStart() || padding[1] != content.getPaddingTop()
+                        || padding[2] != content.getPaddingEnd() || padding[3] != content.getPaddingBottom())
+                    content.setPaddingRelative(padding[0], padding[1], padding[2], padding[3]);
+                if (requestedPadding == 0) notificationContentInsets.remove(content);
+                else notificationContentInsets.put(content, new int[]{padding[0],padding[1],padding[2],padding[3],requestedPadding});
             }
             // measureChildWithMargins subtracts outer padding from both expanded and
             // heads-up caps. Contracted measurement already adds it before measuring.
@@ -908,7 +892,7 @@ public final class XposedInit extends XposedModule {
             java.lang.reflect.Field headsHeight = content.getClass().getField("mHeadsUpHeight");
             int originalMaxHeight = maxHeight.getInt(content);
             int originalHeadsHeight = headsHeight.getInt(content);
-            int extra = notificationCornersEnabled ? notificationAddedVerticalPadding(content) : 0;
+            int extra = notificationAddedVerticalPadding(content);
             android.view.ViewGroup.LayoutParams[] fixedParams = new android.view.ViewGroup.LayoutParams[2];
             int[] fixedHeights = new int[2];
             if (extra > 0) {
@@ -941,7 +925,7 @@ public final class XposedInit extends XposedModule {
             Object wrapper = chain.getThisObject();
             View template = (View) wrapper.getClass().getField("mView").get(wrapper);
             loadSettings(template.getContext());
-            if (!notificationCornersEnabled || !(template.getParent() instanceof View content)
+            if (!notificationCustomCornersEnabled || !(template.getParent() instanceof View content)
                     || !content.getClass().getName().equals(row + "NotificationContentView")) return result;
             if (content.getClass().getField("mIsHeadsUp").getBoolean(content)
                     || content.getClass().getField("mExpandedChild").get(content) != template) return result;
@@ -963,33 +947,18 @@ public final class XposedInit extends XposedModule {
             Object wrapper = chain.getThisObject();
             View content = (View) wrapper.getClass().getField("mView").get(wrapper);
             loadSettings(content.getContext());
-            if (!notificationCornersEnabled) return result;
-            Object roundable = wrapper.getClass().getField("mRoundableState").get(wrapper);
-            int radius = controlCardRadius(content);
-            if (roundable != null && radius > 0) roundable.getClass().getMethod("setMaxRadius", float.class)
-                    .invoke(roundable, (float) radius);
+            if (activeNotificationAppearanceHooks != null) activeNotificationAppearanceHooks.configureHeader(wrapper,content);
             return result;
-        });
-        // Media lives outside ExpandableNotificationRow and owns its blur radius.
-        install(loader, "com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout",
-                "setBackground", chain -> {
-            View player = (View) chain.getThisObject();
-            loadSettings(player.getContext());
-            if (notificationCornersEnabled && controlCardRadius(player) > 0) {
-                player.getClass().getField("mClipCornerRadius").setFloat(player, controlCardRadius(player));
-                // Clip normal backgrounds, album art and masks as well as the blur.
-                player.setOutlineProvider(mediaOutline);
-                player.setClipToOutline(true);
-                player.invalidateOutline();
-            }
-            return chain.proceed();
         });
         install(loader, "androidx.constraintlayout.utils.widget.ImageFilterView", "setRound", chain -> {
             View image = (View) chain.getThisObject();
             loadSettings(image.getContext());
             int id = image.getResources().getIdentifier("media_mask_bg", "id", "com.android.systemui");
-            return notificationCornersEnabled && id != 0 && image.getId() == id
-                    ? chain.proceed(new Object[]{(float) controlCardRadius(image)}) : chain.proceed();
+            if (id != 0 && image.getId() == id) {
+                if (activeNotificationAppearanceHooks != null)
+                    return chain.proceed(new Object[]{activeNotificationAppearanceHooks.imageRadius(image,(Float)chain.getArg(0))});
+            }
+            return chain.proceed();
         }, float.class);
         install(loader, "com.android.systemui.media.controls.ui.controller.MediaControlPanel",
                 "setMaskDrawable", chain -> {
@@ -999,10 +968,7 @@ public final class XposedInit extends XposedModule {
             if (holder != null) {
                 View mask = (View) holder.getClass().getMethod("getViewMask").invoke(holder);
                 loadSettings(mask.getContext());
-                if (notificationCornersEnabled && mask.getBackground() instanceof GradientDrawable gradient) {
-                    gradient.mutate();
-                    gradient.setCornerRadius(controlCardRadius(mask));
-                }
+                if (activeNotificationAppearanceHooks != null) activeNotificationAppearanceHooks.configureMediaMask(mask);
             }
             return result;
         }, int.class);
@@ -1741,8 +1707,8 @@ public final class XposedInit extends XposedModule {
     }
 
     private int notificationAddedVerticalPadding(View content) {
-        return notificationContentInsets.containsKey(content)
-                ? 2 * Math.round(4 * content.getResources().getDisplayMetrics().density) : 0;
+        int[] insets = notificationContentInsets.get(content);
+        return insets == null ? 0 : 2 * insets[4];
     }
 
     private void installMonochromeNotificationActions(ClassLoader loader) {
@@ -1936,7 +1902,13 @@ public final class XposedInit extends XposedModule {
                     if (activeCardIconLayoutHooks != null) activeCardIconLayoutHooks.refresh();
                     if (activeMuteSlashHooks != null) activeMuteSlashHooks.refresh();
                     if (activeFoldIdleMediaHooks != null) activeFoldIdleMediaHooks.refresh();
+                    // Restore custom square corners before forcing circles; restore circles before applying custom corners.
+                    if (activeTileCornerHooks != null && circleSmallTilesEnabled) activeTileCornerHooks.refresh();
                     if (activeCircleTileHooks != null) activeCircleTileHooks.refresh();
+                    if (activeTileCornerHooks != null && !circleSmallTilesEnabled) activeTileCornerHooks.refresh();
+                    if (activeNotificationAppearanceHooks != null) activeNotificationAppearanceHooks.refresh();
+                    for (View content : new ArrayList<>(notificationContentInsets.keySet()))
+                        if (content != null) content.requestLayout();
                     if (activeColorOsMaterialHooks != null) activeColorOsMaterialHooks.refresh();
                     boolean activeThemeChanged = previousWhiteActive != whiteActiveEnabled
                             || previousStyle != controlCenterStyle || previousActiveColor != customActiveColor;
@@ -1960,6 +1932,11 @@ public final class XposedInit extends XposedModule {
                 }
                 scaleEnabled = cursor.getInt(0) != 0;
                 lightEnabled = cursor.getInt(1) != 0;
+                int tileCornersColumn = cursor.getColumnIndex(ModuleSettings.TILE_CORNERS);
+                tileCornersEnabled = tileCornersColumn >= 0 && cursor.getInt(tileCornersColumn) != 0;
+                int tileCornerPercentColumn = cursor.getColumnIndex(ModuleSettings.TILE_CORNER_PERCENT);
+                tileCornerPercent = tileCornerPercentColumn < 0 ? ModuleSettings.TILE_CORNER_PERCENT_DEFAULT
+                        : Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN, Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX, cursor.getInt(tileCornerPercentColumn)));
                 int tileColorColumn = cursor.getColumnIndex(ModuleSettings.TILE_BACKGROUND_COLOR);
                 tileBackgroundColorEnabled = tileColorColumn >= 0 && cursor.getInt(tileColorColumn) != 0;
                 int tileSaturationColumn = cursor.getColumnIndex(ModuleSettings.TILE_BACKGROUND_SATURATION);
@@ -1995,8 +1972,16 @@ public final class XposedInit extends XposedModule {
                 stackedRecentsEnabled = stackedRecentsColumn >= 0 && cursor.getInt(stackedRecentsColumn) != 0;
                 int headsUpWidthColumn = cursor.getColumnIndex(ModuleSettings.HEADS_UP_WIDTH);
                 headsUpWidthEnabled = headsUpWidthColumn >= 0 && cursor.getInt(headsUpWidthColumn) != 0;
-                int cornersColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CORNERS);
-                notificationCornersEnabled = cornersColumn >= 0 && cursor.getInt(cornersColumn) != 0;
+                int notificationLightColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_LIGHT);
+                notificationLightEnabled = notificationLightColumn >= 0 && cursor.getInt(notificationLightColumn) != 0;
+                int notificationLightOpacityColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_LIGHT_OPACITY);
+                notificationLightOpacity = notificationLightOpacityColumn < 0 ? ModuleSettings.LIGHT_OPACITY_DEFAULT
+                        : Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, cursor.getInt(notificationLightOpacityColumn)));
+                int notificationCustomCornersColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS);
+                notificationCustomCornersEnabled = notificationCustomCornersColumn >= 0 && cursor.getInt(notificationCustomCornersColumn) != 0;
+                int notificationCornerPercentColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CORNER_PERCENT);
+                notificationCornerPercent = notificationCornerPercentColumn < 0 ? ModuleSettings.TILE_CORNER_PERCENT_DEFAULT
+                        : Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN, Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX, cursor.getInt(notificationCornerPercentColumn)));
                 int nativeExpansionColumn = cursor.getColumnIndex(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION);
                 nativeNotificationExpansionEnabled = nativeExpansionColumn >= 0 && cursor.getInt(nativeExpansionColumn) != 0;
                 int originalIconsColumn = cursor.getColumnIndex(ModuleSettings.ORIGINAL_NOTIFICATION_ICONS);
@@ -2133,7 +2118,7 @@ public final class XposedInit extends XposedModule {
                 settingsLoaded = true;
                 log(Log.INFO, "FlymeMod", "Control center settings loaded: scale=" + scaleEnabled
                         + ", light=" + lightEnabled + ", darken=" + darkenEnabled
-                        + ", headsUpWidth=" + headsUpWidthEnabled + ", whiteActive=" + whiteActiveEnabled + ", notificationCorners=" + notificationCornersEnabled
+                        + ", headsUpWidth=" + headsUpWidthEnabled + ", whiteActive=" + whiteActiveEnabled + ", notificationCorners=" + notificationCustomCornersEnabled
                         + ", originalNotificationIcons=" + originalNotificationIconsEnabled
                         + ", monochromeNotificationActions=" + monochromeNotificationActionsEnabled
                         + ", volumeFirstFour=" + volumeFirstFourMode

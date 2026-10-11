@@ -87,6 +87,7 @@ final class TileBackdropHooks {
                 return mix(layer,composed,coverage);
             }
             """;
+    private final TileCornerHooks corners;
     private final BooleanSupplier enabled;
     private final IntSupplier networkStyle;
     private final DoubleSupplier saturationAmount;
@@ -109,11 +110,11 @@ final class TileBackdropHooks {
     private final Map<View, WeakReference<State>> states = new WeakHashMap<>();
 
     TileBackdropHooks(ClassLoader loader, BooleanSupplier enabled, DoubleSupplier saturationAmount,
-                      IntSupplier networkStyle, BiConsumer<String, Throwable> log,
+                      IntSupplier networkStyle, TileCornerHooks corners, BiConsumer<String, Throwable> log,
                       Consumer<String> trace)
             throws ReflectiveOperationException {
         this.enabled = enabled; this.log = log; this.trace = trace;
-        this.networkStyle = networkStyle;
+        this.networkStyle = networkStyle; this.corners = corners;
         this.saturationAmount = saturationAmount;
         // Validate SkSL locally too, so syntax errors reach the module log before SF registration.
         new RuntimeShader(SHADER);
@@ -196,6 +197,7 @@ final class TileBackdropHooks {
     }
 
     private void observe(View view, int networkRole) {
+        if (corners != null) corners.observe(view, networkRole);
         if (view == null || states.containsKey(view)) return;
         State state = new State(view, networkRole);
         states.put(view, new WeakReference<>(state));
@@ -298,6 +300,11 @@ final class TileBackdropHooks {
                     radius = Math.max(0, outline.getRadius());
                 }
                 if (bounds.isEmpty()) { remove(view); return; }
+                if (corners != null && corners.isEnabled()) {
+                    radius = corners.radius(view, bounds.width(), bounds.height());
+                    smoothing = smooth ? corners.smoothing(radius, bounds.width(), bounds.height()) : 0f;
+                    smooth &= smoothing > 0f;
+                }
                 Object root = getRoot.invoke(view);
                 if (root == null) return;
                 if (effectRoot.get() != root) remove(view);

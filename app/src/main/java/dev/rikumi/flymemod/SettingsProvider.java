@@ -70,7 +70,7 @@ public final class SettingsProvider extends ContentProvider {
         if (!ModuleSettings.URI.equals(uri)) throw new IllegalArgumentException("Unknown URI");
         SharedPreferences prefs = ModuleSettings.preferences(getContext());
         java.util.List<String> columns = new java.util.ArrayList<>(java.util.Arrays.asList(new String[]{ModuleSettings.SCALE, ModuleSettings.LIGHT,
-                ModuleSettings.DARKEN, ModuleSettings.WHITE_ACTIVE, ModuleSettings.NETWORK_DARK_SPINNER, ModuleSettings.HEADS_UP_WIDTH, ModuleSettings.NOTIFICATION_CORNERS,
+                ModuleSettings.DARKEN, ModuleSettings.WHITE_ACTIVE, ModuleSettings.NETWORK_DARK_SPINNER, ModuleSettings.HEADS_UP_WIDTH,
                 ModuleSettings.BLUR_ENABLED, ModuleSettings.BLUR_RADIUS, ModuleSettings.WALLPAPER_STARTUP_FIX,
                 ModuleSettings.HIDE_GBOARD, ModuleSettings.RECENTS_SWIPE_UP_KILL, ModuleSettings.RECENTS_HIDE_NOT_RUNNING, ModuleSettings.STACKED_RECENTS, ModuleSettings.FOLDER_PAGING, ModuleSettings.FOLDER_CENTER, ModuleSettings.FOLDER_RESTORE_COLOR, ModuleSettings.FOLDER_RADIUS_ENABLED, ModuleSettings.FOLDER_RADIUS,
                 ModuleSettings.ORIGINAL_NOTIFICATION_ICONS, ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS,
@@ -108,6 +108,12 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.ANIMATED_MUTE_SLASH);
         columns.add(ModuleSettings.WIFI_LABEL);
         columns.add(ModuleSettings.LIGHT_OPACITY);
+        columns.add(ModuleSettings.NOTIFICATION_LIGHT);
+        columns.add(ModuleSettings.NOTIFICATION_LIGHT_OPACITY);
+        columns.add(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS);
+        columns.add(ModuleSettings.NOTIFICATION_CORNER_PERCENT);
+        columns.add(ModuleSettings.TILE_CORNERS);
+        columns.add(ModuleSettings.TILE_CORNER_PERCENT);
         columns.add(ModuleSettings.TILE_BACKGROUND_COLOR);
         columns.add(ModuleSettings.TILE_BACKGROUND_SATURATION);
         columns.add(ModuleSettings.CONTROL_CENTER_BUTTONS_UP);
@@ -146,7 +152,6 @@ public final class SettingsProvider extends ContentProvider {
                 ModuleSettings.controlCenterStyle(prefs) != 0 ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.NETWORK_DARK_SPINNER, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.HEADS_UP_WIDTH, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.NOTIFICATION_CORNERS, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.BLUR_ENABLED, false) ? 1 : 0,
                 prefs.getInt(ModuleSettings.BLUR_RADIUS, ModuleSettings.BLUR_DEFAULT),
                 prefs.getBoolean(ModuleSettings.WALLPAPER_STARTUP_FIX, false) ? 1 : 0,
@@ -227,6 +232,15 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.ANIMATED_MUTE_SLASH, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.WIFI_LABEL, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, prefs.getInt(ModuleSettings.LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT))));
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_LIGHT, false) ? 1 : 0);
+        values.add(Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX,
+                prefs.getInt(ModuleSettings.NOTIFICATION_LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT))));
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS, false) ? 1 : 0);
+        values.add(Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN, Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX,
+                prefs.getInt(ModuleSettings.NOTIFICATION_CORNER_PERCENT, ModuleSettings.TILE_CORNER_PERCENT_DEFAULT))));
+        values.add(prefs.getBoolean(ModuleSettings.TILE_CORNERS, false) ? 1 : 0);
+        values.add(Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN, Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX,
+                prefs.getInt(ModuleSettings.TILE_CORNER_PERCENT, ModuleSettings.TILE_CORNER_PERCENT_DEFAULT))));
         values.add(prefs.getBoolean(ModuleSettings.TILE_BACKGROUND_COLOR, false) ? 1 : 0);
         values.add(Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
                 Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX,
