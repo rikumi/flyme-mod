@@ -124,6 +124,14 @@ final class LauncherIconEditor {
             });
         });
         dialog.setOnShowListener(ignored -> {
+            Window window = dialog.getWindow();
+            if (window != null) {
+                // FlymeAlertController installs ADJUST_PAN during dialog creation.
+                // Use resizing alone, preserving its keyboard visibility preference.
+                int softInput = window.getAttributes().softInputMode;
+                window.setSoftInputMode((softInput & ~android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST)
+                        | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            }
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
                 String title = name.getText().toString().trim();
                 if (title.isEmpty()) { name.setError("名称不能为空"); return; }
@@ -171,12 +179,15 @@ final class LauncherIconEditor {
         root.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout packRow = new LinearLayout(ctx);
         packRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, dp(56));
+        packRow.setMinimumHeight(dp(56));
+        packRow.setPadding(0, dp(4), 0, dp(4));
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2);
         rowParams.leftMargin = dp(16); rowParams.rightMargin = dp(16);
         body.addView(packRow, rowParams);
         Spinner packs = new Spinner(ctx);
         packs.setPaddingRelative(0, packs.getPaddingTop(), packs.getPaddingEnd(), packs.getPaddingBottom());
-        packRow.addView(packs, new LinearLayout.LayoutParams(0, -1, 1));
+        packs.setMinimumHeight(dp(48));
+        packRow.addView(packs, new LinearLayout.LayoutParams(0, -2, 1));
         CheckBox applyMask = new CheckBox(ctx) {
             @Override public int getCompoundPaddingLeft() {
                 return super.getCompoundPaddingLeft() + (getLayoutDirection() == View.LAYOUT_DIRECTION_RTL ? 0 : dp(8));
@@ -284,7 +295,7 @@ final class LauncherIconEditor {
             }
             @Override public View getDropDownView(int position, View recycled, ViewGroup parent) {
                 View view = super.getDropDownView(position, recycled, parent);
-                view.setPaddingRelative(0, view.getPaddingTop(), view.getPaddingEnd(), view.getPaddingBottom());
+                view.setPaddingRelative(dp(16), view.getPaddingTop(), Math.max(dp(16), view.getPaddingEnd()), view.getPaddingBottom());
                 return view;
             }
         };
