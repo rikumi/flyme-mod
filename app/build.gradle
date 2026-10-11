@@ -32,8 +32,8 @@ android {
         applicationId 'dev.rikumi.flymemod'
         minSdk 26
         targetSdk 37
-        versionCode 10206
-        versionName '1.2.6'
+        versionCode 10207
+        versionName '1.2.7'
     }
 
     signingConfigs {
