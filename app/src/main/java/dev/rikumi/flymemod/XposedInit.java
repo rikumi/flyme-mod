@@ -129,6 +129,7 @@ public final class XposedInit extends XposedModule {
     private volatile boolean folderCenterEnabled;
     private volatile boolean folderCloseTargetEnabled;
     private volatile boolean editAppIconNameEnabled;
+    private volatile boolean lockWidgetStartupFixEnabled;
     private volatile boolean folderRestoreColorEnabled;
     private volatile boolean folderRadiusEnabled;
     private volatile int folderRadiusDp = ModuleSettings.FOLDER_RADIUS_DEFAULT;
@@ -298,6 +299,13 @@ public final class XposedInit extends XposedModule {
             return;
         }
         if (!"com.android.systemui".equals(packageName)) return;
+
+        try {
+            new LockWidgetStartupHooks(loader, this::loadSettings, () -> lockWidgetStartupFixEnabled).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve lockscreen widget startup hooks", error);
+        }
 
         install(loader, "com.android.systemui.statusbar.phone.ui.StatusBarIconControllerImpl",
                 "setIconVisibility", chain -> {
@@ -1912,6 +1920,8 @@ public final class XposedInit extends XposedModule {
                 folderCloseTargetEnabled = folderCloseTargetColumn >= 0 && cursor.getInt(folderCloseTargetColumn) != 0;
                 int iconEditColumn = cursor.getColumnIndex(ModuleSettings.EDIT_APP_ICON_NAME);
                 editAppIconNameEnabled = iconEditColumn >= 0 && cursor.getInt(iconEditColumn) != 0;
+                int lockWidgetColumn = cursor.getColumnIndex(ModuleSettings.LOCK_WIDGET_STARTUP_FIX);
+                lockWidgetStartupFixEnabled = lockWidgetColumn >= 0 && cursor.getInt(lockWidgetColumn) != 0;
                 int folderColorColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RESTORE_COLOR);
                 folderRestoreColorEnabled = folderColorColumn >= 0 && cursor.getInt(folderColorColumn) != 0;
                 int folderRadiusEnabledColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RADIUS_ENABLED);

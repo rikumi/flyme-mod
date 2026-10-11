@@ -298,6 +298,8 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                     item {
                         FluixCard {
                             ApplicationPreference(ModuleSettings.FOLDER_CLOSE_TARGET, "恢复关闭到文件夹动画目标")
+                            FluixItemDivider()
+                            ApplicationPreference(ModuleSettings.LOCK_WIDGET_STARTUP_FIX, "修复启动时锁屏小组件异常显示")
                         }
                     }
                 }
