@@ -210,6 +210,12 @@ private fun HomeScreen(onOpenCategory: (String) -> Unit) {
 @Composable
 private fun CategoryScreen(category: Category, onBack: () -> Unit) {
     var pickingNavigationApplications by remember { mutableStateOf(false) }
+    var pickingGameApplications by remember { mutableStateOf(false) }
+    if (pickingGameApplications) {
+        BackHandler { pickingGameApplications = false }
+        HiddenAppsScreen(LocalContext.current, onBack = { pickingGameApplications = false }, landscapeGames = true)
+        return
+    }
     if (pickingNavigationApplications) {
         BackHandler { pickingNavigationApplications = false }
         HiddenAppsScreen(LocalContext.current, onBack = { pickingNavigationApplications = false },
@@ -259,9 +265,16 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                     )) }
                 }
                 if (category.id == "camera" && groupTitle == "系统杂项") {
-                    item { PreferenceCard(listOf(
-                        ModuleSettings.DARK_APP_SPECIAL_PACKAGES to "深色应用管理支持选择特殊应用",
-                    )) }
+                    item { FluixCard {
+                        ApplicationPreference(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, "深色应用管理支持选择特殊应用")
+                        FluixItemDivider()
+                        Row(Modifier.fillMaxWidth().heightIn(min = FLUIX_ROW_MIN_HEIGHT)
+                            .clickable { pickingGameApplications = true }
+                            .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            BasicText("横屏游戏宽度适配", style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface))
+                        }
+                    } }
                 }
                 if (category.id == "system_cleanup" && groupTitle == "应用安装器") {
                     item {

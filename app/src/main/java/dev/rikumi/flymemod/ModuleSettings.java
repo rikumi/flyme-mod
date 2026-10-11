@@ -12,6 +12,9 @@ public final class ModuleSettings {
     public static final String CAMERA_KEEP_FILTER = "camera_keep_filter";
     public static final String APP_IMMERSIVE_NAVIGATION = "wechat_immersive_navigation";
     public static final String APP_IMMERSIVE_NAVIGATION_PACKAGES = "app_immersive_navigation_packages";
+    public static final String LANDSCAPE_GAME_PACKAGES = "landscape_game_packages";
+    public static final String LANDSCAPE_GAME_MODE_PREFIX = "landscape_game_mode_";
+    public static final String LANDSCAPE_GAME_MODES = "landscape_game_modes";
     public static java.util.Set<String> navigationApplications(SharedPreferences preferences) {
         return new java.util.HashSet<>(preferences.getStringSet(APP_IMMERSIVE_NAVIGATION_PACKAGES,
                 java.util.Collections.singleton("com.tencent.mm")));

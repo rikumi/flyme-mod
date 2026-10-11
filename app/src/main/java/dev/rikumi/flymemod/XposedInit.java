@@ -182,6 +182,14 @@ public final class XposedInit extends XposedModule {
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme small-window input hooks", error);
         }
+        try {
+            new GameWidthHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                    (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                    .install(loader, (name, method, hooker, parameters) ->
+                            install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme landscape game width hooks", error);
+        }
     }
 
     private void installPackageHooks(String packageName, ClassLoader loader) {

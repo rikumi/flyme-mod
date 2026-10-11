@@ -18,6 +18,8 @@ public final class CameraSettingsBridge extends Application {
                 || ModuleSettings.CAMERA_KEEP_FILTER.equals(key)
                 || ModuleSettings.APP_IMMERSIVE_NAVIGATION.equals(key)
                 || ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES.equals(key)
+                || ModuleSettings.LANDSCAPE_GAME_PACKAGES.equals(key)
+                || (key != null && key.startsWith(ModuleSettings.LANDSCAPE_GAME_MODE_PREFIX))
                 || ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED.equals(key)
                 || ModuleSettings.SMALL_WINDOW_LIMIT.equals(key)
                 || ModuleSettings.DARK_APP_SPECIAL_PACKAGES.equals(key)) publish();
@@ -37,6 +39,10 @@ public final class CameraSettingsBridge extends Application {
     }
 
     private void publish() {
+        Set<String> gamePackages = new java.util.HashSet<>(local.getStringSet(
+                ModuleSettings.LANDSCAPE_GAME_PACKAGES, java.util.Collections.emptySet()));
+        String gameModes = gamePackages.stream().sorted().map(pkg -> pkg + "=" + local.getInt(
+                ModuleSettings.LANDSCAPE_GAME_MODE_PREFIX + pkg, 0)).collect(java.util.stream.Collectors.joining("\n"));
         for (XposedService service : services) {
             try {
                 service.getRemotePreferences(REMOTE_FILE).edit()
@@ -49,6 +55,7 @@ public final class CameraSettingsBridge extends Application {
                                 local.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, false))
                         .putStringSet(ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES,
                                 ModuleSettings.navigationApplications(local))
+                        .putString(ModuleSettings.LANDSCAPE_GAME_MODES, gameModes)
                         .putBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED,
                                 local.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false))
                         .putInt(ModuleSettings.SMALL_WINDOW_LIMIT,

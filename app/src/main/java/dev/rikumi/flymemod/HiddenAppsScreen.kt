@@ -67,9 +67,9 @@ private fun readLauncherApps(context: Context, allApplications: Boolean): List<H
 
 @Composable
 internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
-    navigationApplications: Boolean = false) {
+    navigationApplications: Boolean = false, landscapeGames: Boolean = false) {
     val preferences = remember(context) { ModuleSettings.preferences(context) }
-    val packagesKey = if (navigationApplications) ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES else ModuleSettings.HIDDEN_LAUNCHER_APPS
+    val packagesKey = if (landscapeGames) ModuleSettings.LANDSCAPE_GAME_PACKAGES else if (navigationApplications) ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES else ModuleSettings.HIDDEN_LAUNCHER_APPS
     var hidden by remember(packagesKey) { mutableStateOf(preferences.getStringSet(packagesKey, emptySet()).orEmpty().toSet()) }
     var picking by remember { mutableStateOf(false) }
     var choices by remember { mutableStateOf<List<HiddenAppEntry>?>(null) }
@@ -78,7 +78,7 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
     val overscroll = remember { mutableFloatStateOf(0f) }
     fun save(packages: Set<String>) {
         val editor = preferences.edit().putStringSet(packagesKey, packages)
-        if (!navigationApplications) editor.putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true)
+        if (!navigationApplications && !landscapeGames) editor.putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true)
         editor.apply()
         hidden = packages
         context.contentResolver.notifyChange(ModuleSettings.URI, null)
@@ -91,14 +91,14 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
         listState.scrollToItem(0)
         if (picking) {
             choices = null
-            val result = withContext(Dispatchers.IO) { readLauncherApps(context, navigationApplications) }
+            val result = withContext(Dispatchers.IO) { readLauncherApps(context, navigationApplications || landscapeGames) }
             choices = result.orEmpty()
             if (result == null) Toast.makeText(context, "读取失败，请检查 root 授权", Toast.LENGTH_SHORT).show()
         }
     }
     Scaffold(topBar = {
         FluixTopAppBar(
-            title = if (picking) "选择应用" else if (navigationApplications) "应用列表" else "隐藏应用",
+            title = if (picking) "选择应用" else if (landscapeGames) "横屏游戏宽度适配" else if (navigationApplications) "应用列表" else "隐藏应用",
             dividerProgress = fluixTopBarDividerProgress(listState, overscroll),
             navigationIcon = {
                 IconButton(onClick = { if (picking) picking = false else onBack() }) {
@@ -113,8 +113,8 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
         )
     }) { padding ->
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).fluixOverscroll(listState, overscroll)) {
-            item { FluixSmallTitle(if (navigationApplications) {
-                if (picking) "非系统应用" else "强制沉浸应用列表"
+            item { FluixSmallTitle(if (navigationApplications || landscapeGames) {
+                if (picking) "非系统应用" else if (landscapeGames) "横屏游戏宽度适配列表" else "强制沉浸应用列表"
             } else if (picking) "有桌面图标的应用" else "彻底隐藏应用列表") }
             val current = if (picking) choices?.filter { it.pkg !in hidden } else entries
             when {
@@ -122,7 +122,25 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
                 current.isEmpty() -> item { FluixSmallTitle("暂无应用") }
                 else -> itemsIndexed(current, key = { _, app -> app.pkg }) { index, app ->
                     FluixCardRow(first = index == 0, last = index == current.lastIndex) {
-                        HiddenAppRow(app, picking, removeLabel = if (navigationApplications) "移除" else "取消隐藏",
+                        if (landscapeGames && !picking) {
+                            val displayMode = context.getSystemService(android.hardware.display.DisplayManager::class.java)
+                                .getDisplay(android.view.Display.DEFAULT_DISPLAY)?.mode
+                            val options = GameWidthGeometry.options(displayMode?.physicalWidth ?: 0, displayMode?.physicalHeight ?: 0).toList()
+                            var mode by remember(app.pkg) { mutableIntStateOf(preferences.getInt(ModuleSettings.LANDSCAPE_GAME_MODE_PREFIX + app.pkg, 0)) }
+                            FluixDropdownPreference(title = app.name,
+                                options = options.map { GameWidthGeometry.NAMES[it] } + "移除",
+                                selected = options.indexOf(mode).coerceAtLeast(0),
+                                onSelected = { selected ->
+                                    if (selected == options.size) {
+                                        preferences.edit().remove(ModuleSettings.LANDSCAPE_GAME_MODE_PREFIX + app.pkg).apply()
+                                        save(hidden - app.pkg)
+                                    } else {
+                                        mode = options[selected]
+                                        preferences.edit().putInt(ModuleSettings.LANDSCAPE_GAME_MODE_PREFIX + app.pkg, mode).apply()
+                                        context.contentResolver.notifyChange(ModuleSettings.URI, null)
+                                    }
+                                })
+                        } else HiddenAppRow(app, picking, removeLabel = if (navigationApplications) "移除" else "取消隐藏",
                             onAdd = { save(hidden + app.pkg); picking = false },
                             onRemove = { save(hidden - app.pkg) },
                             onOpen = {
