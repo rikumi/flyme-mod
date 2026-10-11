@@ -184,8 +184,14 @@ final class GameWidthHooks {
         Integer mode = modes.get(packageName.get(record));
         if (mode == null || ((Number) windowMode.invoke(record)).intValue() != 1
                 || ((Number) requestedOrientation.invoke(record)).intValue() == Configuration.ORIENTATION_PORTRAIT) return null;
+        Object display = displayContent.get(record);
+        if (display == null) return null;
+        Object currentInfo = displayInfo.invoke(display);
+        // A game's fixed-rotation DisplayInfo is already landscape while the screen
+        // can still be portrait. Leave that transition to the native rotation pipeline.
+        if (logicalWidth.getInt(currentInfo) <= logicalHeight.getInt(currentInfo)) return null;
         Object info = fixedInfo.invoke(record);
-        if (info == null) { Object display = displayContent.get(record); if (display == null) return null; info = displayInfo.invoke(display); }
+        if (info == null) info = currentInfo;
         int width = logicalWidth.getInt(info), height = logicalHeight.getInt(info);
         if (width <= height || height <= 0) return null;
         DisplayCutout hole = (DisplayCutout) cutout.get(info);
