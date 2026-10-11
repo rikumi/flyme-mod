@@ -23,6 +23,7 @@ import android.widget.EditText;
 import android.widget.GridView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ListPopupWindow;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -181,14 +182,40 @@ final class LauncherIconEditor {
         packRow.setGravity(Gravity.CENTER_VERTICAL);
         packRow.setMinimumHeight(dp(56));
         packRow.setPadding(0, dp(4), 0, dp(4));
+        packRow.setClipChildren(false);
+        packRow.setClipToPadding(false);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2);
         rowParams.leftMargin = dp(16); rowParams.rightMargin = dp(16);
         body.addView(packRow, rowParams);
-        Spinner packs = new Spinner(ctx);
-        packs.setPaddingRelative(0, packs.getPaddingTop(), packs.getPaddingEnd(), packs.getPaddingBottom());
+        ListPopupWindow packPopup = new ListPopupWindow(ctx);
+        // Dialog mode avoids Spinner's private forwarding listener opening a
+        // second, independently measured popup during a drag/long press.
+        Spinner packs = new Spinner(ctx, Spinner.MODE_DIALOG) {
+            @Override public boolean performClick() {
+                android.graphics.Rect padding = new android.graphics.Rect();
+                android.graphics.drawable.Drawable background = packPopup.getBackground();
+                if (background != null) background.getPadding(padding);
+                // Align popup item text with the selected label, compensating
+                // for both the popup background and the fixed item padding.
+                packPopup.setContentWidth(getWidth() + dp(32));
+                packPopup.setHorizontalOffset(getLayoutDirection() == View.LAYOUT_DIRECTION_RTL
+                        ? -dp(16) + padding.right : -dp(16) - padding.left);
+                packPopup.show();
+                packPopup.setSelection(getSelectedItemPosition());
+                return true;
+            }
+        };
+        packs.setPaddingRelative(0, 0, dp(24), 0);
         packs.setMinimumHeight(dp(48));
         packRow.addView(packs, new LinearLayout.LayoutParams(0, -2, 1));
         CheckBox applyMask = new CheckBox(ctx) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                super.onMeasure(widthSpec, heightSpec);
+                android.graphics.drawable.Drawable button = getButtonDrawable();
+                int buttonHeight = button == null ? 0 : Math.max(0, button.getIntrinsicHeight());
+                int minimum = Math.max(dp(48), buttonHeight + getPaddingTop() + getPaddingBottom());
+                setMeasuredDimension(getMeasuredWidth(), resolveSize(Math.max(getMeasuredHeight(), minimum), heightSpec));
+            }
             @Override public int getCompoundPaddingLeft() {
                 return super.getCompoundPaddingLeft() + (getLayoutDirection() == View.LAYOUT_DIRECTION_RTL ? 0 : dp(8));
             }
@@ -199,7 +226,9 @@ final class LauncherIconEditor {
         applyMask.setText("套用当前图标包遮罩");
         applyMask.setTextColor(foreground);
         applyMask.setTextSize(14);
-        applyMask.setSingleLine(true);
+        applyMask.setMaxLines(1);
+        applyMask.setGravity(Gravity.CENTER_VERTICAL);
+        applyMask.setPaddingRelative(0, dp(6), 0, dp(6));
         applyMask.setChecked(true);
         LinearLayout.LayoutParams maskParams = new LinearLayout.LayoutParams(-2, -2);
         maskParams.leftMargin = dp(8);
@@ -230,6 +259,7 @@ final class LauncherIconEditor {
         grid.setAdapter(adapter);
         body.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1));
         dialog.setContentView(root);
+        dialog.setOnDismissListener(ignored -> packPopup.dismiss());
         dialog.show();
         activePicker = dialog;
         dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(background));
@@ -285,9 +315,12 @@ final class LauncherIconEditor {
         ArrayAdapter<ColorOsIconPackCatalog.Pack> packAdapter = new ArrayAdapter<>(ctx,
                 android.R.layout.simple_spinner_item, available) {
             @Override public View getView(int position, View recycled, ViewGroup parent) {
+                if (!(parent instanceof Spinner)) return getDropDownView(position, recycled, parent);
                 View view = super.getView(position, recycled, parent);
-                view.setPaddingRelative(0, view.getPaddingTop(), view.getPaddingEnd(), view.getPaddingBottom());
+                view.setPaddingRelative(0, 0, 0, 0);
+                view.setMinimumHeight(dp(48));
                 if (view instanceof TextView label) {
+                    label.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
                     label.setSingleLine(true);
                     label.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 }
@@ -295,7 +328,13 @@ final class LauncherIconEditor {
             }
             @Override public View getDropDownView(int position, View recycled, ViewGroup parent) {
                 View view = super.getDropDownView(position, recycled, parent);
-                view.setPaddingRelative(dp(16), view.getPaddingTop(), Math.max(dp(16), view.getPaddingEnd()), view.getPaddingBottom());
+                // Recycled views must never inherit padding from a prior popup.
+                view.setPaddingRelative(dp(16), dp(12), dp(16), dp(12));
+                view.setMinimumHeight(dp(48));
+                if (view instanceof TextView label) {
+                    label.setSingleLine(true);
+                    label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                }
                 return view;
             }
         };
@@ -330,6 +369,14 @@ final class LauncherIconEditor {
                     }
                 });
             }
+        });
+        packPopup.setAnchorView(packs);
+        packPopup.setModal(true);
+        packPopup.setInputMethodMode(ListPopupWindow.INPUT_METHOD_NOT_NEEDED);
+        packPopup.setAdapter(packAdapter);
+        packPopup.setOnItemClickListener((parent, view, position, id) -> {
+            packs.setSelection(position);
+            packPopup.dismiss();
         });
         packs.setAdapter(packAdapter);
     }
