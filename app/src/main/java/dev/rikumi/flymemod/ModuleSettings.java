@@ -16,6 +16,10 @@ public final class ModuleSettings {
         return new java.util.HashSet<>(preferences.getStringSet(APP_IMMERSIVE_NAVIGATION_PACKAGES,
                 java.util.Collections.singleton("com.tencent.mm")));
     }
+    public static final String SMALL_WINDOW_LIMIT_ENABLED = "small_window_limit_enabled";
+    public static final String SMALL_WINDOW_LIMIT = "small_window_limit";
+    public static final int SMALL_WINDOW_LIMIT_DEFAULT = 3;
+    public static final int SMALL_WINDOW_LIMIT_MAX = 6;
     public static final String MBACK_MISSING_ASSISTANT_HOME = "mback_missing_assistant_home";
     public static final String MBACK_SYSTEM_TIMEOUT = "mback_system_long_press_timeout";
     public static final String NOTIFICATION_CONTOUR = "coloros_notification_contour";

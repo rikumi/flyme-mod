@@ -164,6 +164,26 @@ public final class XposedInit extends XposedModule {
         installPackageHooks(param.getPackageName(), param.getClassLoader());
     }
 
+    @Override public void onSystemServerStarting(SystemServerStartingParam param) {
+        ClassLoader loader = param.getClassLoader();
+        try {
+            new SmallWindowLimitHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                    (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                    .install(loader, (name, method, hooker, parameters) ->
+                            install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme small-window limit hooks", error);
+        }
+        try {
+            new SmallWindowInputHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                    (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                    .install(loader, (name, method, hooker, parameters) ->
+                            install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme small-window input hooks", error);
+        }
+    }
+
     private void installPackageHooks(String packageName, ClassLoader loader) {
         if ("com.meizu.flyme.sdkstage".equals(packageName)) {
             try {

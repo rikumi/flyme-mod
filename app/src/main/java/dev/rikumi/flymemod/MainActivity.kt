@@ -336,12 +336,53 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                             ApplicationPreference(ModuleSettings.RECENTS_SWIPE_UP_KILL, "多任务上划彻底结束进程")
                             FluixItemDivider()
                             ApplicationPreference(ModuleSettings.RECENTS_HIDE_NOT_RUNNING, "多任务隐藏未在运行的应用")
+                            FluixItemDivider()
+                            SmallWindowLimitPreference()
                         }
                     }
                 }
             }
             item { Box(Modifier.height(24.dp)) }
         }
+    }
+}
+
+@Composable
+private fun SmallWindowLimitPreference() {
+    val context = LocalContext.current
+    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false)) }
+    var limit by remember { mutableStateOf(preferences.getInt(ModuleSettings.SMALL_WINDOW_LIMIT,
+        ModuleSettings.SMALL_WINDOW_LIMIT_DEFAULT).coerceIn(1, ModuleSettings.SMALL_WINDOW_LIMIT_MAX)) }
+    var expanded by remember { mutableStateOf(false) }
+    FluixSwitchPreference(
+        title = "修改小窗数量上限",
+        checked = enabled,
+        onCheckedChange = {
+            enabled = it
+            expanded = it
+            preferences.edit().putBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, it).apply()
+            context.contentResolver.notifyChange(ModuleSettings.URI, null)
+        },
+        onTitleClick = if (enabled) ({ expanded = !expanded }) else null,
+        leftTrailingContent = {
+            if (enabled) BasicText("$limit",
+                style = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurfaceVariantSummary),
+                modifier = Modifier.padding(start = 12.dp))
+        },
+        showDivider = enabled && expanded,
+    )
+    AnimatedVisibility(visible = enabled && expanded, enter = expandVertically(), exit = shrinkVertically()) {
+        FluixSlider(
+            value = (limit - 1) / (ModuleSettings.SMALL_WINDOW_LIMIT_MAX - 1).toFloat(),
+            onValueChange = {
+                limit = (it * (ModuleSettings.SMALL_WINDOW_LIMIT_MAX - 1)).roundToInt() + 1
+                limit = limit.coerceIn(1, ModuleSettings.SMALL_WINDOW_LIMIT_MAX)
+                preferences.edit().putInt(ModuleSettings.SMALL_WINDOW_LIMIT, limit).apply()
+                context.contentResolver.notifyChange(ModuleSettings.URI, null)
+            },
+            modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),
+        )
     }
 }
 

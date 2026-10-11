@@ -18,6 +18,8 @@ public final class CameraSettingsBridge extends Application {
                 || ModuleSettings.CAMERA_KEEP_FILTER.equals(key)
                 || ModuleSettings.APP_IMMERSIVE_NAVIGATION.equals(key)
                 || ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES.equals(key)
+                || ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED.equals(key)
+                || ModuleSettings.SMALL_WINDOW_LIMIT.equals(key)
                 || ModuleSettings.DARK_APP_SPECIAL_PACKAGES.equals(key)) publish();
     };
 
@@ -47,6 +49,10 @@ public final class CameraSettingsBridge extends Application {
                                 local.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, false))
                         .putStringSet(ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES,
                                 ModuleSettings.navigationApplications(local))
+                        .putBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED,
+                                local.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false))
+                        .putInt(ModuleSettings.SMALL_WINDOW_LIMIT,
+                                local.getInt(ModuleSettings.SMALL_WINDOW_LIMIT, ModuleSettings.SMALL_WINDOW_LIMIT_DEFAULT))
                         .putBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES,
                                 local.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, false))
                         .commit();
