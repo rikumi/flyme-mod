@@ -15,6 +15,7 @@ public final class CameraSettingsBridge extends Application {
     private SharedPreferences local;
     private final SharedPreferences.OnSharedPreferenceChangeListener changes = (prefs, key) -> {
         if (ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION.equals(key)
+                || ModuleSettings.CAMERA_KEEP_FILTER.equals(key)
                 || ModuleSettings.DARK_APP_SPECIAL_PACKAGES.equals(key)) publish();
     };
 
@@ -38,6 +39,8 @@ public final class CameraSettingsBridge extends Application {
                         .putBoolean(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION,
                                 local.getBoolean(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION, false))
                         .remove("camera_disable_color_enhancement")
+                        .putBoolean(ModuleSettings.CAMERA_KEEP_FILTER,
+                                local.getBoolean(ModuleSettings.CAMERA_KEEP_FILTER, false))
                         .putBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES,
                                 local.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, false))
                         .commit();

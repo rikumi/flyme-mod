@@ -8,6 +8,7 @@ public final class ModuleSettings {
     public static final String EDIT_APP_ICON_NAME = "edit_app_icon_name";
     public static final String DARK_APP_SPECIAL_PACKAGES = "dark_app_special_packages";
     public static final String PHOTO_PREVIEW_SYSTEM_ROTATION = "photo_preview_system_rotation";
+    public static final String CAMERA_KEEP_FILTER = "camera_keep_filter";
     public static final String MBACK_MISSING_ASSISTANT_HOME = "mback_missing_assistant_home";
     public static final String MBACK_SYSTEM_TIMEOUT = "mback_system_long_press_timeout";
     public static final String NOTIFICATION_CONTOUR = "coloros_notification_contour";

@@ -243,6 +243,7 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 if (category.id == "camera" && groupTitle == "相机设置") {
                     item { PreferenceCard(listOf(
                         ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION to "图库预览跟随系统旋转锁定",
+                        ModuleSettings.CAMERA_KEEP_FILTER to "保留滤镜设置",
                     )) }
                 }
                 if (category.id == "camera" && groupTitle == "系统杂项") {

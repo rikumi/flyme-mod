@@ -170,6 +170,16 @@ PackageInstaller 会话。模块在安装启动至 `onPostExecute(Session)` 返�
 
 ## 相机与图库参考实现
 
+保留滤镜设置基于同版相机 `com.meizu.media.camera.filter.h` 的实际 DEX：
+`F(int)` / `J(int)` 分别选择经典/自定义滤镜，字段 `b` 为当前滤镜、`c` 为临时恢复滤镜，
+`G(List)` / `K(List)` 接收异步滤镜列表，`C(boolean)` 在预览开始时恢复并检查滤镜文件。
+模块单独保存用户选择（含 `Mznone`），不把 `A(boolean, boolean)` 的生命周期或模式重置写回。
+首次预览及异步列表到达后沿用 `C(true)` 恢复；暂停期间不触发异步恢复。
+开关通过现有 LSPosed 相机远程偏好桥接，关闭时遵循原生逻辑。
+恢复后调用 `MzUIController#setFilterBtnPressed(boolean)`，按管理器 `s()` 的实际状态
+同步按钮图标及 `mIsFilterOn`；`MzCommonUI#inflateDelay()` 后再同步，覆盖控件延迟加载。
+已通过真实 hook 类的 22 项状态分支检查与 APK 构建，尚未验证设备滤镜预览及成片。
+
 2026-10-11 从已连接设备只读提取：
 
 | 包 | 版本 | versionCode | 设备路径 | SHA-256 |

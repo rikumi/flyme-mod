@@ -49,6 +49,11 @@ final class CameraHooks {
         catch (ReflectiveOperationException | LinkageError error) {
             log.accept("Cannot resolve camera preview rotation", error);
         }
+        try {
+            new CameraFilterHooks(preferences, log).install(loader, installer, deoptimize);
+        } catch (ReflectiveOperationException | LinkageError error) {
+            log.accept("Cannot resolve camera filter retention", error);
+        }
         log.accept("Camera hook registration completed", null);
     }
 
