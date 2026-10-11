@@ -36,6 +36,7 @@ import android.widget.Button;
 import android.view.ViewGroup;
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -69,6 +70,7 @@ public final class XposedInit extends XposedModule {
     private boolean darkenEnabled;
     private final ThreadLocal<Object> blurDimOwner = new ThreadLocal<>();
     private boolean surfaceDarkBackground;
+    private RowRevealHooks activeRowRevealHooks;
     private boolean whiteActiveEnabled;
     private int controlCenterStyle;
     private int customActiveColor = ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR_DEFAULT;
@@ -505,21 +507,29 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve combined empty-shade hooks", e);
         }
         try {
-            new RowRevealHooks(loader, this::loadSettings, () -> combinedPullAnimationEnabled,
-                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(
+            activeRowRevealHooks = new RowRevealHooks(loader, this::loadSettings, () -> combinedPullAnimationEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeRowRevealHooks.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
             ReboundTimingHooks rebound = new ReboundTimingHooks(() -> combinedPullAnimationEnabled);
             rebound.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
             rebound.installRowStretch(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
-            new BlurRevealTimingHooks(loader, () -> combinedPullAnimationEnabled,
-                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(loader,
+            BlurRevealTimingHooks blurTiming = new BlurRevealTimingHooks(loader, () -> combinedPullAnimationEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeRowRevealHooks.addVisibilityListener(blurTiming::onVisibilityChanged);
+            activeRowRevealHooks.addProgressListener(blurTiming::onRevealProgress);
+            blurTiming.deoptimizeWriters(loader, this::deoptimize);
+            blurTiming.install(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
             CombinedShadeAnimationHooks animations = new CombinedShadeAnimationHooks(loader, this::loadSettings,
                     () -> combinedPullAnimationEnabled, () -> combinedCollapseFixEnabled,
                     () -> qsTranslationOriginEnabled,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeRowRevealHooks.addVisibilityListener(animations::onVisibilityChanged);
+            activeRowRevealHooks.addProgressListener(animations::onRevealProgress);
+            animations.setVisibleContent(activeRowRevealHooks::hasVisibleContent);
             if (secondaryExpansionHooks != null) {
                 animations.setSecondaryOwner(secondaryExpansionHooks::ownsGesture);
                 animations.setSecondaryTouchOwner(secondaryExpansionHooks::allowsTouch);
@@ -534,6 +544,7 @@ public final class XposedInit extends XposedModule {
             SeparateShadeOriginHooks separate = new SeparateShadeOriginHooks(loader, this::loadSettings, () -> qsTranslationOriginEnabled,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
             separate.setSlowRebound(() -> combinedPullAnimationEnabled);
+            if (activeRowRevealHooks != null) activeRowRevealHooks.addVisibilityListener(separate::onVisibilityChanged);
             separate.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         } catch (ReflectiveOperationException e) {
@@ -1296,6 +1307,7 @@ public final class XposedInit extends XposedModule {
     }
 
     private void installDarkBackground(ClassLoader loader) {
+        Map<Object, ShadeDimFrame> dimFrames = new WeakHashMap<>();
         // Extend only the native dim-layer call to apart mode. The normal blur
         // eligibility checks (including height/spring and lockscreen paths) stay intact.
         install(loader, "com.android.systemui.shade.NotificationPanelViewController", "allowSetShadeBlur", chain ->
@@ -1317,11 +1329,23 @@ public final class XposedInit extends XposedModule {
             Object previous = blurDimOwner.get();
             if (active) blurDimOwner.set(controller); else blurDimOwner.remove();
             try {
-                // The input is ControlCenterInteractor's actual blur fraction, including
-                // the blur-only lead-in and the delayed blur tail after content disappears.
-                Object result = locked ? chain.proceed(new Object[]{0f}) : chain.proceed();
+                // The flow also emits for blur-scale spring frames. An unchanged
+                // radius/color on the same surface needs no new Surface transaction.
+                Field surfaceField = controller.getClass().getField("mBackgroundSurface");
+                Object surface = surfaceField.get(controller);
+                float fraction = locked ? 0f : (Float) chain.getArg(0);
+                int color = controller.getClass().getField("mDimColor").getInt(controller);
+                ShadeDimFrame frame = dimFrames.computeIfAbsent(controller, ignored -> new ShadeDimFrame());
+                Object result = null;
+                if (!active || !frame.matches(surface, fraction, color)) {
+                    result = locked ? chain.proceed(new Object[]{0f}) : chain.proceed();
+                    surface = surfaceField.get(controller);
+                    frame.record(active ? surface : null, fraction, color);
+                }
                 surfaceDarkBackground = active
-                        && controller.getClass().getField("mBackgroundSurface").get(controller) != null;
+                        && view.isAttachedToWindow()
+                        && (surfaceDarkBackground
+                            || surface != null);
                 return result;
             } finally {
                 if (previous == null) blurDimOwner.remove(); else blurDimOwner.set(previous);
@@ -1338,7 +1362,10 @@ public final class XposedInit extends XposedModule {
             View scrim = (View) chain.getThisObject();
             int id = scrim.getResources().getIdentifier("center_behind", "id", "com.android.systemui");
             // Keep native alpha values/animators intact, but draw the dark backdrop once.
-            // If the surface layer is unavailable (e.g. lockscreen), retain the old scrim.
+            // Keep ownership after the surface fades to zero: center_behind has its
+            // own animator and can still be nontransparent at that moment. Restoring
+            // its draw here would flash the old dim layer on the final closing frame.
+            // Theme/lockscreen changes release ownership in the dim-layer hook.
             if (surfaceDarkBackground && id != 0 && scrim.getId() == id
                     && shouldDarken(scrim.getContext())) return null;
             return chain.proceed();

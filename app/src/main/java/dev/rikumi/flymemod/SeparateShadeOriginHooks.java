@@ -48,6 +48,11 @@ final class SeparateShadeOriginHooks {
 
     void setSlowRebound(BooleanSupplier enabled) { slowRebound = enabled; }
 
+    void onVisibilityChanged(Object center, boolean visible) {
+        State state = states.get(center);
+        if (state != null) state.hidden = !visible;
+    }
+
     void install(SignalHooks.Installer installer) {
         installer.hook(CENTER + "$TouchHandler", "onTouch", chain -> {
             MotionEvent previous = event.get();
@@ -61,18 +66,19 @@ final class SeparateShadeOriginHooks {
             State active = states.get(center);
             // Preserve the visual origin when launcher focus transfer and the
             // synthesized touch both announce the same tracking session.
-            if (enabled.getAsBoolean() && active != null && !active.settling
+            if (active() && active != null && !active.settling
                     && tracking.getBoolean(center)) return chain.proceed();
             State previous = states.remove(center);
             if (previous != null && previous.animator != null) previous.animator.cancel();
             Object result = chain.proceed();
-            if (enabled.getAsBoolean()) {
+            if (active()) {
                 Object nativeSpring = spring.get(center);
                 if (nativeSpring != null) nativeSpring.getClass().getMethod("cancel").invoke(nativeSpring);
                 State state = new State();
+                state.originFixed = enabled.getAsBoolean();
                 state.opening = closed.getBoolean(center);
                 state.reference = 56f * ((Context) context.get(center)).getResources().getDisplayMetrics().density;
-                state.translation = state.opening ? -state.reference / CARD_FACTOR : 0f;
+                state.translation = state.opening && state.originFixed ? -state.reference / CARD_FACTOR : 0f;
                 states.put(center, state);
             }
             return result;
@@ -80,21 +86,30 @@ final class SeparateShadeOriginHooks {
         installer.hook(CENTER, "setAnimationAlpha", chain -> {
             Object center = chain.getThisObject();
             State state = states.get(center);
-            if (enabled.getAsBoolean() && state != null && closingFade(state)) {
-                return chain.proceed(new Object[]{Math.min((Float) chain.getArg(0), closingAlpha(center, state))});
+            if (active() && state != null) {
+                if (!state.settling) state.alpha = (Float) chain.getArg(0);
+                if (closingFade(state) && (state.originFixed || state.settling)) {
+                    float visibleAlpha = Math.min((Float) chain.getArg(0),
+                            state.settling ? state.alpha : closingAlpha(center, state));
+                    if (!state.settling) state.alpha = visibleAlpha;
+                    return chain.proceed(new Object[]{visibleAlpha});
+                }
             }
             return chain.proceed();
         }, float.class);
         installer.hook(CENTER, "setQSTranslationY", chain -> {
             State state = states.get(chain.getThisObject());
-            if (enabled.getAsBoolean() && state != null && !Boolean.TRUE.equals(ownWrite.get())) return null;
+            if (active() && state != null && !Boolean.TRUE.equals(ownWrite.get())) {
+                if (state.originFixed || state.hidden || (state.settling && !state.expanding)) return null;
+                state.translation = (Float) chain.getArg(0);
+            }
             return chain.proceed();
         }, float.class);
         installer.hook(CENTER, "updateHeightAnimation", chain -> {
             Object result = chain.proceed();
             Object center = chain.getThisObject();
             State state = states.get(center);
-            if (!enabled.getAsBoolean() || state == null || state.settling || !tracking.getBoolean(center)) return result;
+            if (!active() || state == null || state.hidden || !state.originFixed || state.settling || !tracking.getBoolean(center)) return result;
             MotionEvent motion = event.get();
             if (motion != null && motion.getActionMasked() == MotionEvent.ACTION_MOVE) {
                 int index = motion.findPointerIndex(pointer.getInt(center));
@@ -118,21 +133,30 @@ final class SeparateShadeOriginHooks {
         installer.hook(CENTER, "fling", chain -> {
             Object center = chain.getThisObject();
             State state = states.get(center);
-            if (!enabled.getAsBoolean() || state == null || !tracking.getBoolean(center)) return chain.proceed();
-            state.settling = true;
+            if (!active() || state == null || !tracking.getBoolean(center)) return chain.proceed();
             boolean expanding = (Boolean) chain.getArg(1);
+            if (!state.originFixed && expanding) {
+                states.remove(center);
+                return chain.proceed();
+            }
+            if (state.settling) return chain.proceed();
+            state.settling = true;
             state.expanding = expanding;
             state.nativeFinished = false;
             state.visualFinished = false;
             Object result = chain.proceed();
-            float target = expanding ? 0f : -state.reference / CARD_FACTOR;
-            ValueAnimator animator = ValueAnimator.ofFloat(state.translation, target);
+            float releaseTranslation = state.translation;
+            float releaseAlpha = state.alpha;
+            float target = expanding ? 0f : releaseTranslation;
+            ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
             state.animator = animator;
             animator.setDuration(ReboundTimingHooks.duration(300L, expanding && slowRebound.getAsBoolean()));
             animator.setInterpolator(new DecelerateInterpolator());
             animator.addUpdateListener(frame -> {
                 if (states.get(center) != state) return;
-                state.translation = (Float) frame.getAnimatedValue();
+                float amount = (Float) frame.getAnimatedValue();
+                state.translation = releaseTranslation + (target - releaseTranslation) * amount;
+                if (!expanding) state.alpha = releaseAlpha * (1f - amount);
                 try { write(center, state.translation); }
                 catch (ReflectiveOperationException error) { log.accept("Cannot animate separate QS origin", error); }
             });
@@ -159,8 +183,10 @@ final class SeparateShadeOriginHooks {
             return result;
         });
         installer.hook(CENTER, "startSpringBackAnimator", chain ->
-                enabled.getAsBoolean() && states.containsKey(chain.getThisObject()) ? null : chain.proceed(), float.class);
+                active() && states.containsKey(chain.getThisObject()) ? null : chain.proceed(), float.class);
     }
+
+    private boolean active() { return enabled.getAsBoolean() || slowRebound.getAsBoolean(); }
 
     private void finish(Object center, State state) throws ReflectiveOperationException {
         if (!state.nativeFinished || !state.visualFinished || states.get(center) != state) return;
@@ -173,7 +199,8 @@ final class SeparateShadeOriginHooks {
         try {
             translation.invoke(center, value);
             State state = states.get(center);
-            if (state != null && closingFade(state)) alpha.invoke(center, closingAlpha(center, state));
+            if (state != null && closingFade(state)) alpha.invoke(center,
+                    state.settling ? state.alpha : closingAlpha(center, state));
         }
         finally { ownWrite.remove(); }
     }
@@ -193,8 +220,8 @@ final class SeparateShadeOriginHooks {
         Method method = type.getDeclaredMethod(name, args); method.setAccessible(true); return method;
     }
     private static final class State {
-        boolean opening, expanding, settling, nativeFinished, visualFinished;
-        float reference, translation;
+        boolean opening, expanding, settling, nativeFinished, visualFinished, originFixed, hidden;
+        float reference, translation, alpha = 1f;
         ValueAnimator animator;
     }
 }

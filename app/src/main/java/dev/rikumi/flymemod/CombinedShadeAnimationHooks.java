@@ -31,8 +31,11 @@ final class CombinedShadeAnimationHooks {
     private final BiConsumer<String, Throwable> log;
     private Predicate<Object> secondaryOwner = ignored -> false;
     private Predicate<Object> secondaryTouchOwner = ignored -> false;
+    private Predicate<Object> visibleContent = ignored -> false;
     private final Map<Object, Gesture> gestures = new WeakHashMap<>();
     private final ThreadLocal<MotionEvent> touchEvent = new ThreadLocal<>();
+    private final ThreadLocal<Boolean> writingTranslation = new ThreadLocal<>();
+    private final MergedShadeTranslation fastTranslation;
     private final Field view, qs, interactor, fraction, closedOnDown, filter, expand, collapse;
     private final Field initialY, pointer, touchSlop;
     private final Method tracking, closing, maxHeight, alpha, getQs, getContainer, translation;
@@ -58,6 +61,7 @@ final class CombinedShadeAnimationHooks {
         this.log = log;
         Class<?> panel = loader.loadClass(PANEL);
         Class<?> quickSettings = loader.loadClass(QS);
+        fastTranslation = new MergedShadeTranslation(loader.loadClass("com.flyme.systemui.qs.MzQSImpl"));
         view = field(panel, "mView");
         qs = field(panel, "mQsController");
         interactor = field(panel, "mShadeInteractor");
@@ -94,6 +98,28 @@ final class CombinedShadeAnimationHooks {
     void setSecondaryOwner(Predicate<Object> owner) { secondaryOwner = owner; }
     void setSecondaryTouchOwner(Predicate<Object> owner) { secondaryTouchOwner = owner; }
 
+    void setVisibleContent(Predicate<Object> visible) { visibleContent = visible; }
+
+    void onRevealProgress(Object panel, float progress) {
+        if (progress > 0f) return;
+        try {
+            Gesture gesture = gestures.get(qs.get(panel));
+            if (gesture != null && gesture.settling && !gesture.expanding) resetIfCollapsed(panel);
+        } catch (ReflectiveOperationException error) {
+            log.accept("Cannot finish combined shade content transition", error);
+        }
+    }
+
+    void onVisibilityChanged(Object panel, boolean visible) {
+        if (!panel.getClass().getName().equals(PANEL)) return;
+        try {
+            Gesture gesture = gestures.get(qs.get(panel));
+            if (gesture != null) gesture.hidden = !visible;
+        } catch (ReflectiveOperationException error) {
+            log.accept("Cannot hold combined shade fade position", error);
+        }
+    }
+
     void releaseForSecondary(Object quickSettings) {
         try {
             // Remove the old owner before cancel() delivers its synchronous end callbacks.
@@ -106,14 +132,42 @@ final class CombinedShadeAnimationHooks {
             cancelHeight.invoke(panel);
             if ((Boolean) tracking.invoke(panel)) trackingStopped.invoke(panel, true);
             expandingFinished.invoke(panel);
-            translation.invoke(quickSettings, 0f);
+            writeTranslation(quickSettings, 0f);
             alpha.invoke(panel, 1f);
         } catch (ReflectiveOperationException error) {
             log.accept("Cannot transfer merged shade animation ownership", error);
         }
     }
 
+    private void writeTranslation(Object quickSettings, float value) throws ReflectiveOperationException {
+        Boolean previous = writingTranslation.get();
+        writingTranslation.set(true);
+        try { translation.invoke(quickSettings, value); }
+        finally {
+            if (previous == null) writingTranslation.remove(); else writingTranslation.set(previous);
+        }
+    }
+
     void install(SignalHooks.Installer installer) {
+        installer.hook("com.flyme.systemui.qs.MzQSImpl", "setQSTranslationY", chain -> {
+            if (enabled.getAsBoolean() && Boolean.TRUE.equals(writingTranslation.get())) {
+                fastTranslation.apply(chain.getThisObject(), (Float) chain.getArg(0));
+                return null;
+            }
+            if (enabled.getAsBoolean() && !Boolean.TRUE.equals(writingTranslation.get())) {
+                for (Map.Entry<Object, Gesture> entry : gestures.entrySet()) {
+                    if (!secondaryOwner.test(entry.getKey()) && getQs.invoke(entry.getKey()) == chain.getThisObject())
+                        return null;
+                }
+            }
+            return chain.proceed();
+        }, float.class);
+        installer.hook(QS, "setQSTranslationY", chain -> {
+            Gesture gesture = gestures.get(chain.getThisObject());
+            if (enabled.getAsBoolean() && !Boolean.TRUE.equals(writingTranslation.get())
+                    && !secondaryOwner.test(chain.getThisObject()) && gesture != null) return null;
+            return chain.proceed();
+        }, float.class);
         installer.hook(PANEL, "flingExpands", chain -> {
             Object panel = chain.getThisObject();
             settings.accept(((View) view.get(panel)).getContext());
@@ -166,7 +220,7 @@ final class CombinedShadeAnimationHooks {
             }
             if (enabled.getAsBoolean() && gesture != null && (gesture.dismissal || gesture.originFixed || gesture.minimumDuration)
                     && gesture.settling && gesture.expanding && fraction.getFloat(panel) >= 1f) {
-                translation.invoke(qs.get(panel), 0f);
+                writeTranslation(qs.get(panel), 0f);
                 alpha.invoke(panel, 1f);
                 gestures.remove(qs.get(panel));
             }
@@ -207,7 +261,7 @@ final class CombinedShadeAnimationHooks {
                         : revealTranslation(fraction.getFloat(panel), ((Number) maxHeight.invoke(panel)).floatValue(), 0f);
                 gesture.alpha = 0f;
                 gestures.put(qs.get(panel), gesture);
-                translation.invoke(qs.get(panel), gesture.translation);
+                writeTranslation(qs.get(panel), gesture.translation);
                 alpha.invoke(panel, 0f);
             }
             if (gesture != null && gesture.minimumDuration && gesture.positionAnimator != null) {
@@ -221,10 +275,13 @@ final class CombinedShadeAnimationHooks {
                     && !secondaryOwner.test(qs.get(panel))
                     && (releaseEvent == null || releaseEvent.getActionMasked() != MotionEvent.ACTION_CANCEL)) {
                 gesture.openingRemaining = remainingOpeningDuration(SystemClock.uptimeMillis() - gesture.openingStarted);
-                gesture.minimumDuration = gesture.openingRemaining > 0L || !(Boolean) tracking.invoke(panel);
+                // Even a long-held opening needs one position owner after release;
+                // otherwise a native spring bypasses the controller and later snaps
+                // the still-visible content to zero at height completion.
+                gesture.minimumDuration = true;
             }
             if (animationFix.getAsBoolean() && gesture != null && gesture.dismissal
-                    && !gesture.releasedByFling && (Boolean) tracking.invoke(panel)
+                    && !gesture.releasedByFling
                     && isCombined(panel) && !filter.getBoolean(panel) && !secondaryOwner.test(qs.get(panel))) {
                 gesture.minimumDuration = true;
             }
@@ -258,7 +315,7 @@ final class CombinedShadeAnimationHooks {
                 Object quickSettings = qs.get(panel);
                 Object plugin = getQs.invoke(quickSettings);
                 if (plugin != null) cancelSpring.invoke(plugin);
-                translation.invoke(quickSettings, 0f);
+                writeTranslation(quickSettings, 0f);
                 gestures.remove(quickSettings);
                 return null;
             }
@@ -341,7 +398,7 @@ final class CombinedShadeAnimationHooks {
             gesture.translation = revealTranslation(progress, height, damped);
             gesture.alpha = limitOpeningAlpha(gesture, revealAlpha(progress));
             // Native translation distributes movement across header, tiles and notifications.
-            translation.invoke(quickSettings, gesture.translation);
+            writeTranslation(quickSettings, gesture.translation);
             alpha.invoke(panel, gesture.alpha);
             return null;
         }, float.class);
@@ -352,7 +409,7 @@ final class CombinedShadeAnimationHooks {
             if (enabled.getAsBoolean() && gesture != null && (gesture.originFixed || gesture.minimumDuration)) {
                 // fling may request another native header spring after our release animator
                 // has started. Keep one position writer and restore the release position.
-                translation.invoke(quickSettings, gesture.translation);
+                writeTranslation(quickSettings, gesture.translation);
                 gesture.released = true;
                 stopSpring(quickSettings);
                 return null;
@@ -360,7 +417,7 @@ final class CombinedShadeAnimationHooks {
             if (enabled.getAsBoolean() && gesture != null && !gesture.released) {
                 // Stock ACTION_UP resets translation to maxHeight * .07. Restore the last drag
                 // position so the original velocity/damping spring starts without a jump.
-                translation.invoke(quickSettings, gesture.translation);
+                writeTranslation(quickSettings, gesture.translation);
                 gesture.released = true;
                 if (gesture.dismissal || gesture.originFixed || gesture.minimumDuration) {
                     // An upward dismissal must not spring back to the fully open position.
@@ -377,6 +434,7 @@ final class CombinedShadeAnimationHooks {
         float progress = fraction.getFloat(panel);
         float height = ((Number) maxHeight.invoke(panel)).floatValue();
         if (!gesture.released) {
+            if (gesture.hidden) return;
             MotionEvent event = touchEvent.get();
             if (event != null && event.getActionMasked() == MotionEvent.ACTION_MOVE) {
                 int index = event.findPointerIndex(pointer.getInt(panel));
@@ -394,7 +452,7 @@ final class CombinedShadeAnimationHooks {
                 gesture.translation = dragTranslation(gesture.fingerDistance, distance);
                 gesture.alpha = dragAlpha(gesture.fingerDistance, distance);
             }
-            translation.invoke(quickSettings, gesture.translation);
+            writeTranslation(quickSettings, gesture.translation);
             alpha.invoke(panel, gesture.alpha);
             return;
         }
@@ -424,7 +482,7 @@ final class CombinedShadeAnimationHooks {
                 gesture.alpha = gesture.releaseAlpha * (1f - amount) + gesture.alpha * amount;
             }
         }
-        translation.invoke(quickSettings, gesture.translation);
+        writeTranslation(quickSettings, gesture.translation);
         alpha.invoke(panel, gesture.alpha);
     }
 
@@ -436,6 +494,9 @@ final class CombinedShadeAnimationHooks {
         settings.accept(((View) view.get(panel)).getContext());
         if (enabled.getAsBoolean() && fraction.getFloat(panel) <= 0f && isCombined(panel)
                 && !filter.getBoolean(panel)) {
+            // Native height can finish before the row fade. Resetting translation
+            // now moves still-visible headers and controls back to their rest pose.
+            if (visibleContent.test(panel)) return;
             Gesture gesture = gestures.get(qs.get(panel));
             if (gesture != null && (gesture.originFixed || gesture.minimumDuration) && gesture.positionAnimator != null) {
                 if (!gesture.expanding) gesture.nativeFinished = true;
@@ -453,7 +514,7 @@ final class CombinedShadeAnimationHooks {
         cancel(expand, panel);
         cancel(collapse, panel);
         stopSpring(quickSettings);
-        translation.invoke(quickSettings, 0f);
+        writeTranslation(quickSettings, 0f);
         if (getQs.invoke(quickSettings) != null && getContainer.invoke(quickSettings) != null) {
             alpha.invoke(panel, 0f);
         }
@@ -519,11 +580,9 @@ final class CombinedShadeAnimationHooks {
     }
 
     private void startPositionAnimator(Object panel, Object quickSettings, Gesture gesture) throws ReflectiveOperationException {
-        float closingTarget = gesture.originFixed ? -gesture.referenceDistance / CONTAINER_TRANSLATION_FACTOR
-                : -2f * DISMISSAL_DISTANCE_DP * ((View) view.get(panel)).getResources().getDisplayMetrics().density;
-        float target = gesture.expanding ? 0f : closingTarget;
-        float fadeDistance = DISMISSAL_DISTANCE_DP * ((View) view.get(panel))
-                .getResources().getDisplayMetrics().density;
+        // Dismiss in place. Native height still settles independently, but cannot
+        // move visible content back to its fixed 7% release threshold.
+        float target = gesture.expanding ? 0f : gesture.releaseTranslation;
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         ValueAnimator previousAnimator = gesture.positionAnimator;
         gesture.positionAnimator = animator;
@@ -540,12 +599,10 @@ final class CombinedShadeAnimationHooks {
             if (gesture.expanding) {
                 gesture.alpha = gesture.releaseAlpha + (1f - gesture.releaseAlpha) * amount;
             } else {
-                // Closing alpha follows actual travel, not the minimum position duration.
-                gesture.alpha = closingAlpha(gesture.releaseAlpha, gesture.releaseTranslation,
-                        gesture.translation, fadeDistance);
+                gesture.alpha = gesture.releaseAlpha * (1f - amount);
             }
             try {
-                translation.invoke(quickSettings, gesture.translation);
+                writeTranslation(quickSettings, gesture.translation);
                 alpha.invoke(panel, gesture.alpha);
             } catch (ReflectiveOperationException error) {
                 log.accept("Cannot animate QS translation origin", error);
@@ -559,9 +616,9 @@ final class CombinedShadeAnimationHooks {
                 try {
                     if (gesture.expanding) {
                         gestures.remove(quickSettings);
-                        translation.invoke(quickSettings, 0f);
+                        writeTranslation(quickSettings, 0f);
                         alpha.invoke(panel, 1f);
-                    } else resetReveal(panel);
+                    } else resetIfCollapsed(panel);
                 } catch (ReflectiveOperationException error) {
                     log.accept("Cannot finish QS translation origin animation", error);
                 }
@@ -607,6 +664,6 @@ final class CombinedShadeAnimationHooks {
         ValueAnimator positionAnimator;
         float translation, alpha, releaseFraction, releaseTranslation, releaseAlpha, fingerDistance, referenceDistance;
         long openingStarted, openingRemaining;
-        boolean released, releasedByFling, dismissal, settling, expanding, originFixed, nativeFinished, minimumDuration;
+        boolean released, releasedByFling, dismissal, settling, expanding, originFixed, nativeFinished, minimumDuration, hidden;
     }
 }

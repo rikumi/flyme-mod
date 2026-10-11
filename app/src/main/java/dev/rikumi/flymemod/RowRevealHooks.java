@@ -10,6 +10,7 @@ import android.view.animation.LinearInterpolator;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.graphics.Rect;
+import android.os.Trace;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.ref.WeakReference;
@@ -39,11 +40,14 @@ final class RowRevealHooks {
     private final Field notificationStack, shadeInteractor;
     private final Method combinedMode, flowValue, notificationTop;
     private final ThreadLocal<View> currentNotifications = new ThreadLocal<>();
+    private final ThreadLocal<NotificationRegion> currentNotificationRegion = new ThreadLocal<>();
     private final Class<?> tileType;
     private final Map<Object, State> states = new WeakHashMap<>();
     private final Map<Object, Float> rawAlpha = new WeakHashMap<>();
     private final ThreadLocal<AlphaSeed> alphaSeed = new ThreadLocal<>();
     private final Map<Object, Reveal> reveals = new WeakHashMap<>();
+    private final List<BiConsumer<Object, Boolean>> visibilityListeners = new ArrayList<>();
+    private final List<BiConsumer<Object, Float>> progressListeners = new ArrayList<>();
     private final Map<View, HeaderBinding> headerBindings = new WeakHashMap<>();
     private final ThreadLocal<MotionEvent> touch = new ThreadLocal<>();
     private final ThreadLocal<Reveal> currentReveal = new ThreadLocal<>();
@@ -95,9 +99,24 @@ final class RowRevealHooks {
     }
 
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
+        panelAlpha.getDeclaringClass().getDeclaredMethod("instantCollapsePanel");
+        installer.hook(SHADE, "instantCollapsePanel", chain -> {
+            Object owner = chain.getThisObject();
+            if (active(owner, false)) {
+                retire(owner);
+                for (BiConsumer<Object, Float> listener : progressListeners) listener.accept(owner, 0f);
+            }
+            return chain.proceed();
+        });
         deoptimize.accept(centerAlpha);
         deoptimize.accept(centerCollapseTranslation);
         deoptimize.accept(panelAlpha);
+        for (String callback : new String[]{QS + "$2", QS + "$3"}) {
+            for (Method method : panelAlpha.getDeclaringClass().getClassLoader().loadClass(callback).getDeclaredMethods()) {
+                if (method.getName().equals("onAnimationUpdate") || method.getName().equals("onAnimationEnd"))
+                    deoptimize.accept(method);
+            }
+        }
         deoptimize.accept(combinedHeader.getDeclaringClass().getDeclaredMethod("setQsAlpha", float.class));
         for (String callback : new String[]{CENTER + "$7", CENTER + "$8"}) {
             try {
@@ -109,6 +128,13 @@ final class RowRevealHooks {
             }
         }
         installer.hook(View.class.getName(), "setAlpha", chain -> {
+            NotificationRegion region = currentNotificationRegion.get();
+            if (enabled.getAsBoolean() && region != null && region.view == chain.getThisObject()) {
+                // NPVC writes the undelayed parent alpha after setQsPanelAlpha. The
+                // pre-draw row renderer already owns this exact stack's delayed alpha.
+                // Suppress only that native write, not other views or endpoint/reset writes.
+                return null;
+            }
             HeaderBinding binding = headerBindings.get(chain.getThisObject());
             Object owner = binding == null ? null : binding.owner.get();
             if (!enabled.getAsBoolean() || owner == null || reveals.get(owner) != binding.reveal)
@@ -294,14 +320,24 @@ final class RowRevealHooks {
             rememberAlpha(panel, input);
             if (!active(panel, false)) { retire(panel); return chain.proceed(); }
             Reveal reveal = visual(panel, input, false);
+            // MOVE/height/native alpha callbacks do not advance the row timeline.
+            // Applying the same content pose again rebuilds endpoint state and
+            // repeats backdrop/header/notification writes while dragging.
+            if (reveal.hasApplied && !Boolean.TRUE.equals(writingReveal.get())) return null;
+            for (BiConsumer<Object, Float> listener : progressListeners) listener.accept(panel, reveal.progress);
             View previous = currentNotifications.get();
+            NotificationRegion previousRegion = currentNotificationRegion.get();
             Reveal previousReveal = currentReveal.get();
+            currentNotificationRegion.remove();
             currentNotifications.set((View) notificationStack.get(panel));
             currentReveal.set(reveal);
             try {
-                return chain.proceed(new Object[]{encodedProgress(reveal.progress)});
+                Object result = chain.proceed(new Object[]{encodedProgress(reveal.progress)});
+                reveal.hasApplied = true;
+                return result;
             } finally {
                 if (previous == null) currentNotifications.remove(); else currentNotifications.set(previous);
+                if (previousRegion == null) currentNotificationRegion.remove(); else currentNotificationRegion.set(previousRegion);
                 if (previousReveal == null) currentReveal.remove(); else currentReveal.set(previousReveal);
             }
         }, float.class);
@@ -347,6 +383,9 @@ final class RowRevealHooks {
         return separate ? alpha : parent <= 0f ? 0f : Math.min(1f, alpha / parent);
     }
     private static float headerAlpha(Reveal reveal, boolean separate) {
+        // Merged headers share the row timeline. Native alpha callbacks and the
+        // gesture-position animator must not introduce a second fading clock.
+        if (!separate) return headerAlpha(reveal.progress, false);
         if (reveal.target) return headerAlpha(reveal.progress, separate);
         // Closing headers use the real native/gesture alpha rather than the
         // 300ms row timeline, so a short upward swipe can clear them immediately.
@@ -398,10 +437,26 @@ final class RowRevealHooks {
         reveal.settling = true;
         request(owner, reveal, visible, separate);
     }
+    void addVisibilityListener(BiConsumer<Object, Boolean> listener) {
+        visibilityListeners.add(listener);
+    }
+
+    void addProgressListener(BiConsumer<Object, Float> listener) {
+        progressListeners.add(listener);
+    }
+
+    boolean hasVisibleContent(Object owner) {
+        Reveal reveal = reveals.get(owner);
+        return enabled.getAsBoolean() && reveal != null && reveal.progress > 0f;
+    }
+
     private void request(Object owner, Reveal reveal, boolean visible, boolean separate) {
         if (reveal.initialized && reveal.target == visible) return;
         if (!visible) reveal.closingHeaderAlpha = revealCurve((reveal.progress - .20f) / .80f);
         reveal.initialized = true; reveal.target = visible;
+        // The threshold can start a fade while the finger is still down. Tell
+        // position and backdrop owners before the first alpha animation frame.
+        for (BiConsumer<Object, Boolean> listener : visibilityListeners) listener.accept(owner, visible);
         ValueAnimator old = reveal.animator;
         reveal.animator = null;
         if (old != null) old.cancel();
@@ -434,7 +489,7 @@ final class RowRevealHooks {
         return progress <= 0f ? 0f : .18f + .82f * progress;
     }
     private static final class Reveal {
-        boolean initialized, target, gesture, opening, settling, pendingTranslationReset;
+        boolean initialized, target, gesture, opening, settling, pendingTranslationReset, hasApplied;
         float progress, nativeInput = 1f, closingHeaderAlpha = 1f;
         ValueAnimator animator;
     }
@@ -510,6 +565,9 @@ final class RowRevealHooks {
             watch(notifications, state);
         }
         state.initialized = !state.tiles.isEmpty();
+        if (!separate && notifications != null && state.notifications != null) {
+            currentNotificationRegion.set(state.notifications);
+        }
     }
 
     private void watch(View root, State state) {
@@ -657,6 +715,12 @@ final class RowRevealHooks {
     }
 
     private void render(State state) {
+        Trace.beginSection("FlymeMod#rowReveal");
+        try { renderRows(state); }
+        finally { Trace.endSection(); }
+    }
+
+    private void renderRows(State state) {
         if (state.geometryDirty) prepare(state);
         float lastVisibleDelay = 0f;
         float notificationGap = ROW_DELAY;
@@ -672,24 +736,32 @@ final class RowRevealHooks {
             for (int i = 0; i < page.tiles.size(); i++) {
                 Tile tile = page.tiles.get(i);
                 float amount = revealCurve((state.progress - tile.delay) / (1f - tile.delay));
-                tile.view.setPivotX(tile.animationPivotX);
-                tile.view.setPivotY(tile.animationPivotY);
-                tile.view.setScaleX(.85f + .15f * amount);
-                tile.view.setScaleY(.85f + .15f * amount);
-                tile.view.setAlpha(tile.alpha * (parentAlpha > 0f ? amount / parentAlpha : 0f));
+                applyFrame(tile.view, tile.animationPivotX, tile.animationPivotY,
+                        .85f + .15f * amount, .85f + .15f * amount,
+                        tile.alpha * (parentAlpha > 0f ? amount / parentAlpha : 0f));
             }
         }
         if (state.notifications != null) {
             NotificationRegion region = state.notifications;
             float delay = Math.min(.8f, lastVisibleDelay + notificationGap);
             float amount = revealCurve((state.progress - delay) / (1f - delay));
-            region.view.setPivotX(region.view.getWidth() / 2f);
-            region.view.setPivotY(region.top);
             float scale = .85f + .15f * amount;
-            region.view.setScaleX(region.scaleX * scale);
-            region.view.setScaleY(region.scaleY * scale);
-            region.view.setAlpha(amount);
+            applyFrame(region.view, region.view.getWidth() / 2f, region.top,
+                    region.scaleX * scale, region.scaleY * scale, amount);
         }
+    }
+
+    private static void applyFrame(View view, float pivotX, float pivotY,
+                                   float scaleX, float scaleY, float alpha) {
+        // Compare actual properties, not cached values: secondary expansion can
+        // change them between frames and must still be corrected before drawing.
+        if (!view.isPivotSet() || view.getPivotX() != pivotX || view.getPivotY() != pivotY) {
+            view.setPivotX(pivotX);
+            view.setPivotY(pivotY);
+        }
+        if (view.getScaleX() != scaleX) view.setScaleX(scaleX);
+        if (view.getScaleY() != scaleY) view.setScaleY(scaleY);
+        if (view.getAlpha() != alpha) view.setAlpha(alpha);
     }
 
     private static float coordinate(View view, View page, boolean horizontal) {
