@@ -549,15 +549,14 @@ final class CombinedShadeAnimationHooks {
             float fingerDistance = (progress - REVEAL_FRACTION) * height / .7f;
             return fingerDistance * .5f / CONTAINER_TRANSLATION_FACTOR;
         }
-        // Combined MOVE maps finger distance to maxHeight * .07 + distance * .7.
-        // Native header/container translation coefficients are about .5, so compensate here
-        // to follow the finger only through the first 24dp, then remain invisible and stationary.
-        return -2f * dismissalTravel(progress, height, fadeDistance);
+        // The opening/reversal path has no upward travel beyond the resting position.
+        // A fresh dismissal must use the same lower bound while its content fades.
+        return 0f;
     }
 
     static float dragTranslation(float fingerDistance, float fadeDistance) {
         return fingerDistance > 0f ? fingerDistance * .5f / CONTAINER_TRANSLATION_FACTOR
-                : -2f * Math.min(fadeDistance, -fingerDistance);
+                : 0f;
     }
 
     static float dragAlpha(float fingerDistance, float fadeDistance) {

@@ -105,6 +105,12 @@ final class SimpleQsTextHooks {
             if (horizontal && optimizeText) {
                 shiftText((TextView) field(tile, "label"), 7f);
                 shiftText((TextView) field(tile, "secondaryLabel"), 7f);
+                Original original = remember(tile);
+                int end = dndEndPadding(original.paddingEnd, tile.getResources().getDisplayMetrics().density);
+                if (tile.getPaddingEnd() != end)
+                    tile.setPaddingRelative(original.paddingStart, original.paddingTop, end, original.paddingBottom);
+            } else {
+                restore(tile);
             }
             View arrow = (View) field(tile, "chevronView");
             if (arrow != null) {
@@ -125,6 +131,7 @@ final class SimpleQsTextHooks {
     }
 
     private void restoreTile(View tile) {
+        restore(tile);
         for (View view : new ArrayList<>(originals.keySet())) {
             if (view == null) continue;
             android.view.ViewParent parent = view.getParent();
@@ -186,6 +193,7 @@ final class SimpleQsTextHooks {
         } else if (view instanceof LinearLayout group) group.setGravity(original.gravity);
         if (!(view instanceof TextView) && original.titleHidden) view.setVisibility(original.visibility);
         view.setTranslationX(original.x);
+        view.setPaddingRelative(original.paddingStart, original.paddingTop, original.paddingEnd, original.paddingBottom);
         ViewGroup.LayoutParams params = view.getLayoutParams();
         if (params instanceof ViewGroup.MarginLayoutParams margins && margins.topMargin != original.topMargin) {
             margins.topMargin = original.topMargin;
@@ -200,9 +208,14 @@ final class SimpleQsTextHooks {
     private static final class Original {
         final float size, x;
         final int gravity, height, visibility, topMargin;
+        final int paddingStart, paddingTop, paddingEnd, paddingBottom;
         final Typeface typeface;
         boolean titleHidden;
         Original(View view) {
+            paddingStart = view.getPaddingStart();
+            paddingTop = view.getPaddingTop();
+            paddingEnd = view.getPaddingEnd();
+            paddingBottom = view.getPaddingBottom();
             size = view instanceof TextView text ? text.getTextSize() : 0f;
             typeface = view instanceof TextView text ? text.getTypeface() : null;
             gravity = view instanceof TextView text ? text.getGravity()
@@ -212,5 +225,10 @@ final class SimpleQsTextHooks {
             visibility = view.getVisibility();
             topMargin = view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams params ? params.topMargin : 0;
         }
+    }
+
+    static int dndEndPadding(int original, float density) {
+        // Gain at most 4dp, retaining at least 8dp; never enlarge a smaller native inset.
+        return Math.min(original, Math.max(Math.round(8f * density), original - Math.round(4f * density)));
     }
 }

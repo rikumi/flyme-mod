@@ -103,6 +103,9 @@ public final class XposedInit extends XposedModule {
     private boolean qsTranslationOriginEnabled;
     private boolean secondaryExpansionEnabled;
     private boolean combinedEmptyShadeKeepOpenEnabled;
+    private boolean combinedFilterSettingsEnabled;
+    private boolean homeIconMinimumSizeEnabled;
+    private CombinedSettingsButtonHooks activeCombinedSettingsButtonHooks;
     private boolean restoreCollapsedCardHeightEnabled;
     private SecondaryExpansionHooks secondaryExpansionHooks;
     private boolean mergeDualSignalEnabled;
@@ -134,6 +137,7 @@ public final class XposedInit extends XposedModule {
     private volatile boolean editAppIconNameEnabled;
     private volatile boolean launcherHideAppMenuEnabled, launcherSpreadHiddenAppsEnabled;
     private volatile boolean lockWidgetStartupFixEnabled;
+    private volatile boolean blockLockscreenLongPressEditEnabled;
     private volatile boolean folderRestoreColorEnabled;
     private volatile boolean folderRadiusEnabled;
     private volatile int folderRadiusDp = ModuleSettings.FOLDER_RADIUS_DEFAULT;
@@ -286,6 +290,13 @@ public final class XposedInit extends XposedModule {
         if ("com.meizu.flyme.launcher".equals(packageName)) {
             installLauncherIconHiding(loader);
             try {
+                new HomeIconMinimumSizeHooks(loader, this::loadSettings, () -> homeIconMinimumSizeEnabled).install(
+                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                        this::deoptimize);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve home-animation minimum icon size", error);
+            }
+            try {
                 new LauncherHiddenAppsHooks(this::loadSettings, () -> launcherHideAppMenuEnabled,
                         () -> launcherSpreadHiddenAppsEnabled,
                         (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
@@ -358,6 +369,13 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve lockscreen widget startup hooks", error);
         }
 
+        try {
+            new LockscreenLongPressHooks(loader, this::loadSettings, () -> blockLockscreenLongPressEditEnabled).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve lockscreen long press edit hooks", error);
+        }
+
         install(loader, "com.android.systemui.statusbar.phone.ui.StatusBarIconControllerImpl",
                 "setIconVisibility", chain -> {
                     Object controller = chain.getThisObject();
@@ -413,6 +431,16 @@ public final class XposedInit extends XposedModule {
         new HeaderDateHooks(this::loadSettings, () -> hideLunarEnabled).install(
                 (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         try {
+            activeCombinedSettingsButtonHooks = new CombinedSettingsButtonHooks(loader, this::loadSettings,
+                    () -> combinedFilterSettingsEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeCombinedSettingsButtonHooks.install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                    this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve combined shade Settings button hooks", error);
+        }
+        try {
             activeSimpleQsTextHooks = new SimpleQsTextHooks(loader, this::loadSettings,
                     () -> optimize2x1TextEnabled, () -> networkSplitStyle,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
@@ -420,6 +448,13 @@ public final class XposedInit extends XposedModule {
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve simplified control center text", error);
+        }
+        try {
+            BluetoothDeviceCountHooks.install(loader,
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                    this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve Bluetooth device count labels", error);
         }
         try {
             new AodMovementHooks(loader, this::loadSettings, () -> limitAodMovementEnabled).install(
@@ -611,9 +646,16 @@ public final class XposedInit extends XposedModule {
         }
         try {
             new NetworkCardAnimationHooks(loader, this::loadSettings, () -> scaleEnabled).install(
-                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve network card animation geometry", error);
+        }
+        try {
+            new ShadeRestPositionHooks(loader, this::loadSettings,
+                    () -> combinedPullAnimationEnabled || qsTranslationOriginEnabled).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve control-center resting alignment", error);
         }
         install(loader, PHONE + "ControlCenterPanelView", "onLayout", chain -> {
             Object result = chain.proceed();
@@ -1865,6 +1907,7 @@ public final class XposedInit extends XposedModule {
                     if (activeClockFontHooks != null) activeClockFontHooks.refresh();
                     if (activeCarrierVisibilityHooks != null) activeCarrierVisibilityHooks.refresh();
                     if (activeSimpleQsTextHooks != null) activeSimpleQsTextHooks.refresh();
+                    if (activeCombinedSettingsButtonHooks != null) activeCombinedSettingsButtonHooks.refresh();
                     if (activeSplitNetworkCardHooks != null) activeSplitNetworkCardHooks.refresh();
                     if (activeCardIconLayoutHooks != null) activeCardIconLayoutHooks.refresh();
                     if (activeMuteSlashHooks != null) activeMuteSlashHooks.refresh();
@@ -1987,6 +2030,10 @@ public final class XposedInit extends XposedModule {
                 secondaryExpansionEnabled = secondaryColumn >= 0 && cursor.getInt(secondaryColumn) != 0;
                 int emptyKeepOpenColumn = cursor.getColumnIndex(ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN);
                 combinedEmptyShadeKeepOpenEnabled = emptyKeepOpenColumn >= 0 && cursor.getInt(emptyKeepOpenColumn) != 0;
+                int filterSettingsColumn = cursor.getColumnIndex(ModuleSettings.COMBINED_FILTER_SETTINGS);
+                combinedFilterSettingsEnabled = filterSettingsColumn >= 0 && cursor.getInt(filterSettingsColumn) != 0;
+                int homeIconMinimumColumn = cursor.getColumnIndex(ModuleSettings.HOME_ICON_MINIMUM_SIZE);
+                homeIconMinimumSizeEnabled = homeIconMinimumColumn >= 0 && cursor.getInt(homeIconMinimumColumn) != 0;
                 int translationOriginColumn = cursor.getColumnIndex(ModuleSettings.QS_TRANSLATION_ORIGIN);
                 qsTranslationOriginEnabled = translationOriginColumn >= 0 && cursor.getInt(translationOriginColumn) != 0;
                 int pullAnimationColumn = cursor.getColumnIndex(ModuleSettings.COMBINED_PULL_ANIMATION);
@@ -2043,6 +2090,8 @@ public final class XposedInit extends XposedModule {
                 launcherSpreadHiddenAppsEnabled = spreadHiddenColumn >= 0 && cursor.getInt(spreadHiddenColumn) != 0;
                 int lockWidgetColumn = cursor.getColumnIndex(ModuleSettings.LOCK_WIDGET_STARTUP_FIX);
                 lockWidgetStartupFixEnabled = lockWidgetColumn >= 0 && cursor.getInt(lockWidgetColumn) != 0;
+                int lockLongPressColumn = cursor.getColumnIndex(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT);
+                blockLockscreenLongPressEditEnabled = lockLongPressColumn >= 0 && cursor.getInt(lockLongPressColumn) != 0;
                 int folderColorColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RESTORE_COLOR);
                 folderRestoreColorEnabled = folderColorColumn >= 0 && cursor.getInt(folderColorColumn) != 0;
                 int folderRadiusEnabledColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RADIUS_ENABLED);

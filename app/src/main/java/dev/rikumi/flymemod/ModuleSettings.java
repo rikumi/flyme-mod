@@ -34,6 +34,8 @@ public final class ModuleSettings {
     public static final String QS_TRANSLATION_ORIGIN = "control_center_translation_origin_fix";
     public static final String SECONDARY_EXPANSION_FIX = "combined_secondary_expansion_fix";
     public static final String COMBINED_EMPTY_SHADE_KEEP_OPEN = "combined_empty_shade_keep_open";
+    public static final String COMBINED_FILTER_SETTINGS = "combined_filter_button_settings";
+    public static final String HOME_ICON_MINIMUM_SIZE = "home_icon_minimum_size";
     public static final String RESTORE_COLLAPSED_CARD_HEIGHT = "restore_combined_collapsed_card_height";
     public static final String[][] MEDIA_FOLDERS = {
             {"Alarms", "media_folder_block_alarms"},
@@ -47,6 +49,7 @@ public final class ModuleSettings {
     public static final String FILE = "control_center";
     public static final String VOLUME_FIRST_FOUR = "volume_first_four_steps";
     public static final String LIMIT_AOD_MOVEMENT = "limit_aod_movement";
+    public static final String BLOCK_LOCKSCREEN_LONG_PRESS_EDIT = "block_lockscreen_long_press_edit";
     public static final String LOCK_CLOCK_FONT = "lock_clock_font";
     public static final String AOD_CLOCK_FONT = "aod_clock_font";
     public static final String STATUS_BAR_CLOCK_FONT = "status_bar_clock_font";

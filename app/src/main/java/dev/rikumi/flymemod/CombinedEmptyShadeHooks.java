@@ -21,8 +21,13 @@ final class CombinedEmptyShadeHooks {
     private final Class<?> centralSurfaceUtil, notifStatsType;
     private final Method dependencyGet, centralForUtil, panelForSurfaces, isCombinedMode, modeValue, flingQs, notifCount;
     private final Field expandedFraction, barState, panelView, shadeInteractor, qsController;
-    private final Field stackController, closeHandler, closeRunnable, notifStats;
-    private final Map<View, Boolean> emptyStates = new WeakHashMap<>();
+    private final Field stackController, closeHandler, closeRunnable, notifStats, stackView, clearInProgress, mediaDismiss;
+    private final Field expansionAnimator, animatorExpand;
+    private final Method fullyExpanded, tracking, cancelExpansion, setExpandImmediate;
+    private final Method stackAnimating, requestChildrenUpdate;
+    private final Field keyguardMediaController, mediaHost;
+    private final Method mediaVisible, updateEmptyShade;
+    private final Map<View, Boolean> visibleStates = new WeakHashMap<>();
     private final Map<View, Boolean> pendingExpansions = new WeakHashMap<>();
 
     CombinedEmptyShadeHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled,
@@ -50,11 +55,26 @@ final class CombinedEmptyShadeHooks {
         closeHandler = stackControllerType.getField("mCloseShadeHandler");
         closeRunnable = stackControllerType.getField("mCloseRunnable");
         notifStats = stackControllerType.getField("mNotifStats");
+        stackView = stackControllerType.getField("mView");
+        keyguardMediaController = stackControllerType.getField("mKeyguardMediaController");
+        mediaHost = loader.loadClass("com.android.systemui.media.controls.ui.controller.KeyguardMediaController").getField("mediaHost");
+        mediaVisible = loader.loadClass("com.android.systemui.media.controls.ui.view.MediaHost").getMethod("getVisible");
+        updateEmptyShade = loader.loadClass(STACK).getMethod("updateEmptyShadeView", boolean.class, boolean.class, boolean.class);
+        clearInProgress = loader.loadClass(STACK).getField("mClearAllInProgress");
+        mediaDismiss = loader.loadClass(STACK).getField("mMediaDismiss");
+        stackAnimating = loader.loadClass(STACK).getMethod("isCurrentlyAnimating");
+        requestChildrenUpdate = loader.loadClass(STACK).getMethod("requestChildrenUpdate");
+        expansionAnimator = qsControllerClass.getField("mExpansionAnimator");
+        animatorExpand = qsControllerClass.getField("mAnimatorExpand");
+        fullyExpanded = qsControllerClass.getMethod("getFullyExpanded");
+        tracking = qsControllerClass.getMethod("isTracking");
+        cancelExpansion = qsControllerClass.getMethod("cancelExpansionAnimation");
+        setExpandImmediate = qsControllerClass.getMethod("setExpandImmediate", boolean.class);
         notifStatsType = loader.loadClass("com.android.systemui.statusbar.notification.data.model.NotifStats");
         notifCount = notifStatsType.getMethod("getNumActiveNotifs");
         isCombinedMode = shadeInteractorClass.getMethod("isExpandToQsEnabled");
         modeValue = flowClass.getMethod("getValue");
-        flingQs = qsControllerClass.getMethod("flingQs", float.class, int.class);
+        flingQs = qsControllerClass.getMethod("flingQs", float.class, int.class, Runnable.class, boolean.class);
         dependencyGet.setAccessible(true);
     }
 
@@ -64,28 +84,76 @@ final class CombinedEmptyShadeHooks {
             boolean becameEmpty = panel != null && ((Number) notifCount.invoke(chain.getArg(0))).intValue() == 0
                     && ((Number) notifCount.invoke(notifStats.get(stackController.get(panel)))).intValue() > 0;
             Object result = chain.proceed();
-            if (becameEmpty) {
+            if (panel != null && ((Number) notifCount.invoke(chain.getArg(0))).intValue() == 0) {
                 Object controller = stackController.get(panel);
                 ((Handler) closeHandler.get(controller)).removeCallbacks((Runnable) closeRunnable.get(controller));
-                scheduleExpansion(panel);
+                if (becameEmpty) scheduleExpansion(panel);
             }
             return result;
         }, notifStatsType);
+        // Keep native empty-view cleanup and resource updates, but hide its placeholder when
+        // both kinds of content are gone and the merged shade is being kept open.
         installer.hook(STACK, "updateEmptyShadeView", chain -> {
-            View stack = (View) chain.getThisObject();
-            settings.accept(stack.getContext());
-            boolean showEmpty = (Boolean) chain.getArg(0);
-            boolean wasEmpty = emptyStates.getOrDefault(stack, true);
-            emptyStates.put(stack, showEmpty);
             Object panel = activePanel();
-            if (!showEmpty || panel == null) return chain.proceed();
-
-            Object[] args = chain.getArgs().toArray();
-            args[0] = false;
-            Object result = chain.proceed(args);
-            if (!wasEmpty) scheduleExpansion(panel);
-            return result;
+            if (panel != null && stackView.get(stackController.get(panel)) == chain.getThisObject()
+                    && isContentEmpty(stackController.get(panel))) {
+                Object[] args = chain.getArgs().toArray();
+                args[0] = false;
+                return chain.proceed(args);
+            }
+            return chain.proceed();
         }, boolean.class, boolean.class, boolean.class);
+        installer.hook("com.android.systemui.media.controls.ui.controller.KeyguardMediaController",
+                "onMediaHostVisibilityChanged", chain -> {
+            Object result = chain.proceed();
+            if (Boolean.TRUE.equals(chain.getArg(0))) return result;
+            Object panel = activePanel();
+            if (panel != null && keyguardMediaController.get(stackController.get(panel)) == chain.getThisObject()
+                    && isContentEmpty(stackController.get(panel))) scheduleExpansion(panel);
+            return result;
+        }, boolean.class);
+        installer.hook(STACK, "onChildAnimationFinished", chain -> {
+            Object result = chain.proceed();
+            Object panel = activePanel();
+            if (panel != null && stackView.get(stackController.get(panel)) == chain.getThisObject()) {
+                View view = (View) panelView.get(panel);
+                if (Boolean.FALSE.equals(pendingExpansions.get(view))) postExpansion(panel, view);
+            }
+            return result;
+        });
+        // Flyme media swipes close the shade synchronously, outside notification clear-all.
+        // Suppress only that dedicated request; the caller still runs setMediaDismiss().
+        installer.hook(STACK + "Controller", "collapsePanelWhenMediaDismiss", chain -> {
+            Object panel = activePanel();
+            if (panel != null && stackController.get(panel) == chain.getThisObject()) return null;
+            return chain.proceed();
+        });
+        installer.hook(STACK, "setMediaDismiss", chain -> {
+            Object result = chain.proceed();
+            Object panel = activePanel();
+            if (panel != null && stackView.get(stackController.get(panel)) == chain.getThisObject()) {
+                Object controller = stackController.get(panel);
+                if (((Number) notifCount.invoke(notifStats.get(controller))).intValue() == 0) {
+                    ((Handler) closeHandler.get(controller)).removeCallbacks((Runnable) closeRunnable.get(controller));
+                    requestChildrenUpdate.invoke(chain.getThisObject());
+                    scheduleExpansion(panel);
+                }
+            }
+            return result;
+        });
+        // A hidden media container may produce no animation event, hence no completion callback.
+        installer.hook(STACK, "startAnimationToState", chain -> {
+            Object result = chain.proceed();
+            if (pendingExpansions.isEmpty()) return result;
+            Object stack = chain.getThisObject();
+            if (mediaDismiss.getBoolean(stack) || Boolean.TRUE.equals(stackAnimating.invoke(stack))) return result;
+            Object panel = activePanel();
+            if (panel != null && stackView.get(stackController.get(panel)) == stack) {
+                View view = (View) panelView.get(panel);
+                if (Boolean.FALSE.equals(pendingExpansions.get(view))) postExpansion(panel, view);
+            }
+            return result;
+        });
 
         // The clear-all animation schedules NPVC collapse after 200ms when this argument is true.
         // Disable that request at its source rather than swallowing subsequent manual collapses.
@@ -104,7 +172,9 @@ final class CombinedEmptyShadeHooks {
             Object panel = chain.getThisObject();
             View view = (View) panelView.get(panel);
             settings.accept(view.getContext());
-            if (!(Boolean) chain.getArg(0) && activePanel() != null) {
+            boolean visible = (Boolean) chain.getArg(0);
+            Boolean previous = visibleStates.put(view, visible);
+            if (!visible && Boolean.TRUE.equals(previous) && activePanel() == panel) {
                 scheduleExpansion(panel);
             }
             return result;
@@ -133,14 +203,46 @@ final class CombinedEmptyShadeHooks {
 
     private void scheduleExpansion(Object panel) throws IllegalAccessException {
         View view = (View) panelView.get(panel);
-        if (pendingExpansions.put(view, true) != null) return;
+        if (Boolean.TRUE.equals(pendingExpansions.get(view))) return;
+        postExpansion(panel, view);
+    }
+
+    private boolean isContentEmpty(Object controller) throws ReflectiveOperationException {
+        if (((Number) notifCount.invoke(notifStats.get(controller))).intValue() != 0) return false;
+        Object host = mediaHost.get(keyguardMediaController.get(controller));
+        return !Boolean.TRUE.equals(mediaVisible.invoke(host));
+    }
+
+    private void postExpansion(Object panel, View view) {
+        pendingExpansions.put(view, true);
         view.post(() -> {
-            pendingExpansions.remove(view);
-            if (activePanel() != panel) return;
             try {
+                if (activePanel() != panel) {
+                    pendingExpansions.remove(view);
+                    return;
+                }
+                Object controller = stackController.get(panel);
+                if (!isContentEmpty(controller)) {
+                    pendingExpansions.remove(view);
+                    return;
+                }
+                Object stack = stackView.get(controller);
+                if (clearInProgress.getBoolean(stack) || mediaDismiss.getBoolean(stack)
+                        || Boolean.TRUE.equals(stackAnimating.invoke(stack))) {
+                    pendingExpansions.put(view, false);
+                    return;
+                }
+                pendingExpansions.remove(view);
+                updateEmptyShade.invoke(stack, false, false, false);
+                Object qs = qsController.get(panel);
+                if (Boolean.TRUE.equals(tracking.invoke(qs)) || Boolean.TRUE.equals(fullyExpanded.invoke(qs))) return;
+                if (expansionAnimator.get(qs) != null && animatorExpand.getBoolean(qs)) return;
+                cancelExpansion.invoke(qs);
+                setExpandImmediate.invoke(qs, true);
                 // QSC fling target 0 is the native full-tile expansion endpoint.
-                flingQs.invoke(qsController.get(panel), 0f, 0);
+                flingQs.invoke(qs, 0f, 0, null, true);
             } catch (ReflectiveOperationException | RuntimeException e) {
+                pendingExpansions.remove(view);
                 log.accept("Cannot expand merged control center tiles", e);
             }
         });

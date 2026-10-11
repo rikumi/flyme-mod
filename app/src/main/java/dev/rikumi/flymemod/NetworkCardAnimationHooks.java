@@ -7,15 +7,18 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.view.View;
 import java.lang.reflect.Method;
+import java.lang.reflect.Field;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Include the scaled QS ancestors in Flyme network-dialog source/return geometry. */
+/** Include scaled QS ancestors in Flyme network/focus dialog source and return geometry. */
 final class NetworkCardAnimationHooks {
     private static final String CONTROLLER = "com.android.systemui.animation.GhostedViewTransitionAnimatorController";
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled;
-    private final Class<?> stateClass, launchableClass;
+    private final Class<?> controllerClass, stateClass, launchableClass;
+    private final Class<?> tileClass;
+    private final Field tileSpec;
     private final Method source, insets, padding, top, bottom, left, right;
 
     NetworkCardAnimationHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled)
@@ -23,6 +26,9 @@ final class NetworkCardAnimationHooks {
         this.settings = settings;
         this.enabled = enabled;
         Class<?> controller = loader.loadClass(CONTROLLER);
+        controllerClass = controller;
+        tileClass = loader.loadClass("com.android.systemui.qs.tileimpl.QSTileViewImpl");
+        tileSpec = tileClass.getField("tileSpec");
         stateClass = loader.loadClass("com.android.systemui.animation.TransitionAnimator$State");
         launchableClass = loader.loadClass("com.android.systemui.animation.LaunchableView");
         source = controller.getMethod("getGhostedView");
@@ -35,7 +41,7 @@ final class NetworkCardAnimationHooks {
         controller.getMethod("fillGhostedViewState", stateClass);
     }
 
-    void install(SignalHooks.Installer installer) {
+    void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) {
         installer.hook(CONTROLLER, "fillGhostedViewState", chain -> {
             Object result = chain.proceed();
             View view = target(chain.getThisObject());
@@ -72,6 +78,10 @@ final class NetworkCardAnimationHooks {
                 return ((Number) result).floatValue() * scale;
             });
         }
+        // fillGhostedViewState is final and is also called on every return-animation frame.
+        for (Method method : controllerClass.getDeclaredMethods())
+            if (method.getName().equals("createAnimatorState")
+                    || method.getName().equals("onTransitionAnimationProgress")) deoptimize.accept(method);
     }
 
     private View target(Object controller) throws ReflectiveOperationException {
@@ -82,6 +92,7 @@ final class NetworkCardAnimationHooks {
         for (View current = view; current != null;
              current = current.getParent() instanceof View parent ? parent : null) {
             if (current.getClass().getName().equals("com.flyme.systemui.qs.tileimpl.ConnectivityQSTileViewImpl")) return view;
+            if (tileClass.isInstance(current) && "dnd".equals(tileSpec.get(current))) return view;
         }
         return null;
     }

@@ -81,7 +81,7 @@ private val CATEGORY_GROUPS: List<List<Category>> = listOf(
         Category("desktop", "桌面", R.drawable.ic_flyme_home_apps, SettingsHomeColors.blueForeground, listOf("桌面图标设置", "壁纸设置", "桌面动画设置", "桌面文件夹设置")),
         Category("quick_settings", "控制中心", R.drawable.ic_flyme_home_wireless, SettingsHomeColors.cyanForeground, listOf("控制中心背景", "控制中心主题", "控制中心布局", "控制中心动画", "音量调节设置")),
         Category("notification", "通知中心与状态栏", R.drawable.ic_flyme_home_notifications, SettingsHomeColors.cyanForeground, listOf("通知中心设置", "状态栏设置")),
-        Category("lockscreen", "锁屏", R.drawable.ic_flyme_home_security, SettingsHomeColors.greenForeground, listOf("锁屏视觉")),
+        Category("lockscreen", "锁屏", R.drawable.ic_flyme_home_security, SettingsHomeColors.greenForeground, listOf("锁屏操作", "锁屏视觉")),
     ),
     listOf(
         Category("hidden_apps", "隐藏应用", R.drawable.ic_flyme_home_apps, SettingsHomeColors.yellowForeground, listOf("特殊应用隐藏")),
@@ -328,6 +328,13 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 if (category.id == "storage") {
                     item { StoragePreferences() }
                 }
+                if (category.id == "lockscreen" && groupTitle == "锁屏操作") {
+                    item {
+                        FluixCard {
+                            ApplicationPreference(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT, "屏蔽锁屏长按编辑")
+                        }
+                    }
+                }
                 if (category.id == "lockscreen" && groupTitle == "锁屏视觉") {
                     item {
                         FluixCard {
@@ -387,6 +394,7 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                     item { PreferenceCard(listOf(
                         ModuleSettings.MBACK_SYSTEM_TIMEOUT to "非压感 mBack 跟随系统长按超时",
                         ModuleSettings.MBACK_MISSING_ASSISTANT_HOME to "未安装助手长按 mBack 回桌面",
+                        ModuleSettings.HOME_ICON_MINIMUM_SIZE to "限制回桌面动画最小图标尺寸",
                     )) }
                 }
                 if (category.id == "navigation" && groupTitle == "多任务切换") {
@@ -634,6 +642,7 @@ private fun ControlCenterPreferences(group: String) {
                 ModuleSettings.WIFI_LABEL to "无线网络替换为 Wi-Fi",
                 ModuleSettings.SCALE to "控制中心操作区域放大",
                 ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT to "恢复合并控制中心折叠状态磁贴高度",
+                ModuleSettings.COMBINED_FILTER_SETTINGS to "合并中心不重要通知按钮替换为设置",
                 ModuleSettings.SPLIT_NETWORK_CARD to "网络卡片分离",
                 ModuleSettings.ANIMATED_MUTE_SLASH to "动画式斜划线静音图标",
                 ModuleSettings.OPTIMIZE_2X1_TEXT to "2×1 卡片文字布局优化",
