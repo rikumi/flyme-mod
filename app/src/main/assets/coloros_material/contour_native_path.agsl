@@ -2,6 +2,7 @@ uniform shader uMask;
 uniform float2 u_size; uniform float u_corner; uniform float u_weight;
 layout(color) uniform vec4 uColor;
 uniform float uRatio;
+uniform float u_fadeDistance;
 uniform float[6] uNearLineParams;
 uniform float[6] uFarLineParams;
 struct GradientInputParams {float2 size; float weight; float corner; float sdf; float2 resolution; float2 pos;};
@@ -49,8 +50,8 @@ GradientStrokeResult gradientStrokeColorWithRatio(float2 fragCoord, GradientInpu
 float rectSdf = -uMask.eval(fragCoord).r * max(uNearLineParams[0], uFarLineParams[0]);
 LineParams nearLineParams = LineParams(uNearLineParams[0], uNearLineParams[1], float2(uNearLineParams[2], uNearLineParams[3]), float2(uNearLineParams[4], uNearLineParams[5]));
    LineParams farLineParams = LineParams(uFarLineParams[0], uFarLineParams[1], float2(uFarLineParams[2], uFarLineParams[3]), float2(uFarLineParams[4], uFarLineParams[5]));
-   float lineNearAlpha = getLineAlpha(nearLineParams, rectSdf, distanceAll, distance_near);
-   float lineFarAlpha = getLineAlpha(farLineParams, rectSdf, distanceAll, distanceAll-distance_near);
+   float lineNearAlpha = getLineAlpha(nearLineParams, rectSdf, u_fadeDistance, distance_near);
+   float lineFarAlpha = getLineAlpha(farLineParams, rectSdf, u_fadeDistance, distanceAll-distance_near);
    float lineAlpha = clamp(lineNearAlpha + lineFarAlpha, 0.0, 1.0);
    return GradientStrokeResult(vec4(uColor.xyz, lineAlpha), rectSdf);
 }

@@ -305,6 +305,12 @@ final class ColorOsMaterialHooks {
                     shader = updateNativeMask(view, bounds, radius, surface, slider) ? nativeCurve : round;
                 } else shader = round; // Native GradientDrawable/round-rect backgrounds retain their actual circular arcs.
                 shader.setFloatUniform("u_size", bounds.width(), bounds.height());
+                // Tall slider cards should not stretch the highlight down their side edges.
+                // Keep perimeter coordinates for peak placement, but size their falloff by
+                // the short edge, as for a square tile of the same width.
+                shader.setFloatUniform("u_fadeDistance", slider
+                        ? 2f * Math.min(bounds.width(), bounds.height())
+                        : (float) bounds.width() + bounds.height());
                 shader.setFloatUniform("u_corner", radius); shader.setFloatUniform("u_weight", .2f);
                 shader.setColorUniform("uColor", Color.WHITE); // Native ratio walks the perimeter from the bottom-right corner. This places the
                 // near peak at top center and the far peak at bottom center for any aspect ratio.
