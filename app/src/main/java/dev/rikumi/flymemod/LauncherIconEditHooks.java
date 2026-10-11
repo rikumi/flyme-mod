@@ -1,13 +1,17 @@
 package dev.rikumi.flymemod;
 
 import android.content.ComponentName;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.database.ContentObserver;
 import android.graphics.Bitmap;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.UserHandle;
+import android.os.UserManager;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -65,7 +69,21 @@ final class LauncherIconEditHooks {
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
         installer.hook("com.meizu.flyme.launcher.LauncherApplication", "onCreate", chain -> {
             context = ((Context) chain.getThisObject()).getApplicationContext();
-            edits = context.getSharedPreferences("flymemod_icon_edits", Context.MODE_PRIVATE);
+            context.registerReceiver(new BroadcastReceiver() {
+                @Override public void onReceive(Context ctx, Intent intent) {
+                    if (!Intent.ACTION_USER_UNLOCKED.equals(intent.getAction())) return;
+                    context.unregisterReceiver(this);
+                    try {
+                        if (initializeEdits() != null && enabled.getAsBoolean()) {
+                            Object model = model();
+                            model.getClass().getMethod("forceReload").invoke(model);
+                        }
+                    } catch (ReflectiveOperationException | RuntimeException error) {
+                        log.accept("Cannot restore launcher icon edits after unlock", error);
+                    }
+                }
+            }, new IntentFilter(Intent.ACTION_USER_UNLOCKED));
+            initializeEdits();
             settings.accept(context); lastEnabled = enabled.getAsBoolean();
             if (observer == null) {
                 observer = new ContentObserver(main) {
@@ -123,7 +141,7 @@ final class LauncherIconEditHooks {
         }, loader.loadClass("com.android.launcher3.model.data.ItemInfo"));
         installer.hook(ITEM, "newIcon", chain -> {
             Object item = chain.getThisObject();
-            if (!enabled.getAsBoolean() || !editable(item) || edits == null) return chain.proceed();
+            if (!enabled.getAsBoolean() || !editable(item)) return chain.proceed();
             Object custom = customBitmap(item, bitmap.get(item));
             if (custom == null) return chain.proceed();
             Object copy = cloneItem.invoke(item);
@@ -161,11 +179,20 @@ final class LauncherIconEditHooks {
         return ((ComponentName) component.invoke(item)).flattenToString() + "@" + user.get(item);
     }
     private LauncherIconEditor.Edit read(Object item) throws Exception {
-        String stored = edits == null ? null : edits.getString(key(item), null);
+        SharedPreferences preferences = initializeEdits();
+        String stored = preferences == null ? null : preferences.getString(key(item), null);
         if (stored == null) return null;
         JSONObject json = new JSONObject(stored);
         return new LauncherIconEditor.Edit(json.optString("title", null), json.optString("pack", null),
                 json.optString("drawable", null), json.optBoolean("mask", false));
+    }
+    private synchronized SharedPreferences initializeEdits() {
+        if (edits != null || context == null) return edits;
+        UserManager users = context.getSystemService(UserManager.class);
+        // Keep existing edits in credential storage, and retry once it becomes available.
+        if (users == null || !users.isUserUnlocked()) return null;
+        edits = context.getSharedPreferences("flymemod_icon_edits", Context.MODE_PRIVATE);
+        return edits;
     }
     private Object customBitmap(Object item, Object original) {
         if (original == null || context == null) return null;
@@ -232,7 +259,9 @@ final class LauncherIconEditHooks {
     private void save(Object item, LauncherIconEditor.Edit edit, Runnable done) {
         saves.execute(() -> {
             try {
-                SharedPreferences.Editor writer = edits.edit();
+                SharedPreferences preferences = initializeEdits();
+                if (preferences == null) throw new IllegalStateException("请先解锁设备后再保存");
+                SharedPreferences.Editor writer = preferences.edit();
                 if (edit == null || (edit.title() == null && edit.pack() == null)) writer.remove(key(item));
                 else writer.putString(key(item), new JSONObject().put("title", edit.title())
                         .put("pack", edit.pack()).put("drawable", edit.drawable()).put("mask", edit.mask()).toString());
