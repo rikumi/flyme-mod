@@ -27,7 +27,7 @@ python3 scripts/verify-apk-signature.py app/build/outputs/apk/debug/*.apk
 }
 ```
 
-每个项目独立保存自己的签名材料。工作流在临时目录恢复密钥，同时构建 Debug、Release APK，校验两个包的证书与 `signing/certificate.sha256` 一致，通过后才提交版本、打 tag 和发布；主仓库及 Xposed 模块仓库的每次 release 均上传 `app-debug.apk` 和 `app-release.apk`。完成或失败后清理临时材料。不要用 Actions cache 保存私钥，不要重新生成密钥，也不要将密钥或密码提交到仓库。
+每个项目独立保存自己的签名材料。工作流在临时目录恢复密钥，同时构建 Debug、Release APK，校验两个包的证书与 `signing/certificate.sha256` 一致，通过后才提交版本、打 tag 和发布；主仓库及 Xposed 模块仓库的每次 release 均上传 `app-debug.apk` 和 `app-release.apk`。证书校验固定使用 Build Tools 36.0.0 的 `apksigner`，避免 runner 的其他预装工具格式变化。完成或失败后清理临时材料。不要用 Actions cache 保存私钥，不要重新生成密钥，也不要将密钥或密码提交到仓库。
 
 密钥和配置需另行安全备份；Actions secret 无法读取回原值。`signing/certificate.sha256` 只包含可公开的证书指纹。
 
