@@ -356,9 +356,9 @@ Mini / FreeForm / Welt 控制器分别重写该判据；Mini 另有私有
 新设置位于“导航与手势 / 多任务切换”，默认关闭，开启后默认数量为 3，
 范围 1–6。计数按当前显示区域内的窗口任务层级从上到下进行，预留新任务的
 名额，最近任务保留到指定上限；桌面以下的任务不视为当前小窗。
-另覆盖 Mini 的 `shouldToBack` 周期自动关闭判据，以及 FreeForm 的
-`onTaskMoveToFront` 和 `postSwitchTasksByNewFrontTask` 自动最小化路径。
-后者使用原生取消分支恢复窗口控件和 leash 标志，不发送最小化消息。
+另覆盖 Mini 的 `shouldToBack` 周期自动关闭判据，保留已收起的悬浮小窗。
+`onTaskMoveToFront`、`postSwitchTasksByNewFrontTask` 和 `onTaskStartPausing`
+恢复原生最小化处理，切换窗口时不会让旧窗口继续保持展开。
 在 `FlymeFeatureFactory.isWindowContainerWillInvisible` 中，保留数量以内、
 同一显示区域的不同小窗根任务不互相触发完全遮挡判定；同一应用内部的
 子任务、全屏任务、显式延后关闭的任务仍沿用系统判据。
@@ -366,8 +366,13 @@ Mini / FreeForm / Welt 控制器分别重写该判据；Mini 另有私有
 `FlymeWindowManagerInjectImpl` 在结果为 true 时跳过上述工厂，因此同时
 在该注入入口修正 `Inject.ResultOne.arg1`，覆盖小窗 Surface 缩放后仍保留
 全屏布局边界的情况；反优化 `TaskFragment.getVisibility` 避免旧内联结果。
-在 `onTaskStartPausing` 中阻止小窗之间切换焦点时自动最小化旧窗口，
-Activity 的原生暂停过程继续执行；返回全屏应用时不改变原生处理。
+在 Mini / FreeForm 的 `onTaskMoveToFront`、窗口模式变化后的
+`updateWindowModeInfo`，以及不改变窗口模式的两个展开入口中，遍历同一
+显示区域的其它展开窗口（模式 11 / 1035），调用原生
+`moveTasksToOtherWindowInner(task, 12, 0, true, true)` 收起为 Pin 窗口。
+先保存任务快照并用重入保护避免模式切换递归；直接调用而非逐个排队，
+因为原生排队函数会删除上一条待处理消息。保留已悬浮和贴边的窗口，
+继续使用原生缩小动画及 Pin 输入控件；返回全屏应用不触发该遍历。
 只调整自动移入后台的判据和私有清理路径，不拦截主动关闭、返回全屏或
 其它显式窗口操作。ThreadLocal 清理上下文在正常返回与异常时均恢复；
 禁用开关恢复原生判据。相关调用方法反优化以避免旧编译结果内联。
@@ -379,7 +384,8 @@ Activity 的原生暂停过程继续执行；返回全屏应用时不改变原�
 实际 hook 的 41 项宿主模拟检查通过（数量、混合模式、显示区域、禁用、
 主动操作、桌面边界、异常恢复、周期关闭、自动最小化、并存可见性、焦点切换、
 预填遮挡结果绕过工厂的路径）。设备日志确认
-system_server 成功注册原版 hook；补齐路径后的实际窗口交互仍需验证。
+system_server 成功注册原版 hook；本次恢复展开窗口交接处理并核对对应
+入口签名，构建通过，修改后的实际窗口交互仍需验证。
 
 悬浮未展开窗口的输入由 `FlymePinWindowControllerImpl.onInputEvent` 处理，
 原生 `FlymeWindowManagerInjectImpl.injectInputMonitorAcceptWindow` 只将共享
@@ -421,3 +427,30 @@ WindowContainer 并同步修正模拟签名；修正版交互尚未实机验收�
 适配判据先检查 DisplayContent 当前显示区域，仍处于竖屏时保持原生旋转
 与窗口配置；实际横屏后才使用目标比例，避免在竖屏中提前生成横屏窗口。
 宿主检查覆盖该过渡与完成旋转后的适配；实际设备显示仍需验证。
+
+## 桌面隐藏应用入口
+
+MEIZU 22 的桌面 APK 中 `PopupContainerWithArrow.populateAndShowRowsFlyme`
+及 `SystemShortcutContainer.setShortcuts(LayoutInflater,List,boolean)` 构建应用
+长按菜单。新增隐藏按钮复用 `item_system_shortcut`，使用 Flyme 控件资源
+`mc_ic_password_invisible`（APK 中包含该 PNG），随原生标签颜色染色。
+设置写入通过 SettingsProvider 的专用 call 完成，仅允许模块与当前用户
+桌面 UID 调用，并检查“允许隐藏应用”开关；保存到现有隐藏应用集合后
+通知原有桌面观察器刷新模型。不开启该开关时不添加菜单项。
+
+双指张开使用 `WorkspacePinchController$MultiTouchObjectCanvasClass`
+的 `setPositionAndScale(Object,PositionAndScale,PointInfo)`，遵循系统原有
+log(1.25) 缩放判据，保留原生触摸拦截资格检查；限制为两个手指、
+NORMAL 状态、没有展开文件夹且桌面内容未处于动画中。
+不修改 FolderPinchController 或编辑状态的手势。每次触摸序列最多打开
+一次模块隐藏应用页，MainActivity 支持明确的页面入口与复用实例。
+
+隐藏应用主列表采用每页 4 行×3 列，点击打开、长按查看应用信息或取消
+隐藏；新增应用候选页和其它功能复用的选择器保持原列表布局。
+构建通过，设备未连接，菜单、手势与分页交互尚待实机验证。
+
+随后设备日志确认手势首版注册失败：`StatefulContainer<STATE_TYPE extends
+BaseState<STATE_TYPE>>.isInState(STATE_TYPE)` 在运行时参数为 BaseState，
+而非 LauncherState；现按该签名查找。文件夹和内容动画状态方法以
+MzLauncher 为声明入口，避免在 Launcher 基类上查找不存在的方法。
+隐藏列表去除分组副标题，分页区域限制高度并在内容区垂直居中。

@@ -45,10 +45,17 @@ final class BlurRevealTimingHooks {
             Field radius = type.getDeclaredField("mCurrentBlurRadius");
             Field fraction = type.getDeclaredField("mExpandedFraction");
             Method setter = type.getDeclaredMethod("setBlurRadius", float.class);
+            Method barState = panel ? type.getMethod("getBarState") : null;
+            Method visible = panel ? null : type.getMethod("shouldPanelBeVisible");
+            Field keyguard = panel ? null : type.getField("mKeyguardStateController");
+            Method showing = loader.loadClass("com.android.systemui.statusbar.policy.KeyguardStateController")
+                    .getMethod("isShowing");
             max.setAccessible(true); radius.setAccessible(true); fraction.setAccessible(true); setter.setAccessible(true);
             installer.hook(name, "setAnimationAlpha", chain -> {
                 Object owner = chain.getThisObject();
                 boolean active = enabled.getAsBoolean()
+                        && (panel ? (Integer) barState.invoke(owner) == 0
+                            : !(Boolean) showing.invoke(keyguard.get(owner)) || (Boolean) visible.invoke(owner))
                         && (!panel || Boolean.TRUE.equals(value.invoke(combined.invoke(shade.get(owner)))));
                 State state = states.computeIfAbsent(owner, ignored -> new State());
                 state.active = active;
@@ -69,6 +76,14 @@ final class BlurRevealTimingHooks {
                 Object owner = chain.getThisObject();
                 State state = states.get(owner);
                 if (state == null) return chain.proceed();
+                // Keyguard uses the notification panel's expanded height for its own
+                // layout. That height/content must never keep the QS blur alive.
+                boolean lockscreenReset = panel ? (Integer) barState.invoke(owner) != 0
+                        : (Boolean) showing.invoke(keyguard.get(owner)) && !(Boolean) visible.invoke(owner);
+                if (lockscreenReset) {
+                    reset(state);
+                    return panel ? chain.proceed() : chain.proceed(new Object[]{0f});
+                }
                 if (!state.active || !enabled.getAsBoolean()
                         || (panel && !Boolean.TRUE.equals(value.invoke(combined.invoke(shade.get(owner)))))) {
                     cancelExit(state);
@@ -116,6 +131,22 @@ final class BlurRevealTimingHooks {
                 if (state != null) cancelExit(state);
                 return chain.proceed();
             });
+            // Lifecycle resets bypass the minimum exit duration and monotonic-radius
+            // guard; otherwise a delayed animator can recreate a dismissed backdrop.
+            String[] resets = panel ? new String[]{"resetBackgroundEffect", "instantCollapsePanel"}
+                    : new String[]{"resetViews", "instantCollapse"};
+            for (String resetMethod : resets) {
+                type.getDeclaredMethod(resetMethod);
+                installer.hook(name, resetMethod, chain -> {
+                    Object owner = chain.getThisObject();
+                    State state = states.get(owner);
+                    if (state != null) reset(state);
+                    Object result = chain.proceed();
+                    if (state != null) reset(state);
+                    setter.invoke(owner, 0f);
+                    return result;
+                });
+            }
         }
     }
 
@@ -161,6 +192,13 @@ final class BlurRevealTimingHooks {
         state.exitLimited = false;
         state.closing = false;
         if (animator != null) animator.cancel();
+    }
+
+    private static void reset(State state) {
+        cancelExit(state);
+        state.active = false;
+        state.hasRadius = false;
+        state.content = state.nativeRadius = state.lastApplied = 0f;
     }
 
     private static final class State {

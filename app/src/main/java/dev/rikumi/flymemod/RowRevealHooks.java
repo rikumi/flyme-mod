@@ -115,7 +115,7 @@ final class RowRevealHooks {
                 return chain.proceed();
             // Separate headers are siblings of the QS container. Merged headers
             // already inherit the root's reveal alpha and must not fade a second time.
-            return chain.proceed(new Object[]{headerAlpha(binding.reveal.progress, binding.separate)});
+            return chain.proceed(new Object[]{headerAlpha(binding.reveal, binding.separate)});
         }, float.class);
         installer.hook(CENTER, "setCollapseAnimationTranslationY", chain -> {
             Reveal reveal = reveals.get(chain.getThisObject());
@@ -340,7 +340,21 @@ final class RowRevealHooks {
         if (animator != null) animator.cancel();
     }
     static float headerAlpha(float progress, boolean separate) {
-        return separate ? revealCurve(progress) : 1f;
+        float alpha = revealCurve((progress - .20f) / .80f);
+        // Merged headers inherit the container alpha. Compensate for that alpha
+        // so both panel modes use the same delayed header visibility curve.
+        float parent = revealCurve(progress);
+        return separate ? alpha : parent <= 0f ? 0f : Math.min(1f, alpha / parent);
+    }
+    private static float headerAlpha(Reveal reveal, boolean separate) {
+        if (reveal.target) return headerAlpha(reveal.progress, separate);
+        // Closing headers use the real native/gesture alpha rather than the
+        // 300ms row timeline, so a short upward swipe can clear them immediately.
+        float alpha = Math.min(reveal.closingHeaderAlpha,
+                revealCurve((contentProgress(reveal.nativeInput) - .20f) / .80f));
+        reveal.closingHeaderAlpha = alpha;
+        float parent = revealCurve(reveal.progress);
+        return separate ? alpha : parent <= 0f ? 0f : Math.min(1f, alpha / parent);
     }
     private void bindHeaders(Object owner, Reveal reveal, boolean separate) throws IllegalAccessException {
         for (Field field : new Field[]{separate ? separateHeader : combinedHeader,
@@ -350,7 +364,7 @@ final class RowRevealHooks {
             HeaderBinding old = headerBindings.get(header);
             if (old == null || old.owner.get() != owner || old.reveal != reveal || old.separate != separate)
                 headerBindings.put(header, new HeaderBinding(owner, reveal, separate));
-            header.setAlpha(headerAlpha(reveal.progress, separate));
+            header.setAlpha(headerAlpha(reveal, separate));
         }
     }
     private static final class HeaderBinding {
@@ -371,8 +385,10 @@ final class RowRevealHooks {
     }
     private Reveal visual(Object owner, float input, boolean separate) throws ReflectiveOperationException {
         Reveal reveal = reveals.computeIfAbsent(owner, ignored -> new Reveal());
-        if (!reveal.initialized && !Boolean.TRUE.equals(writingReveal.get()))
+        if (!Boolean.TRUE.equals(writingReveal.get())) reveal.nativeInput = input;
+        if (!reveal.initialized && !Boolean.TRUE.equals(writingReveal.get())) {
             request(owner, reveal, input > .18f, separate);
+        }
         return reveal;
     }
     private void settle(Object owner, Reveal reveal, boolean visible, boolean separate) {
@@ -384,6 +400,7 @@ final class RowRevealHooks {
     }
     private void request(Object owner, Reveal reveal, boolean visible, boolean separate) {
         if (reveal.initialized && reveal.target == visible) return;
+        if (!visible) reveal.closingHeaderAlpha = revealCurve((reveal.progress - .20f) / .80f);
         reveal.initialized = true; reveal.target = visible;
         ValueAnimator old = reveal.animator;
         reveal.animator = null;
@@ -418,13 +435,17 @@ final class RowRevealHooks {
     }
     private static final class Reveal {
         boolean initialized, target, gesture, opening, settling, pendingTranslationReset;
-        float progress;
+        float progress, nativeInput = 1f, closingHeaderAlpha = 1f;
         ValueAnimator animator;
     }
 
     private void rememberAlpha(Object owner, float progress) {
         if (Boolean.TRUE.equals(writingReveal.get())) return;
-        if (enabled.getAsBoolean()) rawAlpha.put(owner, progress);
+        if (enabled.getAsBoolean()) {
+            rawAlpha.put(owner, progress);
+            Reveal reveal = reveals.get(owner);
+            if (reveal != null) reveal.nativeInput = progress;
+        }
         else rawAlpha.remove(owner);
     }
 

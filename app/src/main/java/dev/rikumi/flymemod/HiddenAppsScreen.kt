@@ -9,12 +9,15 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,7 +25,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import java.text.Collator
@@ -42,8 +48,8 @@ private fun appEntry(context: Context, pkg: String): HiddenAppEntry {
     return runCatching {
         @Suppress("DEPRECATION") val info = pm.getApplicationInfo(pkg, 0)
         val drawable = pm.getApplicationIcon(info)
-        val bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
-        drawable.setBounds(0, 0, 96, 96)
+        val bitmap = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888)
+        drawable.setBounds(0, 0, 192, 192)
         drawable.draw(Canvas(bitmap))
         HiddenAppEntry(pkg, pm.getApplicationLabel(info).toString(), bitmap)
     }.getOrElse { HiddenAppEntry(pkg, pkg, null) }
@@ -71,6 +77,13 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
     val preferences = remember(context) { ModuleSettings.preferences(context) }
     val packagesKey = if (landscapeGames) ModuleSettings.LANDSCAPE_GAME_PACKAGES else if (navigationApplications) ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES else ModuleSettings.HIDDEN_LAUNCHER_APPS
     var hidden by remember(packagesKey) { mutableStateOf(preferences.getStringSet(packagesKey, emptySet()).orEmpty().toSet()) }
+    DisposableEffect(preferences, packagesKey) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+            if (key == packagesKey) hidden = prefs.getStringSet(packagesKey, emptySet()).orEmpty().toSet()
+        }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
     var picking by remember { mutableStateOf(false) }
     var choices by remember { mutableStateOf<List<HiddenAppEntry>?>(null) }
     var entries by remember { mutableStateOf<List<HiddenAppEntry>>(emptyList()) }
@@ -112,7 +125,9 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
             },
         )
     }) { padding ->
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).fluixOverscroll(listState, overscroll)) {
+        if (!picking && !navigationApplications && !landscapeGames) {
+            HiddenAppPages(context, entries, Modifier.fillMaxSize().padding(padding), onRemove = { save(hidden - it) })
+        } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).fluixOverscroll(listState, overscroll)) {
             item { FluixSmallTitle(if (navigationApplications || landscapeGames) {
                 if (picking) "非系统应用" else if (landscapeGames) "横屏游戏宽度适配列表" else "强制沉浸应用列表"
             } else if (picking) "有桌面图标的应用" else "彻底隐藏应用列表") }
@@ -152,6 +167,116 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
                 }
             }
             item { Spacer(Modifier.height(20.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun HiddenAppPages(context: Context, entries: List<HiddenAppEntry>, modifier: Modifier,
+    onRemove: (String) -> Unit) {
+    val pages = rememberPagerState(pageCount = { ((entries.size + 11) / 12).coerceAtLeast(1) })
+    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    var metricsVersion by remember { mutableIntStateOf(0) }
+    DisposableEffect(preferences) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key?.startsWith(LauncherFolderMetrics.PREFIX) == true) metricsVersion++
+        }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    val metrics = remember(metricsVersion) {
+        fun size(key: String, default: Float) = preferences.getFloat(LauncherFolderMetrics.PREFIX + key, default)
+        HiddenFolderLayout(size("folderChildIconSizePx", 60f), size("folderChildTextSizePx", 12f),
+            size("folderChildDrawablePaddingPx", 4f), size("folderCellWidthPx", 104f),
+            size("folderCellHeightPx", 108f), size("top", 18f), size("side", 8f))
+    }
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+      val availableHeight = maxHeight
+      Column(Modifier.width((metrics.cellWidth * 3).dp.coerceAtMost(maxWidth)).heightIn(max = availableHeight)) {
+        if (entries.isEmpty()) {
+            FluixSmallTitle("暂无应用")
+        } else {
+            HorizontalPager(state = pages, modifier = Modifier.height((metrics.cellHeight * 4).dp.coerceAtMost((availableHeight - 46.dp).coerceAtLeast(0.dp))), key = { it }) { page ->
+                Column(Modifier.fillMaxSize()) {
+                    repeat(4) { row ->
+                        Row(Modifier.fillMaxWidth().weight(1f)) {
+                            repeat(3) { column ->
+                                val app = entries.getOrNull(page * 12 + row * 3 + column)
+                                Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
+                                    if (app != null) key(app.pkg) {
+                                        HiddenAppIcon(context, app, metrics, onRemove = { onRemove(app.pkg) })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.Center) {
+                repeat(pages.pageCount) { page ->
+                    Box(Modifier.padding(horizontal = 4.dp).size(6.dp).background(
+                        MiuixTheme.colorScheme.onSurface.copy(alpha = if (pages.currentPage == page) .8f else .25f), CircleShape))
+                }
+            }
+        }
+      }
+    }
+}
+
+private data class HiddenFolderLayout(val iconSize: Float, val textSize: Float, val drawablePadding: Float,
+    val cellWidth: Float, val cellHeight: Float, val top: Float, val side: Float)
+
+@Composable
+private fun HiddenAppIcon(context: Context, app: HiddenAppEntry, layout: HiddenFolderLayout, onRemove: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val textColor = MiuixTheme.colorScheme.onSurface.toArgb()
+    Box {
+        // Folder labels are native TextViews, not Fluix body text. Match their
+        // compound-drawable geometry and font metrics (including no font padding).
+        AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx ->
+            android.widget.TextView(ctx).apply {
+                includeFontPadding = false
+                gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+                setSingleLine(true)
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setOnClickListener {
+                    val launch = context.packageManager.getLaunchIntentForPackage(app.pkg)
+                    if (launch == null || runCatching { context.startActivity(launch) }.isFailure)
+                        Toast.makeText(context, "无法打开应用", Toast.LENGTH_SHORT).show()
+                }
+                setOnLongClickListener { expanded = true; true }
+            }
+        }, update = { label ->
+            val density = label.resources.displayMetrics.density
+            label.text = app.name
+            label.setTextColor(textColor)
+            label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, layout.textSize * density)
+            label.setPadding((layout.side * density).toInt(), (layout.top * density).toInt(), (layout.side * density).toInt(), 0)
+            label.compoundDrawablePadding = (layout.drawablePadding * density).toInt()
+            val drawable = app.icon?.let { android.graphics.drawable.BitmapDrawable(label.resources, it) }
+                ?: android.graphics.drawable.ColorDrawable(android.graphics.Color.GRAY)
+            val size = (layout.iconSize * density).toInt()
+            drawable.setBounds(0, 0, size, size)
+            label.setCompoundDrawables(null, drawable, null, null)
+        })
+        if (expanded) Popup(alignment = Alignment.TopCenter, onDismissRequest = { expanded = false },
+            properties = PopupProperties(focusable = true)) {
+            val shape = RoundedCornerShape(12.dp)
+            Column(Modifier.width(160.dp).shadow(8.dp, shape)
+                .background(if (isSystemInDarkTheme()) FLUIX_POPUP_DARK else FLUIX_POPUP_LIGHT, shape).clip(shape)) {
+                listOf("应用信息", "取消隐藏").forEach { label ->
+                    BasicText(label, style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            expanded = false
+                            if (label == "取消隐藏") onRemove()
+                            else runCatching { context.startActivity(android.content.Intent(
+                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.net.Uri.parse("package:${app.pkg}"))) }.onFailure {
+                                Toast.makeText(context, "无法打开应用信息：${it.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }.padding(horizontal = 20.dp, vertical = 12.dp))
+                }
+            }
         }
     }
 }

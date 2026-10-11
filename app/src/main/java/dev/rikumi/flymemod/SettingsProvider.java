@@ -13,6 +13,46 @@ import android.os.Process;
 public final class SettingsProvider extends ContentProvider {
     @Override public boolean onCreate() { return true; }
 
+    @Override public android.os.Bundle call(String method, String arg, android.os.Bundle extras) {
+        boolean folderMetrics = LauncherFolderMetrics.METHOD.equals(method);
+        if (!folderMetrics && !"hide_launcher_application".equals(method)) return super.call(method, arg, extras);
+        int caller = Binder.getCallingUid();
+        boolean allowed = caller == Process.myUid();
+        try { allowed |= caller == getContext().getPackageManager().getPackageUid("com.meizu.flyme.launcher", 0); }
+        catch (android.content.pm.PackageManager.NameNotFoundException ignored) {}
+        if (!allowed) throw new SecurityException("Only the launcher may hide applications");
+        if (folderMetrics) {
+            if (extras == null) throw new IllegalArgumentException("Missing folder metrics");
+            SharedPreferences prefs = ModuleSettings.preferences(getContext());
+            SharedPreferences.Editor editor = prefs.edit();
+            java.util.List<String> keys = new java.util.ArrayList<>(java.util.Arrays.asList(LauncherFolderMetrics.FIELDS));
+            keys.add("top"); keys.add("side");
+            for (String key : keys) {
+                float size = extras.getFloat(key, -1f);
+                if (!Float.isFinite(size) || size < 0f || size > 600f)
+                    throw new IllegalArgumentException("Invalid folder metric: " + key);
+                editor.putFloat(LauncherFolderMetrics.PREFIX + key, size);
+            }
+            if (!editor.commit()) throw new IllegalStateException("保存文件夹布局失败");
+            return android.os.Bundle.EMPTY;
+        }
+        if (arg == null || !arg.matches("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+"))
+            throw new IllegalArgumentException("Invalid package name");
+        SharedPreferences prefs = ModuleSettings.preferences(getContext());
+        if (!prefs.getBoolean(ModuleSettings.LAUNCHER_HIDE_APP_MENU, false))
+            throw new IllegalStateException("允许隐藏应用未开启");
+        java.util.Set<String> packages = new java.util.HashSet<>(prefs.getStringSet(
+                ModuleSettings.HIDDEN_LAUNCHER_APPS, java.util.Collections.emptySet()));
+        packages.add(arg);
+        if (!prefs.edit().putStringSet(ModuleSettings.HIDDEN_LAUNCHER_APPS, packages)
+                .putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true).commit())
+            throw new IllegalStateException("保存隐藏应用失败");
+        getContext().getContentResolver().notifyChange(ModuleSettings.URI, null);
+        android.os.Bundle result = new android.os.Bundle();
+        result.putBoolean("success", true);
+        return result;
+    }
+
     @Override public Cursor query(Uri uri, String[] projection, String selection,
                                   String[] selectionArgs, String sortOrder) {
         int uid = Binder.getCallingUid();
@@ -75,6 +115,8 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.EDIT_APP_ICON_NAME);
         columns.add(ModuleSettings.LOCK_WIDGET_STARTUP_FIX);
         columns.add(ModuleSettings.HIDE_CARRIER);
+        columns.add(ModuleSettings.LAUNCHER_HIDE_APP_MENU);
+        columns.add(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS);
         columns.add(ModuleSettings.COLOROS_CONTOUR);
         columns.add(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
         columns.add(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME);
@@ -186,6 +228,8 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.EDIT_APP_ICON_NAME, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.LOCK_WIDGET_STARTUP_FIX, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.HIDE_CARRIER, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.LAUNCHER_HIDE_APP_MENU, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.COLOROS_CONTOUR, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.MBACK_SYSTEM_TIMEOUT, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME, false) ? 1 : 0);

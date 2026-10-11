@@ -129,6 +129,7 @@ public final class XposedInit extends XposedModule {
     private volatile boolean folderCenterEnabled;
     private volatile boolean folderCloseTargetEnabled;
     private volatile boolean editAppIconNameEnabled;
+    private volatile boolean launcherHideAppMenuEnabled, launcherSpreadHiddenAppsEnabled;
     private volatile boolean lockWidgetStartupFixEnabled;
     private volatile boolean folderRestoreColorEnabled;
     private volatile boolean folderRadiusEnabled;
@@ -281,6 +282,15 @@ public final class XposedInit extends XposedModule {
         }
         if ("com.meizu.flyme.launcher".equals(packageName)) {
             installLauncherIconHiding(loader);
+            try {
+                new LauncherHiddenAppsHooks(this::loadSettings, () -> launcherHideAppMenuEnabled,
+                        () -> launcherSpreadHiddenAppsEnabled,
+                        (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                        .install(loader, (name, method, hooker, parameters) ->
+                                install(loader, name, method, hooker, parameters), this::deoptimize);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve launcher hidden application shortcuts and gesture", error);
+            }
             try {
                 new LauncherIconEditHooks(loader, this::loadSettings, () -> editAppIconNameEnabled,
                         (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error)).install(
@@ -1287,8 +1297,12 @@ public final class XposedInit extends XposedModule {
             View view = (View) controller.getClass().getField("mView").get(controller);
             // Re-read the theme's color first, restoring normal day-mode behavior.
             controller.getClass().getMethod("updateDimColor").invoke(controller);
+            Object keyguard = controller.getClass().getField("mKeyguardStateController").get(controller);
+            boolean locked = (Boolean) Class.forName("com.android.systemui.statusbar.policy.KeyguardStateController", false, loader)
+                    .getMethod("isShowing").invoke(keyguard)
+                    || ((Integer) controller.getClass().getMethod("getBarState").invoke(controller)) != 0;
             boolean active = shouldDarken(view.getContext())
-                    && ((Integer) controller.getClass().getMethod("getBarState").invoke(controller)) == 0;
+                    && !locked;
             if (active) {
                 controller.getClass().getField("mDimColor").setInt(controller, DARK_BACKGROUND);
             }
@@ -1297,7 +1311,7 @@ public final class XposedInit extends XposedModule {
             try {
                 // The input is ControlCenterInteractor's actual blur fraction, including
                 // the blur-only lead-in and the delayed blur tail after content disappears.
-                Object result = chain.proceed();
+                Object result = locked ? chain.proceed(new Object[]{0f}) : chain.proceed();
                 surfaceDarkBackground = active
                         && controller.getClass().getField("mBackgroundSurface").get(controller) != null;
                 return result;
@@ -1968,6 +1982,10 @@ public final class XposedInit extends XposedModule {
                 folderCloseTargetEnabled = folderCloseTargetColumn >= 0 && cursor.getInt(folderCloseTargetColumn) != 0;
                 int iconEditColumn = cursor.getColumnIndex(ModuleSettings.EDIT_APP_ICON_NAME);
                 editAppIconNameEnabled = iconEditColumn >= 0 && cursor.getInt(iconEditColumn) != 0;
+                int hideMenuColumn = cursor.getColumnIndex(ModuleSettings.LAUNCHER_HIDE_APP_MENU);
+                launcherHideAppMenuEnabled = hideMenuColumn >= 0 && cursor.getInt(hideMenuColumn) != 0;
+                int spreadHiddenColumn = cursor.getColumnIndex(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS);
+                launcherSpreadHiddenAppsEnabled = spreadHiddenColumn >= 0 && cursor.getInt(spreadHiddenColumn) != 0;
                 int lockWidgetColumn = cursor.getColumnIndex(ModuleSettings.LOCK_WIDGET_STARTUP_FIX);
                 lockWidgetStartupFixEnabled = lockWidgetColumn >= 0 && cursor.getInt(lockWidgetColumn) != 0;
                 int folderColorColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RESTORE_COLOR);

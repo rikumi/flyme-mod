@@ -10,14 +10,15 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 
-/** Change only Flyme's automatic eviction of older window-mode tasks. */
+/** Retain pin windows while allowing only the selected window to remain expanded. */
 final class SmallWindowLimitHooks {
     private static final String WM = "com.android.server.wm.";
     private final SharedPreferences preferences;
     private final BiConsumer<String, Throwable> log;
     private final ThreadLocal<Trim> trimming = new ThreadLocal<>();
     private Field displayArea;
-    private Method childCount, childAt, asTask, mode, home, deferBack, activityCount, topWindow, rootTask, parent, activityTask;
+    private Method childCount, childAt, asTask, mode, home, deferBack, activityCount, rootTask, parent, moveWindow;
+    private final ThreadLocal<Boolean> collapsing = new ThreadLocal<>();
     private boolean errorLogged;
     private record Trim(Object controller, Object incoming, boolean privatePath, boolean floatingDestination) {}
 
@@ -38,19 +39,18 @@ final class SmallWindowLimitHooks {
         parent = container.getMethod("getParent");
         rootTask = task.getMethod("getRootTask");
         Class<?> activity = loader.loadClass(WM + "ActivityRecord");
-        activityTask = activity.getMethod("getTask");
         mode = task.getMethod("getWindowingMode");
         home = task.getMethod("isActivityTypeHome");
         activityCount = task.getMethod("getNonFinishingActivityCount");
         deferBack = loader.loadClass(WM + "FlymeTaskExt").getDeclaredMethod("isDeferBack", task);
         deferBack.setAccessible(true);
-        topWindow = base.getDeclaredMethod("getTopWindowModeRootTask"); topWindow.setAccessible(true);
         for (Method method : new Method[]{childCount, childAt, asTask, parent, rootTask,
-                activityTask, mode, home, activityCount}) method.setAccessible(true);
+                mode, home, activityCount}) method.setAccessible(true);
         String[] predicates = {"FlymeWindowControllerBase", "FlymeMiniWindowControllerImpl",
                 "FlymeFreeFormWindowControllerImpl", "FlymeWeltWindowControllerImpl"};
         for (String name : predicates) loader.loadClass(WM + name).getDeclaredMethod("needPositionTaskAtBottom", task, task);
         Method move = base.getDeclaredMethod("moveTasksToOtherWindowInner", task, int.class, int.class, boolean.class, boolean.class);
+        moveWindow = move; moveWindow.setAccessible(true);
         Method under = base.getDeclaredMethod("moveUnderWindowTaskToBack", task);
         Method miniUnder = mini.getDeclaredMethod("moveUnderTaskToBack", task);
         mini.getDeclaredMethod("positionWindowTaskAtBottom", task, boolean.class);
@@ -79,14 +79,6 @@ final class SmallWindowLimitHooks {
                 visibilityResult.set(chain.getArg(0), false);
             return result;
         }, resultOne, container, container);
-        installer.hook(mini.getName(), "onTaskStartPausing", chain -> {
-            Object resuming = chain.getArg(1);
-            if (enabled() && resuming != null && retainedPair(chain.getArg(0), activityTask.invoke(resuming))) {
-                // Allow normal activity pausing, but do not schedule automatic window minimization.
-                return false;
-            }
-            return chain.proceed();
-        }, task, activity);
         installer.hook(mini.getName(), "shouldToBack", chain -> {
             Object result = chain.proceed();
             Object incoming = chain.getArg(0), old = chain.getArg(1);
@@ -96,25 +88,34 @@ final class SmallWindowLimitHooks {
                     && keep(chain.getThisObject(), incoming, old)) return false;
             return result;
         }, task, task);
-        // FreeForm automatically minimizes the previous window before the generic trim runs.
-        installer.hook(front.getDeclaringClass().getName(), "onTaskMoveToFront", chain -> {
-            Object incoming = chain.getArg(1);
-            if (enabled() && isFloating(incoming)) {
-                Object old = topWindow.invoke(chain.getThisObject());
-                if (old != null && old != incoming && keep(chain.getThisObject(), incoming, old)) return false;
-            }
-            return chain.proceed();
-        }, String.class, task);
-        installer.hook(mini.getName(), "postSwitchTasksByNewFrontTask", chain -> {
-            Object incoming = chain.getArg(0), old = chain.getArg(1);
-            if (enabled() && !Boolean.TRUE.equals(chain.getArg(5))
-                    && ((Number) chain.getArg(2)).intValue() == 12 && old != null && old != incoming
-                    && keep(chain.getThisObject(), incoming, old)) {
-                // Native cancellation also restores handle/leash flags, without scheduling minimization.
-                return chain.proceed(new Object[]{incoming, old, chain.getArg(2), chain.getArg(3), chain.getArg(4), true});
-            }
-            return chain.proceed();
-        }, task, task, int.class, boolean.class, int.class, boolean.class);
+        // Do not cancel native pausing/front-task switches: they turn an expanded
+        // window into a draggable pin window, rather than evicting it.
+        for (String name : new String[]{"FlymeMiniWindowControllerImpl", "FlymeFreeFormWindowControllerImpl"}) {
+            installer.hook(WM + name, "onTaskMoveToFront", chain -> {
+                Object result = chain.proceed();
+                collapseOtherExpanded(chain.getThisObject(), chain.getArg(1));
+                return result;
+            }, String.class, task);
+        }
+        Method update = mini.getDeclaredMethod("updateWindowModeInfo", task, int.class, boolean.class, boolean.class);
+        installer.hook(mini.getName(), update.getName(), chain -> {
+            Object result = chain.proceed();
+            if (Boolean.TRUE.equals(chain.getArg(2))) collapseOtherExpanded(chain.getThisObject(), chain.getArg(0));
+            return result;
+        }, task, int.class, boolean.class, boolean.class);
+        for (String[] entry : new String[][]{
+                {mini.getName(), "enterMiniWindowWithoutWindowMode"},
+                {WM + "FlymeFreeFormWindowControllerImpl", "enterFreeWindowWithoutWindowModeChange"}}) {
+            Method enter = loader.loadClass(entry[0]).getDeclaredMethod(entry[1], task, boolean.class);
+            installer.hook(entry[0], entry[1], chain -> {
+                Object result = chain.proceed();
+                if (Boolean.TRUE.equals(result)) collapseOtherExpanded(chain.getThisObject(), chain.getArg(0));
+                return result;
+            }, task, boolean.class);
+            deoptimize.accept(enter);
+        }
+        deoptimize.accept(update);
+        deoptimize.accept(mini.getDeclaredMethod("onTaskMoveToFront", String.class, task));
         for (String name : predicates) {
             installer.hook(WM + name, "needPositionTaskAtBottom", chain -> {
                 Object result = chain.proceed();
@@ -163,8 +164,39 @@ final class SmallWindowLimitHooks {
         deoptimize.accept(mini.getDeclaredMethod("moveWindowTaskToBackIfNeed"));
         deoptimize.accept(loader.loadClass(WM + "FlymeWeltWindowControllerImpl")
                 .getDeclaredMethod("moveWindowTaskToBackIfNeed"));
-        log.accept("Flyme small-window limit hooks registered: concurrent visibility and automatic close/minimize paths covered", null);
+        log.accept("Flyme small-window limit hooks registered: concurrent pin visibility, expanded-window handoff and automatic eviction paths covered", null);
     }
+
+    private void collapseOtherExpanded(Object controller, Object incoming) {
+        if (!enabled() || Boolean.TRUE.equals(collapsing.get()) || incoming == null) return;
+        try {
+            incoming = rootTask.invoke(incoming);
+            if (incoming == null || !expandedMode(((Number) mode.invoke(incoming)).intValue())) return;
+            Object area = displayArea.get(controller);
+            if (parent.invoke(incoming) != area) return;
+            // Snapshot first: native mode changes can reorder the display area's children.
+            List<Object> expanded = new ArrayList<>();
+            for (int i = ((Number) childCount.invoke(area)).intValue() - 1; i >= 0; i--) {
+                Object candidate = asTask.invoke(childAt.invoke(area, i));
+                if (candidate != null && candidate != incoming
+                        && expandedMode(((Number) mode.invoke(candidate)).intValue())
+                        && !Boolean.TRUE.equals(deferBack.invoke(null, candidate))
+                        && ((Number) activityCount.invoke(candidate)).intValue() > 0)
+                    expanded.add(candidate);
+            }
+            collapsing.set(true);
+            try {
+                // Native mode 12 owns the pin surface, drag/tap consumer and shrink animation.
+                // Invoke directly: postSwitchTasksToOtherWindow removes the previous pending
+                // message, so queuing one message per task would only shrink the last window.
+                for (Object candidate : expanded) moveWindow.invoke(controller, candidate, 12, 0, true, true);
+            } finally { collapsing.remove(); }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            reportCountingError(error);
+        }
+    }
+
+    static boolean expandedMode(int mode) { return mode == 11 || mode == 1035; }
 
     private boolean enabled() {
         return preferences.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false);

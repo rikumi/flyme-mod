@@ -8,6 +8,10 @@ public final class ModuleSettings {
     public static final String EDIT_APP_ICON_NAME = "edit_app_icon_name";
     public static final String LOCK_WIDGET_STARTUP_FIX = "lock_widget_startup_fix";
     public static final String HIDE_CARRIER = "hide_lockscreen_notification_carrier";
+    public static final String LAUNCHER_HIDE_APP_MENU = "launcher_hide_app_menu";
+    public static final String LAUNCHER_SPREAD_HIDDEN_APPS = "launcher_spread_hidden_apps";
+    public static final String SETTINGS_PAGE_EXTRA = "flymemod_settings_page";
+    public static final String LAUNCHER_ENTRY_EXTRA = "flymemod_launcher_entry";
     public static final String DARK_APP_SPECIAL_PACKAGES = "dark_app_special_packages";
     public static final String PHOTO_PREVIEW_SYSTEM_ROTATION = "photo_preview_system_rotation";
     public static final String CAMERA_KEEP_FILTER = "camera_keep_filter";

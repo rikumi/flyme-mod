@@ -1,6 +1,8 @@
 package dev.rikumi.flymemod
 
 import android.os.Bundle
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -96,8 +98,37 @@ private val CATEGORY_GROUPS: List<List<Category>> = listOf(
 private val CATEGORIES = CATEGORY_GROUPS.flatten()
 
 class MainActivity : ComponentActivity() {
+    private var requestedPage by mutableStateOf<String?>(null)
+    private var pageRequest by mutableIntStateOf(0)
+    private var launcherEntry by mutableStateOf(false)
+
+    private fun readPageRequest() {
+        requestedPage = intent.getStringExtra(ModuleSettings.SETTINGS_PAGE_EXTRA)
+        launcherEntry = requestedPage == "hidden_apps" &&
+            intent.getBooleanExtra(ModuleSettings.LAUNCHER_ENTRY_EXTRA, false)
+        if (launcherEntry) overridePendingTransition(0, 0)
+    }
+
+    private fun returnToLauncher() {
+        startActivity(
+            android.content.Intent(android.content.Intent.ACTION_MAIN)
+                .addCategory(android.content.Intent.CATEGORY_HOME)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION),
+            android.app.ActivityOptions.makeCustomAnimation(this, 0, 0).toBundle(),
+        )
+        finish()
+        overridePendingTransition(0, 0)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        readPageRequest()
+        pageRequest++
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        readPageRequest()
         setContent {
             MiuixTheme(
                 controller = remember {
@@ -126,20 +157,30 @@ class MainActivity : ComponentActivity() {
                 textStyles = fluixTextStyles(),
             ) {
                 FluixStatusBar()
-                FluixOverscrollHost { SettingsScreen() }
+                FluixOverscrollHost { SettingsScreen(requestedPage, pageRequest, launcherEntry, ::returnToLauncher) }
             }
         }
     }
 }
 
 @Composable
-private fun SettingsScreen() {
-    var openCategoryId by remember { mutableStateOf<String?>(null) }
-    BackHandler(enabled = openCategoryId != null) { openCategoryId = null }
+private fun SettingsScreen(requestedPage: String?, pageRequest: Int, launcherEntry: Boolean, onReturnToLauncher: () -> Unit) {
+    var openCategoryId by remember { mutableStateOf(requestedPage?.takeIf { page -> CATEGORIES.any { it.id == page } }) }
+    LaunchedEffect(pageRequest) {
+        if (requestedPage != null && CATEGORIES.any { it.id == requestedPage }) openCategoryId = requestedPage
+    }
+    val onPageBack: () -> Unit = {
+        if (launcherEntry && openCategoryId == "hidden_apps") onReturnToLauncher()
+        else openCategoryId = null
+    }
+    BackHandler(enabled = openCategoryId != null, onBack = onPageBack)
 
     AnimatedContent(
         targetState = openCategoryId,
         transitionSpec = {
+            if (launcherEntry) {
+                androidx.compose.animation.EnterTransition.None.togetherWith(androidx.compose.animation.ExitTransition.None)
+            } else {
             val direction = if (targetState != null) 1 else -1
             val spec = tween<IntOffset>(durationMillis = PAGE_TRANSITION_MS)
             (fadeIn(animationSpec = tween(PAGE_TRANSITION_MS)) +
@@ -148,6 +189,7 @@ private fun SettingsScreen() {
                     fadeOut(animationSpec = tween(PAGE_TRANSITION_MS)) +
                         slideOutHorizontally(animationSpec = spec) { -direction * it / 5 },
                 )
+            }
         },
         label = "settings_pages",
     ) { pageId ->
@@ -157,7 +199,7 @@ private fun SettingsScreen() {
         } else if (category.id == DISABLED_APPS_ID) {
             DisabledAppsScreen(LocalContext.current, onBack = { openCategoryId = null })
         } else if (category.id == "hidden_apps") {
-            HiddenAppsScreen(LocalContext.current, onBack = { openCategoryId = null })
+            HiddenAppsScreen(LocalContext.current, onBack = onPageBack)
         } else {
             CategoryScreen(category, onBack = { openCategoryId = null })
         }
@@ -319,7 +361,11 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                     item { WallpaperPreferences() }
                 }
                 if (category.id == "desktop" && groupTitle == "桌面图标设置") {
-                    item { PreferenceCard(listOf(ModuleSettings.EDIT_APP_ICON_NAME to "允许编辑图标和名称")) }
+                    item { PreferenceCard(listOf(
+                        ModuleSettings.EDIT_APP_ICON_NAME to "允许编辑图标和名称",
+                        ModuleSettings.LAUNCHER_HIDE_APP_MENU to "允许隐藏应用",
+                        ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS to "桌面双指张开查看隐藏应用",
+                    )) }
                 }
                 if (category.id == "desktop" && groupTitle == "桌面动画设置") {
                     item {
