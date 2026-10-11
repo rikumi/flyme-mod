@@ -7,9 +7,6 @@ import android.graphics.RuntimeShader;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
 import android.view.View;
-import android.view.Choreographer;
-import android.view.Display;
-import android.os.Build;
 import android.view.ViewTreeObserver;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
@@ -26,8 +23,8 @@ import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.DoubleSupplier;
 
-/** Compose saturated live SurfaceFlinger background under the unmodified tile foreground. */
-final class TileBackdropHooks implements Choreographer.FrameCallback {
+/** Compose saturated, brightened live SurfaceFlinger background under the tile foreground. */
+final class TileBackdropHooks {
     private static final String NETWORK = "com.flyme.systemui.qs.tileimpl.ConnectivityQSTileViewImpl";
     private static final String SLIDER_OWNER = "com.android.systemui.settings.brightness.BrightnessSliderView";
     static final String SHADER = """
@@ -57,10 +54,15 @@ final class TileBackdropHooks implements Choreographer.FrameCallback {
                     return smoothstep(-0.5,0.5,min(q.x,q.y)*scale);
                 float2 a = corner0.xy, b = corner0.zw, c = corner1.xy, d = corner1.zw;
                 if (q.x > d.x) { a = d; b = corner2.xy; c = corner2.zw; d = corner3.xy; }
+                // Binary search needs only x. Compute scalar polynomial coefficients once
+                // instead of evaluating both coordinates of the cubic twelve times.
+                float x3 = -a.x + 3.0*b.x - 3.0*c.x + d.x;
+                float x2 = 3.0*a.x - 6.0*b.x + 3.0*c.x;
+                float x1 = 3.0*(b.x-a.x);
                 float lo = 0.0, hi = 1.0;
                 for (int i = 0; i < 12; i++) {
                     float t = (lo+hi)*0.5;
-                    if (cubic(a,b,c,d,t).x < q.x) lo = t; else hi = t;
+                    if (((x3*t+x2)*t+x1)*t+a.x < q.x) lo = t; else hi = t;
                 }
                 float t = (lo+hi)*0.5, s = 1.0-t;
                 float2 tangent = 3.0*s*s*(b-a) + 6.0*s*t*(c-b) + 3.0*t*t*(d-c);
@@ -70,11 +72,19 @@ final class TileBackdropHooks implements Choreographer.FrameCallback {
             }
             half4 main(float2 p) {
                 half4 layer = sksl_layer.eval(p);
+                // Regions are composed recursively across the whole window. Avoid sampling
+                // the backdrop or solving the corner curve where this tile cannot contribute.
+                if (sksl_alpha <= 0.0 || layer.a >= 1.0) return layer;
+                float coverage = mask(p)*sksl_alpha;
+                if (coverage <= 0.0) return layer;
                 half4 background = sksl_background.eval(p);
                 half luminance = dot(background.rgb, half3(0.2126,0.7152,0.0722));
                 half3 saturated = clamp(half3(luminance) + (background.rgb-half3(luminance))*(1.0+saturationAmount), 0.0, background.a);
-                half4 composed = layer + half4(saturated,background.a)*(1.0-layer.a);
-                return mix(layer,composed,mask(p)*sksl_alpha);
+                // Fixed +10% brightness applies only to the sampled backdrop. Preserve its
+                // premultiplied alpha and leave icons, text and tile foreground unchanged.
+                half3 brightened = min(saturated*1.1, half3(background.a));
+                half4 composed = layer + half4(brightened,background.a)*(1.0-layer.a);
+                return mix(layer,composed,coverage);
             }
             """;
     private final BooleanSupplier enabled;
@@ -96,11 +106,7 @@ final class TileBackdropHooks implements Choreographer.FrameCallback {
     private final Field tileBackground, customTileBackground, smoothRadius, smoothness;
     private final Class<?> smoothDrawable;
     private final Field smoothCornersEnabled, wifiContainer, bluetoothContainer;
-    private final Method radiusLimit;
-    private final Object pathGenerator;
     private final Map<View, WeakReference<State>> states = new WeakHashMap<>();
-    private final Set<View> frameRoots = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-    private boolean frameScheduled;
 
     TileBackdropHooks(ClassLoader loader, BooleanSupplier enabled, DoubleSupplier saturationAmount,
                       IntSupplier networkStyle, BiConsumer<String, Throwable> log,
@@ -132,9 +138,6 @@ final class TileBackdropHooks implements Choreographer.FrameCallback {
         curveCompanion = curve.getField("Companion").get(null);
         createCurve = curveCompanion.getClass().getMethod("create", float.class, float.class);
         curvePoints = curve.getMethod("getPoints");
-        Class<?> generator = loader.loadClass("com.meizu.common.util.SmoothCornerPathGenerator");
-        pathGenerator = generator.getField("INSTANCE").get(null);
-        radiusLimit = generator.getMethod("getSmoothnessRadiusLimit", float.class, float.class, float.class);
         smoothCornersEnabled = loader.loadClass("com.flyme.systemui.utils.SystemUICommonUtils")
                 .getField("isEnableSmoothRoundCorner");
         Class<?> network = loader.loadClass(NETWORK);
@@ -218,31 +221,6 @@ final class TileBackdropHooks implements Choreographer.FrameCallback {
         }
     }
 
-    private void requestFrame() {
-        if (frameScheduled) return;
-        frameScheduled = true;
-        Choreographer.getInstance().postFrameCallback(this);
-    }
-
-    @Override public void doFrame(long frameTimeNanos) {
-        frameScheduled = false;
-        frameRoots.clear();
-        try {
-            for (WeakReference<State> reference : states.values()) {
-                State state = reference.get();
-                View view = state == null ? null : state.owner.get();
-                if (view == null) continue;
-                if (enabled.getAsBoolean() && state.effect != null && state.drawingFrames && view.isShown()
-                        && view.getWindowVisibility() == View.VISIBLE) {
-                    // One invalidation per window, rather than one callback per tile. Native SF
-                    // reuses the compiled shader and evaluates every region for the new frame.
-                    if (frameRoots.add(view.getRootView())) state.effect.invalidateSelf();
-                } else state.restoreFrameRate(view);
-            }
-            if (!frameRoots.isEmpty()) requestFrame();
-        } finally { frameRoots.clear(); }
-    }
-
     private final class State implements View.OnAttachStateChangeListener, ViewTreeObserver.OnPreDrawListener {
         final WeakReference<View> owner;
         final Outline outline = new Outline();
@@ -253,12 +231,16 @@ final class TileBackdropHooks implements Choreographer.FrameCallback {
         ViewTreeObserver observer;
         float previousRadius = -1, previousSmoothness = -1;
         float previousSaturation = -1;
-        boolean frameRateRequested;
-        boolean drawingFrames;
-        float originalFrameRate;
         boolean failed;
         final int networkRole;
-        State(View view, int networkRole) { owner = new WeakReference<>(view); this.networkRole = networkRole; }
+        final boolean slider;
+        final int backgroundId, radiusId;
+        State(View view, int networkRole) {
+            owner = new WeakReference<>(view); this.networkRole = networkRole;
+            slider = view.getClass().getName().equals(SLIDER_OWNER);
+            backgroundId = view.getResources().getIdentifier("background", "id", "com.android.systemui");
+            radiusId = slider ? view.getResources().getIdentifier("qs_corner_radius", "dimen", "com.android.systemui") : 0;
+        }
         @Override public void onViewAttachedToWindow(View view) {
             observer = view.getViewTreeObserver(); observer.addOnPreDrawListener(this);
             update();
@@ -269,34 +251,12 @@ final class TileBackdropHooks implements Choreographer.FrameCallback {
         }
         @Override public boolean onPreDraw() { update(); return true; }
         void remove(View view) {
-            drawingFrames = false;
-            restoreFrameRate(view);
             if (effect != null) {
                 effect.setVisible(false,false); view.getOverlay().remove(effect);
             }
             effect = null; effectRoot.clear(); appliedBounds.setEmpty();
             previousRadius = previousSmoothness = -1;
             previousSaturation = -1;
-        }
-        void restoreFrameRate(View view) {
-            if (!frameRateRequested) return;
-            if (Build.VERSION.SDK_INT >= 35) view.setRequestedFrameRate(originalFrameRate);
-            frameRateRequested = false;
-        }
-        void requestHighFrameRate(View view) {
-            if (frameRateRequested || Build.VERSION.SDK_INT < 35) return;
-            Display display = view.getDisplay();
-            if (display == null) return;
-            Display.Mode current = display.getMode();
-            float target = current.getRefreshRate();
-            for (Display.Mode mode : display.getSupportedModes()) {
-                if (mode.getPhysicalWidth() == current.getPhysicalWidth()
-                        && mode.getPhysicalHeight() == current.getPhysicalHeight())
-                    target = Math.max(target, mode.getRefreshRate());
-            }
-            originalFrameRate = view.getRequestedFrameRate();
-            view.setRequestedFrameRate(target);
-            frameRateRequested = true;
         }
         void update() {
             View view = owner.get();
@@ -312,22 +272,20 @@ final class TileBackdropHooks implements Choreographer.FrameCallback {
                     background = (Drawable) customTileBackground.get(view);
                 outline.setEmpty();
                 if (background instanceof LayerDrawable layers) {
-                    int backgroundId = view.getResources().getIdentifier("background", "id", "com.android.systemui");
                     Drawable surface = layers.findDrawableByLayerId(backgroundId);
                     if (surface != null) background = surface;
                 }
                 boolean smooth = smoothDrawable.isInstance(background);
                 float radius = 0, smoothing = 0;
-                if (view.getClass().getName().equals(SLIDER_OWNER)) {
+                if (slider) {
                     // The rectangular progress drawable is clipped by the owner's natural curve.
                     bounds.set(0, 0, view.getWidth(), view.getHeight());
-                    int radiusId = view.getResources().getIdentifier("qs_corner_radius", "dimen", "com.android.systemui");
                     radius = view.getResources().getDimension(radiusId);
                     smooth = smoothCornersEnabled.getBoolean(null);
                     if (smooth) {
                         smoothing = 0.2f;
-                        radius = Math.min(radius, (Float) radiusLimit.invoke(pathGenerator,
-                                (float)bounds.width(), (float)bounds.height(), smoothing));
+                        // Same limit as SmoothCornerPathGenerator.getSmoothnessRadiusLimit.
+                        radius = Math.min(radius, Math.min(bounds.width(), bounds.height()) / (2f*(1f+smoothing)));
                     }
                 } else if (smooth) {
                     bounds.set(background.getBounds());
@@ -387,14 +345,9 @@ final class TileBackdropHooks implements Choreographer.FrameCallback {
                 }
                 effect.setAlpha(Math.round(Math.max(0f,Math.min(1f,alpha))*255));
                 effect.setVisible(visible,false);
-                drawingFrames = visible && alpha > 0f && view.isShown() && view.getWindowVisibility() == View.VISIBLE;
-                if (drawingFrames) {
-                    requestHighFrameRate(view);
-                    requestFrame();
-                } else restoreFrameRate(view);
                 if (visible && alpha > 0.99f && reportedTypes.add(view.getClass().getName()))
                     trace.accept("Live tile backdrop compositor attached: view=" + view.getClass().getSimpleName()
-                            + ", bounds=" + bounds + ", saturation=" + (1f+saturation) + ", contrast=1.0");
+                            + ", bounds=" + bounds + ", saturation=" + (1f+saturation) + ", brightness=1.1, contrast=1.0");
             } catch (ReflectiveOperationException | RuntimeException error) {
                 remove(view); failed = true;
                 log.accept("Cannot render live saturated tile backdrop", error);

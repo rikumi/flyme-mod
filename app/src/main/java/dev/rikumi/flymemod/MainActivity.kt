@@ -915,6 +915,7 @@ private fun TileBackgroundColorPreference() {
     var expanded by remember { mutableStateOf(false) }
     FluixSwitchPreference(
         title = "控制中心磁贴背景增色",
+        subtitle = "可能影响功耗",
         checked = enabled,
         onCheckedChange = {
             enabled = it
