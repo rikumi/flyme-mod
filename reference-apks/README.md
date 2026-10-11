@@ -168,6 +168,17 @@ PackageInstaller 会话。模块在安装启动至 `onPostExecute(Session)` 返�
 延后 `clearCachedApk()` 及源 APK 删除；提交后补做清理，避免立即关闭界面时
 删除仍在读取的安装文件。双击继续仅启动一次，不改变开关关闭时的安装流程。
 
+## 锁屏小组件启动显示
+
+SystemUI 16260625 的 `layout_lock_screen_plugin.xml` 包含全部候选组件且未设置初始隐藏。
+`com.flyme.keyguard.plugin.PluginLayout#onFinishInflate()` 及其父类先缓存组件引用；
+`LockscreenPluginViewBinder` 随后异步收集 `LockscreenPluginViewModel.pluginList`，调用
+`PluginLayout#updatePluginLayout(List)` 移除全部节点并重新添加选中组件。
+“修复启动时锁屏小组件异常显示”在原生加载完成后先移除初始候选节点，保持对象引用，
+由原生数据绑定恢复选中内容，不修改锁屏组件偏好，不设置长期隐藏或固定延迟。
+功能位于桌面设置，实际作用域为 SystemUI；重新创建布局时同样生效。
+已通过 7 项初始化及原生恢复状态检查、APK 构建，尚待设备启动/重启场景验证。
+
 ## 相机与图库参考实现
 
 保留滤镜设置基于同版相机 `com.meizu.media.camera.filter.h` 的实际 DEX：
@@ -301,3 +312,112 @@ Context 字段原始名为 `b`、List 字段为 `c`；JADX 为避免名称冲突
 `ComponentInfo{包名/类名}`、相对活动类名、同一 drawable 的多个映射，
 以及原生组件名转 drawable 名的查找规则。匹配区域按行数调整高度，
 搜索时保留分区。图标包目录与匹配回归检查共 22 项通过。
+
+## 应用导航栏强制沉浸
+
+由原微信专用功能扩展为可选择多个应用，保留原开关存储键与启用状态，
+首次初始化应用列表为微信。设置采用开关及下方应用列表入口；复用隐藏
+应用的图标列表、添加页和移除菜单，候选仅列出当前用户已安装的非系统应用。
+包名集合通过远程偏好同步到 SystemUI，显式空列表保持为空；列表变更
+取消旧采样请求并恢复底衬，随后按新的前台应用匹配重新采样。
+以下原始微信验证结论仍适用于采样管线，新增多应用交互尚需实机验证。
+
+以 `com.android.systemui`（versionCode 16260625）的
+`navigationbar.views.NavigationBarView#onAttachedToWindow/onDetachedFromWindow/onDraw`
+和 `NavigationBarTransitions#applyDarkIntensity/reapplyDarkIntensity` 为依据。
+仅注入 SystemUI，不增加微信作用域、不依赖微信私有类；通过前台任务包名
+`com.tencent.mm` 覆盖主界面及小程序活动。系统 APK 已声明
+`REAL_GET_TASKS`、`READ_FRAME_BUFFER` 权限。
+
+设备 framework 的 `IWindowManager#captureDisplay(int,CaptureArgs,ScreenCaptureListener)`
+支持裁剪区域，使用导航视图上方第二行的 1 像素高完整横条，计算 RGB
+算术平均值。后台线程单次异步采样，显示期间约每 50ms 更新；纯色在导航
+视图 `onDraw` 中绘制，并向上补齐 1 像素底衬。原生 `NavigationBarFrame`
+窗口高度及其各旋转参数增加 1 像素，顶部内边距同步补偿；保留
+`providedInsets`、按钮位置和触摸处理，并适配按钮明暗。关闭开关、
+离开微信、进入锁屏或导航视图分离时恢复原生绘制；关闭开关停止轮询。
+横屏侧边导航暂不处理。构建通过，微信及小程序实际效果仍需设备验证。
+
+前台任务检查与截图请求采用不同工作线程，任务检查不会被未完成的截图
+阻塞。两类请求均有 750ms 超时；超时移除底衬并恢复窗口尺寸和图标明暗。
+离开微信、关闭开关、窗口分离后递增请求代次，迟到回调不得重新显示底衬，
+也不得清除较新请求的等待状态。
+
+## 修改小窗数量上限
+
+使用 `small-window-meizu22-12.6/` 中从 MEIZU 22 / Flyme 12.6.0.0A
+提取的 `service-flyme.jar` 与 `services.jar` 验证。`FlymeWindowControllerBase`
+的 `moveUnderWindowTaskToBack` 调用 `needPositionTaskAtBottom`，将其它符合条件的
+窗口任务通过 `positionWindowTaskAtBottom` 移入后台并恢复全屏。
+Mini / FreeForm / Welt 控制器分别重写该判据；Mini 另有私有
+`moveUnderTaskToBack` 清理路径。普通 `WindowProcessController` 的
+`MAX_NUM_PERCEPTIBLE_FREEFORM` 影响进程可感知标志，不是小窗数量限制，未修改。
+
+新设置位于“导航与手势 / 多任务切换”，默认关闭，开启后默认数量为 3，
+范围 1–6。计数按当前显示区域内的窗口任务层级从上到下进行，预留新任务的
+名额，最近任务保留到指定上限；桌面以下的任务不视为当前小窗。
+另覆盖 Mini 的 `shouldToBack` 周期自动关闭判据，以及 FreeForm 的
+`onTaskMoveToFront` 和 `postSwitchTasksByNewFrontTask` 自动最小化路径。
+后者使用原生取消分支恢复窗口控件和 leash 标志，不发送最小化消息。
+在 `FlymeFeatureFactory.isWindowContainerWillInvisible` 中，保留数量以内、
+同一显示区域的不同小窗根任务不互相触发完全遮挡判定；同一应用内部的
+子任务、全屏任务、显式延后关闭的任务仍沿用系统判据。
+`TaskFragment.getVisibility` 会根据原始布局边界预填遮挡结果，
+`FlymeWindowManagerInjectImpl` 在结果为 true 时跳过上述工厂，因此同时
+在该注入入口修正 `Inject.ResultOne.arg1`，覆盖小窗 Surface 缩放后仍保留
+全屏布局边界的情况；反优化 `TaskFragment.getVisibility` 避免旧内联结果。
+在 `onTaskStartPausing` 中阻止小窗之间切换焦点时自动最小化旧窗口，
+Activity 的原生暂停过程继续执行；返回全屏应用时不改变原生处理。
+只调整自动移入后台的判据和私有清理路径，不拦截主动关闭、返回全屏或
+其它显式窗口操作。ThreadLocal 清理上下文在正常返回与异常时均恢复；
+禁用开关恢复原生判据。相关调用方法反优化以避免旧编译结果内联。
+
+仅在 `onSystemServerStarting` 中安装，现代 Xposed API 的系统框架作用域声明为
+`system`；`android` 是独立系统包，不用于 system_server 注入。
+首次加载需要勾选系统框架并重启系统；通过远程偏好同步开关与数量，后续
+调整无需重启。未将 system_server 加入“重启作用域”的进程终止列表。
+实际 hook 的 41 项宿主模拟检查通过（数量、混合模式、显示区域、禁用、
+主动操作、桌面边界、异常恢复、周期关闭、自动最小化、并存可见性、焦点切换、
+预填遮挡结果绕过工厂的路径）。设备日志确认
+system_server 成功注册原版 hook；补齐路径后的实际窗口交互仍需验证。
+
+悬浮未展开窗口的输入由 `FlymePinWindowControllerImpl.onInputEvent` 处理，
+原生 `FlymeWindowManagerInjectImpl.injectInputMonitorAcceptWindow` 只将共享
+`pip_window_input_consumer` 的触摸范围裁剪到第一个（最上层）Pin 任务 Surface。
+`SmallWindowInputHooks` 将该范围改为当前可见、非隐藏、子类型为 0 的 Pin
+窗口区域并集，不包含窗口之间的空隙；移除单 Surface 裁剪，并按输入 Surface
+坐标换算区域。DOWN 时按窗口层级命中具体任务并置顶，再调用原生手势处理，
+保留拖动、顶部关闭、贴边、点击展开的系统行为；MOVE 不重新选择窗口。
+单窗口、禁用或没有原生输入消费者的场景沿用原生范围。
+实际输入 hook 的 16 项宿主模拟检查通过，覆盖区域并集、坐标换算、空隙
+透传、重叠窗口顺序、手势目标选择及禁用恢复。设备日志显示首版输入 hook
+因 `getWindowSubtype` 误用 Task 参数而注册失败，现已按真实声明改为
+WindowContainer 并同步修正模拟签名；修正版交互尚未实机验收。
+
+## 横屏游戏窗口宽度与小窗比例
+
+`GameWidthHooks` 使用当前 Meizu 22 / Flyme 12.6 框架的
+`ActivityRecord.resolveOverrideConfiguration` 修改所选应用的横屏全屏视口，
+同时处理原生 size-compat、挖孔 Insets 和 letterbox 内边界。
+居中模式在主应用 WindowState 内容 Surface 上设置 8dp 圆角；
+19.5:9 拉伸通过 ActivityRecord Surface 的横向矩阵铺满屏幕，不裁切圆角。
+非所选应用、竖屏和动画 leash 场景不覆盖系统布局或动画矩阵。
+
+小窗使用独立的 `FlymeFloatWindowInfo.calculateAspectRatio`。
+`GameWidthSmallWindowHooks` 在 Mini、FreeForm、Pin、Welt 的
+`createWindowInfo(Task,int,int,int)` 中限定当前应用和横屏方向，
+将同一适配方式的比例送入原生构造过程；默认模式以物理长边扣除
+两侧挖孔宽度后除以短边，19.5:9 拉伸在小窗中采用 19.5:9。
+自由小窗可能直接复制上一窗口而不重新计算比例，因此仅在比例不匹配时
+调用原生 MiniWindowInfo 构造器，保留中心、缩放和窗口状态。
+不直接修改 final 比例字段。上下文使用 ThreadLocal 并在异常路径恢复。
+
+实际全屏 hook 的 29 项宿主检查、小窗 hook 的 14 项宿主检查通过；
+小窗检查覆盖竖屏屏幕中的横屏窗口、适配方式、其它应用、自由小窗
+复制旧比例及异常后的上下文恢复。构建与签名验证通过，设备离线，
+实际窗口显示和切换仍需验证。两个应用选择器仅列出非系统应用。
+
+横屏游戏启动时，固定旋转变换的 DisplayInfo 可能先于实际屏幕成为横屏。
+适配判据先检查 DisplayContent 当前显示区域，仍处于竖屏时保持原生旋转
+与窗口配置；实际横屏后才使用目标比例，避免在竖屏中提前生成横屏窗口。
+宿主检查覆盖该过渡与完成旋转后的适配；实际设备显示仍需验证。
