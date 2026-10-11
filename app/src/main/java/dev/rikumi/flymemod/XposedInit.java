@@ -141,6 +141,8 @@ public final class XposedInit extends XposedModule {
     private WeatherRecommendationHooks activeWeatherRecommendationHooks;
     private WeatherBackgroundHooks activeWeatherBackgroundHooks;
     private ClockFontHooks activeClockFontHooks;
+    private CarrierVisibilityHooks activeCarrierVisibilityHooks;
+    private boolean hideCarrierEnabled;
     private SimpleQsTextHooks activeSimpleQsTextHooks;
     private SplitNetworkCardHooks activeSplitNetworkCardHooks;
     private CircleTileHooks activeCircleTileHooks;
@@ -387,6 +389,13 @@ public final class XposedInit extends XposedModule {
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve merged shade refresh rate policy", error);
+        }
+        try {
+            activeCarrierVisibilityHooks = new CarrierVisibilityHooks(this::loadSettings, () -> hideCarrierEnabled);
+            activeCarrierVisibilityHooks.install(loader, (name, method, hooker, parameters) ->
+                    install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve carrier label visibility hooks", error);
         }
         new HeaderDateHooks(this::loadSettings, () -> hideLunarEnabled).install(
                 (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
@@ -1787,6 +1796,7 @@ public final class XposedInit extends XposedModule {
                     loadSettings(appContext);
                     reapplyStatusIconVisibility();
                     if (activeClockFontHooks != null) activeClockFontHooks.refresh();
+                    if (activeCarrierVisibilityHooks != null) activeCarrierVisibilityHooks.refresh();
                     if (activeSimpleQsTextHooks != null) activeSimpleQsTextHooks.refresh();
                     if (activeSplitNetworkCardHooks != null) activeSplitNetworkCardHooks.refresh();
                     if (activeCardIconLayoutHooks != null) activeCardIconLayoutHooks.refresh();
@@ -1916,6 +1926,8 @@ public final class XposedInit extends XposedModule {
                 mergeDualSignalEnabled = mergeSignalColumn >= 0 && cursor.getInt(mergeSignalColumn) != 0;
                 int lunarColumn = cursor.getColumnIndex(ModuleSettings.HIDE_LUNAR);
                 hideLunarEnabled = lunarColumn >= 0 && cursor.getInt(lunarColumn) != 0;
+                int carrierColumn = cursor.getColumnIndex(ModuleSettings.HIDE_CARRIER);
+                hideCarrierEnabled = carrierColumn >= 0 && cursor.getInt(carrierColumn) != 0;
                 int wifiLabelColumn = cursor.getColumnIndex(ModuleSettings.WIFI_LABEL);
                 wifiLabelEnabled = wifiLabelColumn >= 0 && cursor.getInt(wifiLabelColumn) != 0;
                 int optimizeTextColumn = cursor.getColumnIndex(ModuleSettings.OPTIMIZE_2X1_TEXT);

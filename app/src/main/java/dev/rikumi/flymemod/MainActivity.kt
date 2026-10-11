@@ -289,6 +289,8 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 if (category.id == "lockscreen" && groupTitle == "锁屏视觉") {
                     item {
                         FluixCard {
+                            ApplicationPreference(ModuleSettings.HIDE_CARRIER, "隐藏锁屏和通知中心运营商")
+                            FluixItemDivider()
                             ApplicationPreference(ModuleSettings.LIMIT_AOD_MOVEMENT, "限制息屏显示移动范围")
                             FluixItemDivider()
                             ClockFontPreference(ModuleSettings.LOCK_CLOCK_FONT, "锁屏和息屏时钟字体")

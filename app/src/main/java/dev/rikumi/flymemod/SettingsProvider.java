@@ -74,6 +74,7 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.FOLDER_CLOSE_TARGET);
         columns.add(ModuleSettings.EDIT_APP_ICON_NAME);
         columns.add(ModuleSettings.LOCK_WIDGET_STARTUP_FIX);
+        columns.add(ModuleSettings.HIDE_CARRIER);
         columns.add(ModuleSettings.COLOROS_CONTOUR);
         columns.add(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
         columns.add(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME);
@@ -184,6 +185,7 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.FOLDER_CLOSE_TARGET, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.EDIT_APP_ICON_NAME, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.LOCK_WIDGET_STARTUP_FIX, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.HIDE_CARRIER, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.COLOROS_CONTOUR, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.MBACK_SYSTEM_TIMEOUT, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME, false) ? 1 : 0);

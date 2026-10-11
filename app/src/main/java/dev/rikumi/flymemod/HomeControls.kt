@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 private val MODULE_SWITCHES = listOf(
     ModuleSettings.EDIT_APP_ICON_NAME,
     ModuleSettings.LOCK_WIDGET_STARTUP_FIX,
+    ModuleSettings.HIDE_CARRIER,
     ModuleSettings.APP_IMMERSIVE_NAVIGATION,
     ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED,
     ModuleSettings.DARK_APP_SPECIAL_PACKAGES,
