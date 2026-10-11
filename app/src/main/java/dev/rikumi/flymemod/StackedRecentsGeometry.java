@@ -62,5 +62,12 @@ final class StackedRecentsGeometry {
         return running >= 0 && next == running && running + 1 < count ? running + 1 : -1;
     }
 
+    /** Original child index of the native page selected after removing one task. */
+    static int dismissFocus(int current, int removed, int count) {
+        if (count <= 1 || removed < 0 || removed >= count) return -1;
+        current = Math.max(0, Math.min(current, count - 1));
+        return current != removed ? current : removed == count - 1 ? removed - 1 : removed + 1;
+    }
+
     private StackedRecentsGeometry() {}
 }

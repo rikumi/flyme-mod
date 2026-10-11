@@ -21,6 +21,7 @@ import android.view.ViewGroup;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -53,6 +54,8 @@ final class StackedRecentsHooks {
     private final Class<?> launcherStateType;
     private final Object overviewState;
     private final Class<?> surfacePropertiesType, transformParamsType, remoteAnimationTargetType, builderProxyType;
+    private final Class<?> pendingType, pageScrollLogic;
+    private final Method pageScrolls, addPendingAnimator, addPendingEnd;
 
     StackedRecentsHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled,
             BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
@@ -78,6 +81,15 @@ final class StackedRecentsHooks {
         recents.getDeclaredMethod("updatePageOffsets");
         recents.getDeclaredMethod("updatePageOffsetsForFlyme");
         pendingAnimations = field(loader.loadClass("com.android.launcher3.anim.AnimatedPropertySetter"), "mAnim");
+        pendingType = loader.loadClass("com.android.launcher3.anim.PendingAnimation");
+        pageScrollLogic = loader.loadClass("com.android.launcher3.PagedView$ComputePageScrollsLogic");
+        pageScrolls = loader.loadClass("com.android.launcher3.PagedView")
+                .getDeclaredMethod("getPageScrolls", int[].class, boolean.class, pageScrollLogic);
+        pageScrolls.setAccessible(true);
+        addPendingAnimator = pendingType.getMethod("add", Animator.class);
+        addPendingEnd = pendingType.getMethod("addEndListener", Consumer.class);
+        recents.getDeclaredMethod("createTaskDismissAnimation", pendingType, taskType,
+                boolean.class, boolean.class, long.class, boolean.class, boolean.class);
         recents.getDeclaredMethod("createTaskSpringAnimation", taskType, long.class, float.class);
         groupedTaskType = loader.loadClass("com.android.wm.shell.shared.GroupedTaskInfo");
         gestureTaskInfo = groupedTaskType.getMethod("getTaskInfo1");
@@ -131,6 +143,18 @@ final class StackedRecentsHooks {
     }
 
     void install(SignalHooks.Installer installer) {
+        installer.hook(RECENTS, "createTaskDismissAnimation", chain -> {
+            // Native construction cancels any earlier pending animation first.
+            Object result = chain.proceed();
+            ViewGroup view = (ViewGroup) chain.getThisObject();
+            State state = states.get(view);
+            View dismissed = (View) chain.getArg(1);
+            if (state != null && active(view) && state.entryFinished && dismissed != null
+                    && !(Boolean) chain.getArg(5) && !(Boolean) chain.getArg(6)
+                    && (Integer) taskCount.invoke(view) > 1)
+                prepareDismiss(view, state, dismissed, chain.getArg(0));
+            return result;
+        }, pendingType, taskType, boolean.class, boolean.class, long.class, boolean.class, boolean.class);
         installer.hook("com.meizu.flyme.launcher.MzLauncher", "onStateSetStart", chain -> {
             if (enabled.getAsBoolean() && chain.getArg(0) == overviewState) {
                 // Use Flyme's own immersive policy before any overview frames;
@@ -663,6 +687,8 @@ final class StackedRecentsHooks {
         float distance = (pageScroll - (state.entryStarted && !state.entryFinished
                 ? state.entryTargetScroll : state.horizontal ? view.getScrollX() : view.getScrollY())
                 + translation + state.overScroll) / state.step;
+        DismissPose dismiss = state.dismissPoses.get(child);
+        if (dismiss != null) distance = dismiss.start + (dismiss.end - dismiss.start) * state.dismissProgress;
         float startScale = pose == null ? baseScale : (state.horizontal ? pose.scaleX : pose.scaleY);
         float scale = StackedRecentsGeometry.entryScale(baseScale, startScale,
                 StackedRecentsGeometry.scale(distance), state.entryProgress, fullscreenStrength);
@@ -929,6 +955,67 @@ final class StackedRecentsHooks {
         else nativeAnimation.play(animator);
     }
 
+    private record DismissPose(float start, float end) {}
+
+    private void prepareDismiss(ViewGroup view, State state, View dismissed, Object pending)
+            throws ReflectiveOperationException {
+        if (state.dirty || state.step <= 0f) render(view);
+        if (state.dirty || state.step <= 0f) return;
+        int removed = view.indexOfChild(dismissed);
+        int count = (Integer) taskCount.invoke(view);
+        int current = Math.min((Integer) nextPage.invoke(view), count - 1);
+        int focus = StackedRecentsGeometry.dismissFocus(current, removed, count);
+        if (removed < 0 || focus < 0 || focus >= view.getChildCount()) return;
+        int[] after = new int[view.getChildCount()];
+        Object logic = Proxy.newProxyInstance(pageScrollLogic.getClassLoader(), new Class<?>[]{pageScrollLogic},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "shouldIncludeView" -> args[0] != dismissed;
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    case "toString" -> "FlymeMod remaining task scrolls";
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
+        pageScrolls.invoke(view, after, false, logic);
+        state.dismissPoses.clear();
+        Object token = new Object();
+        state.dismissToken = token;
+        state.dismissProgress = 0f;
+        float scroll = state.horizontal ? view.getScrollX() : view.getScrollY();
+        for (Card card : state.items) {
+            View child = card.view.get();
+            if (child == null || child == dismissed) continue;
+            int index = view.indexOfChild(child);
+            if (index < 0) continue;
+            float translation = state.horizontal ? card.translationX : card.translationY;
+            state.dismissPoses.put(child, new DismissPose(
+                    (card.scroll - scroll + translation + state.overScroll) / state.step,
+                    (after[index] - after[focus]) / state.step));
+        }
+        WeakReference<ViewGroup> owner = new WeakReference<>(view);
+        ValueAnimator progress = ValueAnimator.ofFloat(0f, 1f);
+        progress.setInterpolator(new DecelerateInterpolator(1.5f));
+        progress.addUpdateListener(animation -> {
+            ViewGroup group = owner.get();
+            if (group == null || states.get(group) != state || state.dismissToken != token || !enabled.getAsBoolean()) return;
+            state.dismissProgress = (Float) animation.getAnimatedValue();
+            try { render(group); dispatchScroll.invoke(group); }
+            catch (ReflectiveOperationException error) { log.accept("Cannot project remaining task positions", error); }
+            group.invalidate();
+        });
+        // Participate in Quickstep's playback controller so cancelled drags reverse too.
+        addPendingAnimator.invoke(pending, progress);
+        addPendingEnd.invoke(pending, (Consumer<Boolean>) success -> {
+            ViewGroup group = owner.get();
+            if (group == null || states.get(group) != state || state.dismissToken != token) return;
+            state.dismissPoses.clear();
+            state.dismissToken = null;
+            state.dirty = true;
+            try { if (active(group)) render(group); }
+            catch (ReflectiveOperationException error) { log.accept("Cannot settle remaining task positions", error); }
+            group.invalidate();
+        });
+    }
+
     private void render(ViewGroup view) throws ReflectiveOperationException {
         State state = state(view);
         if (state.pendingFocus && endTarget.get(view) == null && !(Boolean) gestureActive.invoke(view)) {
@@ -1000,6 +1087,8 @@ final class StackedRecentsHooks {
             float distance = (card.scroll - (state.entryStarted && !state.entryFinished
                     ? state.entryTargetScroll : state.horizontal ? view.getScrollX() : view.getScrollY())
                     + primaryTranslation + state.overScroll) / state.step;
+            DismissPose dismiss = state.dismissPoses.get(child);
+            if (dismiss != null) distance = dismiss.start + (dismiss.end - dismiss.start) * state.dismissProgress;
             float target = anchor + StackedRecentsGeometry.offset(distance, size, anchor, 24f * density);
             float projectedScale = baseScale * StackedRecentsGeometry.scale(distance);
             boolean hidden = pose != null && !state.entryFinished
@@ -1139,6 +1228,8 @@ final class StackedRecentsHooks {
         state.nativeEntryEnded = false;
         state.entrySettled = false;
         state.entryPoses.clear();
+        state.dismissPoses.clear();
+        state.dismissToken = null;
         state.handoffPoses.clear();
         state.handoffProgress = 1f;
         surfaces.values().removeIf(surface -> surface.owner.get() == view);
@@ -1191,6 +1282,9 @@ final class StackedRecentsHooks {
         ValueAnimator entryAnimator, blurAnimator;
         final Map<View, EntryPose> entryPoses = new WeakHashMap<>();
         final Map<View, EntryPose> handoffPoses = new WeakHashMap<>();
+        final Map<View, DismissPose> dismissPoses = new WeakHashMap<>();
+        float dismissProgress;
+        Object dismissToken;
         int childCount, loggedStages;
         float step, density;
     }
