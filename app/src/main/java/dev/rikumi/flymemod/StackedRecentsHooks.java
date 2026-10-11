@@ -875,8 +875,13 @@ final class StackedRecentsHooks {
         WeakReference<View> owner = new WeakReference<>(view);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         state.entryAnimator = animator;
-        animator.setDuration(nativeAnimation != null && nativeAnimation.getDuration() > 0
-                ? nativeAnimation.getDuration() : 340L);
+        long entryDuration = StackedRecentsTiming.entryDuration(nativeAnimation);
+        // Quickstep's gesture AnimatorSet sets a uniform duration (normally 450ms).
+        // Its start() would otherwise overwrite our longer child duration. Extend
+        // that shared timeline too, keeping the live window and cards synchronized.
+        if (nativeAnimation != null && nativeAnimation.getDuration() >= 0L)
+            nativeAnimation.setDuration(entryDuration);
+        animator.setDuration(entryDuration);
         animator.setInterpolator(nativeAnimation != null && nativeAnimation.getInterpolator() != null
                 ? nativeAnimation.getInterpolator() : new DecelerateInterpolator(1.5f));
         animator.addUpdateListener(animation -> {
@@ -928,7 +933,7 @@ final class StackedRecentsHooks {
                 }
                 ValueAnimator blurAnimator = ValueAnimator.ofFloat(0f, 1f);
                 state.blurAnimator = blurAnimator;
-                blurAnimator.setDuration(200L);
+                blurAnimator.setDuration(StackedRecentsTiming.settleDuration());
                 blurAnimator.setInterpolator(new DecelerateInterpolator(1f));
                 blurAnimator.addUpdateListener(blurAnimation -> {
                     View parent = owner.get();
