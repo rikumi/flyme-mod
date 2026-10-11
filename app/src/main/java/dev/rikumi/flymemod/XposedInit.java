@@ -83,6 +83,7 @@ public final class XposedInit extends XposedModule {
     private boolean headsUpWidthEnabled;
     private boolean originalNotificationIconsEnabled;
     private boolean monochromeNotificationActionsEnabled;
+    private volatile boolean disableGoogleNotificationSuggestionsEnabled;
     private volatile boolean limitAodMovementEnabled;
     private int lockClockFont, aodClockFont, statusBarClockFont, controlCenterClockFont;
     private int statusBarClockWeight, controlCenterClockWeight;
@@ -433,6 +434,13 @@ public final class XposedInit extends XposedModule {
         }
         installWallpaperStartupFix(loader);
         installNotificationCorners(loader);
+        try {
+            new NotificationSuggestionHooks(loader, this::loadSettings,
+                    () -> disableGoogleNotificationSuggestionsEnabled).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve notification assistant suggestion hooks", error);
+        }
         try {
             new MBackAssistantHooks(loader, this::loadSettings, () -> mbackMissingAssistantHomeEnabled).install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
@@ -1876,6 +1884,8 @@ public final class XposedInit extends XposedModule {
                 originalNotificationIconsEnabled = originalIconsColumn >= 0 && cursor.getInt(originalIconsColumn) != 0;
                 int actionColorsColumn = cursor.getColumnIndex(ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS);
                 monochromeNotificationActionsEnabled = actionColorsColumn >= 0 && cursor.getInt(actionColorsColumn) != 0;
+                int suggestionsColumn = cursor.getColumnIndex(ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS);
+                disableGoogleNotificationSuggestionsEnabled = suggestionsColumn >= 0 && cursor.getInt(suggestionsColumn) != 0;
                 int collapsedHeightColumn = cursor.getColumnIndex(ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT);
                 restoreCollapsedCardHeightEnabled = collapsedHeightColumn >= 0 && cursor.getInt(collapsedHeightColumn) != 0;
                 int volumeStepsColumn = cursor.getColumnIndex(ModuleSettings.VOLUME_FIRST_FOUR);

@@ -111,6 +111,7 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.CONTROL_CENTER_BUTTONS_UP);
         columns.add(ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE);
         columns.add(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION);
+        columns.add(ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS);
         columns.add(ModuleSettings.FOLDER_CLOSE_TARGET);
         columns.add(ModuleSettings.EDIT_APP_ICON_NAME);
         columns.add(ModuleSettings.LOCK_WIDGET_STARTUP_FIX);
@@ -224,6 +225,7 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_BUTTONS_UP, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(40, prefs.getInt(ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE, 8))));
         values.add(prefs.getBoolean(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.FOLDER_CLOSE_TARGET, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.EDIT_APP_ICON_NAME, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.LOCK_WIDGET_STARTUP_FIX, false) ? 1 : 0);

@@ -95,6 +95,7 @@ public final class ModuleSettings {
     public static final String ORIGINAL_NOTIFICATION_ICONS = "original_third_party_notification_icons";
     public static final String NATIVE_NOTIFICATION_EXPANSION = "native_notification_pull_expansion";
     public static final String MONOCHROME_NOTIFICATION_ACTIONS = "monochrome_notification_actions";
+    public static final String DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS = "disable_google_notification_suggestions";
     public static final String MERGE_DUAL_SIGNAL = "merge_dual_sim_signal";
     public static final String SEPARATE_NETWORK_TYPE = "separate_network_type";
     public static final String BLUR_ENABLED = "qs_blur_radius_enabled";

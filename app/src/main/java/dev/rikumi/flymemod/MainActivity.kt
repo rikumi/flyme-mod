@@ -584,6 +584,7 @@ private fun NotificationPreferences() {
             ModuleSettings.NOTIFICATION_CORNERS to "增大通知圆角",
             ModuleSettings.NATIVE_NOTIFICATION_EXPANSION to "恢复原生通知下滑展开",
             ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS to "通知操作按钮改为黑白色",
+            ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS to "禁用 Google 通知建议操作",
         ),
     )
 }
