@@ -39,6 +39,7 @@ final class SecondaryExpansionHooks {
     private final ThreadLocal<Boolean> routingCancel = new ThreadLocal<>();
     private final Map<View, Pivot> pivots = new WeakHashMap<>();
     private final Map<Object, Drag> drags = new WeakHashMap<>();
+    private final Map<Object, Boolean> sliderGestures = new WeakHashMap<>();
     private final Map<Object, Panels> panels = new WeakHashMap<>();
     private final Map<View, Panels> miniPanels = new WeakHashMap<>();
 
@@ -96,6 +97,12 @@ final class SecondaryExpansionHooks {
             if (qs == null || !enabled.getAsBoolean()
                     || !Boolean.TRUE.equals(flow.invoke(mode.invoke(shade.get(qs))))) return chain.proceed();
             int action = event.getActionMasked();
+            if (sliderGesture(qs, panel, event)) {
+                try { return chain.proceed(); }
+                finally {
+                    if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) sliderGestures.remove(qs);
+                }
+            }
             if (action == MotionEvent.ACTION_DOWN) clear(qs);
             if (action == MotionEvent.ACTION_DOWN && shadeFraction.getFloat(qs) >= .99f && isAllTilesExpanded(qs)) {
                 // Observe DOWN before a clickable tile consumes the rest of the stream.
@@ -201,6 +208,12 @@ final class SecondaryExpansionHooks {
                 clear(qs); return chain.proceed();
             }
             int action = event.getActionMasked();
+            if (sliderGesture(qs, view, event)) {
+                try { return chain.proceed(); }
+                finally {
+                    if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) sliderGestures.remove(qs);
+                }
+            }
             if (action == MotionEvent.ACTION_DOWN) {
                 clear(qs);
                 // QS can remain fully expanded while the shade itself is closed (especially
@@ -269,7 +282,9 @@ final class SecondaryExpansionHooks {
             Object result = chain.proceed();
             Object panel = chain.getThisObject();
             if (panel.getClass().getField("mExpandedFraction").getFloat(panel) <= 0f) {
-                clear(panel.getClass().getField("mQsController").get(panel));
+                Object qs = panel.getClass().getField("mQsController").get(panel);
+                clear(qs);
+                sliderGestures.remove(qs);
             }
             return result;
         }, float.class);
@@ -575,6 +590,41 @@ final class SecondaryExpansionHooks {
             finishTracking(qs);
             translation.invoke(qs, 0f);
         }
+    }
+    private boolean sliderGesture(Object qs, View root, MotionEvent event) throws ReflectiveOperationException {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            if (hitsSlider(root, event.getRawX(), event.getRawY())) {
+                clear(qs);
+                sliderGestures.put(qs, true);
+            } else {
+                sliderGestures.remove(qs);
+            }
+        }
+        // Keep ownership with the slider even when the pointer leaves its bounds.
+        return sliderGestures.containsKey(qs);
+    }
+
+    static boolean hitsSlider(View view, float screenX, float screenY) {
+        if (!view.isShown() || view.getAlpha() <= 0f) return false;
+        String name = view.getClass().getName();
+        // Both brightness and volume use ToggleSeekBar, including their mini cards.
+        if (name.equals("com.android.systemui.settings.brightness.BrightnessSliderView")
+                || name.equals("com.android.systemui.settings.brightness.ToggleSeekBar")) {
+            Rect bounds = new Rect();
+            if (view.getGlobalVisibleRect(bounds)) {
+                int[] screen = new int[2], window = new int[2];
+                view.getLocationOnScreen(screen);
+                view.getLocationInWindow(window);
+                bounds.offset(screen[0] - window[0], screen[1] - window[1]);
+                if (bounds.contains((int) screenX, (int) screenY)) return true;
+            }
+        }
+        if (view instanceof ViewGroup group) {
+            for (int i = group.getChildCount() - 1; i >= 0; i--) {
+                if (hitsSlider(group.getChildAt(i), screenX, screenY)) return true;
+            }
+        }
+        return false;
     }
     private void stopSpring(Object qs) throws ReflectiveOperationException {
         Object target = plugin.invoke(qs); if (target != null) cancelSpring.invoke(target);
