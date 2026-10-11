@@ -63,6 +63,7 @@ public final class XposedInit extends XposedModule {
     private volatile boolean settingsLoaded;
     private boolean scaleEnabled;
     private boolean lightEnabled;
+    private TileBackdropHooks activeTileBackdropHooks;
     private int lightBackgroundOpacity = ModuleSettings.LIGHT_OPACITY_DEFAULT;
     private final Map<View, Object[]> lightBackgroundWrappers = new WeakHashMap<>();
     private final Set<View> lightBackgroundTiles = Collections.newSetFromMap(new WeakHashMap<>());
@@ -734,10 +735,19 @@ public final class XposedInit extends XposedModule {
                     return original + operatingHeight * (operationScale(container) - 1f);
                 }, boolean.class, int.class, float.class);
 
+        try {
+            activeTileBackdropHooks = new TileBackdropHooks(loader, () -> lightEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error),
+                    message -> log(Log.INFO, "FlymeMod", message));
+            activeTileBackdropHooks.install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve live tile backdrop shader", error);
+        }
         XposedInterface.Hooker background = chain -> {
             View tile = (View) chain.getThisObject();
             lightBackgroundTiles.add(tile);
             loadSettings(tile.getContext());
+            if (activeTileBackdropHooks != null) activeTileBackdropHooks.observe(tile);
             boolean policyDisabled = chain.getArgs().size() > 1 && Boolean.TRUE.equals(chain.getArg(1));
             // Connectivity activation belongs to its icon circles, not the card surface.
             if (whiteActiveEnabled && !hasCircularCardActivation((View) chain.getThisObject())
@@ -752,14 +762,24 @@ public final class XposedInit extends XposedModule {
         // Connectivity, media, device controls and other large cards inherit this method.
         install(loader, "com.flyme.systemui.qs.tileimpl.FlymeCustomQSTileView",
                 "getBackgroundColorForState", background, int.class);
+        install(loader, PHONE + "MzQQSPanel", "initialize", chain -> {
+            Object result = chain.proceed();
+            if (activeTileBackdropHooks != null) activeTileBackdropHooks.observePanel((View) chain.getThisObject());
+            return result;
+        });
         install(loader, PHONE + "MzQSPanel", "setWrapperForUiModel", chain -> {
             View panel = (View) chain.getThisObject();
             lightBackgroundWrappers.put(panel, chain.getArgs().toArray());
             loadSettings(panel.getContext());
-            if (!lightEnabled) return chain.proceed();
-            Object[] args = chain.getArgs().toArray();
-            args[0] = args[1] = args[2] = lightBackgroundColor();
-            return chain.proceed(args);
+            Object result;
+            if (!lightEnabled) result = chain.proceed();
+            else {
+                Object[] args = chain.getArgs().toArray();
+                args[0] = args[1] = args[2] = lightBackgroundColor();
+                result = chain.proceed(args);
+            }
+            if (activeTileBackdropHooks != null) activeTileBackdropHooks.observePanel(panel);
+            return result;
         }, int.class, int.class, int.class, int.class, int.class);
         // Slider state/theme changes have a separate background setter.
         install(loader, "com.android.systemui.settings.brightness.BrightnessSliderView",
@@ -799,6 +819,7 @@ public final class XposedInit extends XposedModule {
                 if (lightEnabled || whiteActiveEnabled) tintSliderDrawable(drawable);
             }
             Object result = chain.proceed();
+            if (activeTileBackdropHooks != null && isToggleSlider(slider)) activeTileBackdropHooks.observe(slider);
             if (whiteActiveEnabled && isToggleSlider(slider)) updateSliderIcon(slider, false);
             return result;
         }, Drawable.class);
@@ -1920,6 +1941,7 @@ public final class XposedInit extends XposedModule {
                     if (activeThemeChanged || (whiteActiveEnabled && previousOpacity != whiteActiveOpacity))
                         refreshWhiteActiveOpacity();
                     if (lightEnabled && previousLightOpacity != lightBackgroundOpacity) refreshLightBackgroundOpacity();
+                    if (activeTileBackdropHooks != null) activeTileBackdropHooks.refresh();
                 }
             };
             appContext.getContentResolver().registerContentObserver(
