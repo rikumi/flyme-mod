@@ -17,7 +17,7 @@ final class SmallWindowLimitHooks {
     private final BiConsumer<String, Throwable> log;
     private final ThreadLocal<Trim> trimming = new ThreadLocal<>();
     private Field displayArea;
-    private Method childCount, childAt, asTask, mode, home, deferBack, activityCount, rootTask, parent, moveWindow;
+    private Method childCount, childAt, asTask, mode, home, deferBack, activityCount, rootTask, parent, moveWindow, position;
     private final ThreadLocal<Boolean> collapsing = new ThreadLocal<>();
     private boolean errorLogged;
     private record Trim(Object controller, Object incoming, boolean privatePath, boolean floatingDestination) {}
@@ -44,6 +44,71 @@ final class SmallWindowLimitHooks {
         activityCount = task.getMethod("getNonFinishingActivityCount");
         deferBack = loader.loadClass(WM + "FlymeTaskExt").getDeclaredMethod("isDeferBack", task);
         deferBack.setAccessible(true);
+        Class<?> areaClass = loader.loadClass(WM + "TaskDisplayArea");
+        position = areaClass.getMethod("positionChildAt", int.class, container, boolean.class);
+        position.setAccessible(true);
+        Method priority = areaClass.getDeclaredMethod("getPriority", container);
+        installer.hook(areaClass.getName(), priority.getName(), chain -> {
+            Object result = chain.proceed();
+            if (!enabled()) return result;
+            Object childTask = asTask.invoke(chain.getArg(0));
+            if (childTask == null) return result;
+            int windowMode = ((Number) mode.invoke(childTask)).intValue();
+            // Native pin priority 2 otherwise prevents an expanded window moving above it.
+            if (windowMode == 12 && ((Number) result).intValue() == 2)
+                return SmallWindowDragOrder.isActive(childTask) ? 2 : 1;
+            if (expandedMode(windowMode) && !Boolean.TRUE.equals(deferBack.invoke(null, childTask))) return 2;
+            return result;
+        }, container);
+        Method topChildren = areaClass.getDeclaredMethod("isAlwaysOnTopChildren", task);
+        installer.hook(areaClass.getName(), topChildren.getName(), chain -> {
+            Object result = chain.proceed();
+            Object childTask = chain.getArg(0);
+            if (enabled() && childTask != null
+                    && expandedMode(((Number) mode.invoke(childTask)).intValue())
+                    && !Boolean.TRUE.equals(deferBack.invoke(null, childTask))) return true;
+            return result;
+        }, task);
+        // Flyme's override calls super before adding defer-back tasks to this group.
+        deoptimize.accept(loader.loadClass(WM + "FlymeTaskDisplayArea")
+                .getDeclaredMethod("isAlwaysOnTopChildren", task));
+        for (String name : new String[]{"findMinPositionForRootTask", "findMaxPositionForRootTask"})
+            deoptimize.accept(areaClass.getDeclaredMethod(name, task));
+        deoptimize.accept(areaClass.getDeclaredMethod("assignRootTaskOrdering",
+                loader.loadClass("android.view.SurfaceControl$Transaction")));
+        Method animationLayer = loader.loadClass(WM + "FlymeTaskDisplayArea")
+                .getDeclaredMethod("getWinAppAnimationLayer", boolean.class, boolean.class);
+        animationLayer.setAccessible(true);
+        mini.getDeclaredMethod("getAnimationLeashParent", task);
+        installer.hook(mini.getName(), "getAnimationLeashParent", chain -> {
+            Object result = chain.proceed();
+            Object target = chain.getArg(0);
+            if (result != null && enabled() && target != null
+                    && expandedMode(((Number) mode.invoke(target)).intValue())
+                    && !Boolean.TRUE.equals(deferBack.invoke(null, target)))
+                return animationLayer.invoke(displayArea.get(chain.getThisObject()), true, true);
+            return result;
+        }, task);
+        Method taskParentSurface = container.getMethod("getParentSurfaceControl");
+        taskParentSurface.setAccessible(true);
+        Method subtype = loader.loadClass(WM + "FlymeTaskExt")
+                .getDeclaredMethod("getWindowSubtype", container);
+        subtype.setAccessible(true);
+        task.getDeclaredMethod("getAnimationLeashParent");
+        installer.hook(task.getName(), "getAnimationLeashParent", chain -> {
+            Object target = chain.getThisObject();
+            if (enabled() && ((Number) mode.invoke(target)).intValue() == 12
+                    && ((Number) subtype.invoke(null, target)).intValue() == 0) {
+                // Press/release scale and fling leashes must share the task's ordering.
+                // The native upper animation group would raise idle pins above expanded windows.
+                Object surface = taskParentSurface.invoke(target);
+                if (surface != null) return surface;
+            }
+            return chain.proceed();
+        });
+        for (Method method : loader.loadClass(WM + "SurfaceAnimator").getDeclaredMethods())
+            if (method.getName().equals("createAnimationLeash")
+                    || method.getName().equals("startAnimation")) deoptimize.accept(method);
         for (Method method : new Method[]{childCount, childAt, asTask, parent, rootTask,
                 mode, home, activityCount}) method.setAccessible(true);
         String[] predicates = {"FlymeWindowControllerBase", "FlymeMiniWindowControllerImpl",
@@ -60,6 +125,9 @@ final class SmallWindowLimitHooks {
         Method switchFront = mini.getDeclaredMethod("postSwitchTasksByNewFrontTask", task, task,
                 int.class, boolean.class, int.class, boolean.class);
         Class<?> factory = loader.loadClass(WM + "FlymeFeatureFactory");
+        deoptimize.accept(factory.getDeclaredMethod("getAnimationLeashParent", task));
+        deoptimize.accept(loader.loadClass(WM + "FlymeFreeFormWindowControllerImpl")
+                .getDeclaredMethod("getAnimationLeashParent", task));
         Method invisible = factory.getDeclaredMethod("isWindowContainerWillInvisible", container, container);
         Class<?> resultOne = loader.loadClass("flyme.hook.Inject$ResultOne");
         Field visibilityResult = resultOne.getField("arg1");
@@ -190,6 +258,8 @@ final class SmallWindowLimitHooks {
                 // Invoke directly: postSwitchTasksToOtherWindow removes the previous pending
                 // message, so queuing one message per task would only shrink the last window.
                 for (Object candidate : expanded) moveWindow.invoke(controller, candidate, 12, 0, true, true);
+                // Shrinking can reorder children. Reapply native ordering with the new priorities.
+                position.invoke(area, Integer.MAX_VALUE, incoming, false);
             } finally { collapsing.remove(); }
         } catch (ReflectiveOperationException | RuntimeException error) {
             reportCountingError(error);

@@ -18,8 +18,8 @@ final class SmallWindowInputHooks {
     private final SharedPreferences preferences;
     private final BiConsumer<String, Throwable> log;
     private Method count, child, asTask, taskArea, windowRoot, windowInfo, subtype, visible, hidden,
-            bounds, position;
-    private Class<?> pinInfo;
+            bounds, position, mode, deferBack;
+    private Class<?> pinInfo, floatInfoClass;
     private Field controllerArea, controllerWms, globalLock, handle, replaceCrop, touchRegion;
     private Method clearCrop, layout, reparent, show;
     private boolean reported;
@@ -40,7 +40,10 @@ final class SmallWindowInputHooks {
         Class<?> inputHandle = loader.loadClass("android.view.InputWindowHandle");
         Class<?> base = loader.loadClass(WM + "FlymeWindowControllerBase");
         Class<?> ext = loader.loadClass(WM + "FlymeTaskExt");
+        deferBack = accessible(ext.getDeclaredMethod("isDeferBack", task));
         Class<?> floatInfo = loader.loadClass(WM + "FlymeFloatWindowInfo");
+        floatInfoClass = floatInfo;
+        mode = accessible(task.getMethod("getWindowingMode"));
         pinInfo = loader.loadClass(WM + "FlymePinWindowInfo");
         count = container.getMethod("getChildCount"); child = container.getMethod("getChildAt", int.class);
         asTask = container.getMethod("asTask"); taskArea = container.getMethod("getDisplayArea");
@@ -66,7 +69,7 @@ final class SmallWindowInputHooks {
         Field arg1 = result.getField("arg1");
         Method accept = inject.getDeclaredMethod("injectInputMonitorAcceptWindow", result, consumer, transaction, window);
         installer.hook(inject.getName(), accept.getName(), chain -> {
-            // Preserve native placement/layer selection and change only its single-task crop.
+            // The native consumer is above all task surfaces; exclude expanded windows.
             boolean pending = Boolean.TRUE.equals(arg1.get(chain.getArg(0)));
             Object value = chain.proceed();
             if (enabled() && pending && Boolean.FALSE.equals(arg1.get(chain.getArg(0)))) {
@@ -81,19 +84,39 @@ final class SmallWindowInputHooks {
         Method input = pin.getDeclaredMethod("onInputEvent", InputEvent.class);
         installer.hook(pin.getName(), input.getName(), chain -> {
             Object event = chain.getArg(0);
-            if (enabled() && event instanceof MotionEvent motion && motion.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            if (event instanceof MotionEvent motion) {
                 Object controller = chain.getThisObject();
+                Object lock, displayArea;
                 try {
-                    // Select before GestureDetector sees DOWN: taps and queued drag/fling
-                    // messages then use the same native top-task target for the entire gesture.
-                    synchronized (globalLock.get(controllerWms.get(controller))) {
-                        Object displayArea = controllerArea.get(controller);
-                        List<Pin> pins = pins(displayArea);
-                        Object selected = hit(pins, motion.getRawX(), motion.getRawY());
-                        if (selected != null) position.invoke(displayArea,
-                                ((Number) count.invoke(displayArea)).intValue(), selected, true);
+                    lock = globalLock.get(controllerWms.get(controller));
+                    displayArea = controllerArea.get(controller);
+                } catch (ReflectiveOperationException | RuntimeException error) {
+                    report(error);
+                    return chain.proceed();
+                }
+                // Keep queued handler animations behind this lock until the gesture's
+                // priority and task order have both been updated.
+                synchronized (lock) {
+                    boolean finish = motion.getActionMasked() == MotionEvent.ACTION_UP
+                            || motion.getActionMasked() == MotionEvent.ACTION_CANCEL;
+                    try {
+                        if (enabled() && motion.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                            Object selected = hit(pins(displayArea), motion.getRawX(), motion.getRawY());
+                            SmallWindowDragOrder.begin(displayArea, selected);
+                            if (selected != null) position.invoke(displayArea,
+                                    ((Number) count.invoke(displayArea)).intValue(), selected, true);
+                        }
+                    } catch (ReflectiveOperationException | RuntimeException error) { report(error); }
+                    try { return chain.proceed(); }
+                    finally {
+                        if (finish) {
+                            Object selected = SmallWindowDragOrder.end(displayArea);
+                            try {
+                                if (enabled() && selected != null) restoreExpanded(displayArea);
+                            } catch (ReflectiveOperationException | RuntimeException error) { report(error); }
+                        }
                     }
-                } catch (ReflectiveOperationException | RuntimeException error) { report(error); }
+                }
             }
             return chain.proceed();
         }, InputEvent.class);
@@ -104,6 +127,20 @@ final class SmallWindowInputHooks {
     }
 
     private boolean enabled() { return preferences.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false); }
+
+    private void restoreExpanded(Object area) throws ReflectiveOperationException {
+        // Native findMinPositionForRootTask refuses to lower an always-on-top pin.
+        // Raise the expanded task instead, using its native mini-window ordering path.
+        for (int i = ((Number) count.invoke(area)).intValue() - 1; i >= 0; i--) {
+            Object task = asTask.invoke(child.invoke(area, i));
+            if (task != null && Boolean.TRUE.equals(visible.invoke(task))
+                    && SmallWindowLimitHooks.expandedMode(((Number) mode.invoke(task)).intValue())
+                    && !Boolean.TRUE.equals(deferBack.invoke(null, task))) {
+                position.invoke(area, Integer.MAX_VALUE, task, false);
+                break;
+            }
+        }
+    }
 
     private List<Pin> pins(Object area) throws ReflectiveOperationException {
         List<Pin> pins = new ArrayList<>();
@@ -124,9 +161,20 @@ final class SmallWindowInputHooks {
 
     private void updateRegion(Object consumer, Object transaction, Object area) throws ReflectiveOperationException {
         List<Pin> pins = pins(area);
-        if (pins.size() < 2) return;
+        if (pins.isEmpty()) return;
         Region region = new Region();
         for (Pin pin : pins) region.op(pin.bounds, Region.Op.UNION);
+        for (int i = ((Number) count.invoke(area)).intValue() - 1; i >= 0; i--) {
+            Object task = asTask.invoke(child.invoke(area, i));
+            if (task == null || !Boolean.TRUE.equals(visible.invoke(task))
+                    || !SmallWindowLimitHooks.expandedMode(((Number) mode.invoke(task)).intValue())) continue;
+            Object info = windowInfo.invoke(null, task);
+            if (floatInfoClass.isInstance(info) && !Boolean.TRUE.equals(hidden.invoke(info)))
+                region.op((Rect) bounds.invoke(info), Region.Op.DIFFERENCE);
+        }
+        // The dragged pin is above expanded windows until UP/CANCEL, including overlap.
+        for (Pin pin : pins)
+            if (SmallWindowDragOrder.isActive(pin.task)) region.op(pin.bounds, Region.Op.UNION);
         Rect frame = region.getBounds();
         // InputWindowHandle regions are local to the input surface, not display coordinates.
         region.translate(-frame.left, -frame.top);
