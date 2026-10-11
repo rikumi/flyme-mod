@@ -619,6 +619,8 @@ private fun ControlCenterPreferences(group: String) {
                 FluixItemDivider()
                 LightBackgroundOpacityPreference()
                 FluixItemDivider()
+                TileBackgroundColorPreference()
+                FluixItemDivider()
                 ControlCenterStylePreference()
                 FluixItemDivider()
                 ApplicationPreference(ModuleSettings.SLIDER_ACTIVE_CORNERS, "音量/亮度条激活区域圆角")
@@ -895,6 +897,48 @@ private fun LightBackgroundOpacityPreference() {
             onValueChange = {
                 opacity = (it * ModuleSettings.LIGHT_OPACITY_MAX).roundToInt().coerceIn(0, ModuleSettings.LIGHT_OPACITY_MAX)
                 preferences.edit().putInt(ModuleSettings.LIGHT_OPACITY, opacity).apply()
+                context.contentResolver.notifyChange(ModuleSettings.URI, null)
+            },
+            modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),
+        )
+    }
+}
+
+@Composable
+private fun TileBackgroundColorPreference() {
+    val context = LocalContext.current
+    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.TILE_BACKGROUND_COLOR, false)) }
+    var amount by remember { mutableStateOf(preferences.getInt(ModuleSettings.TILE_BACKGROUND_SATURATION,
+        ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT).coerceIn(
+        ModuleSettings.TILE_BACKGROUND_SATURATION_MIN, ModuleSettings.TILE_BACKGROUND_SATURATION_MAX)) }
+    var expanded by remember { mutableStateOf(false) }
+    FluixSwitchPreference(
+        title = "控制中心磁贴背景增色",
+        checked = enabled,
+        onCheckedChange = {
+            enabled = it
+            expanded = it
+            preferences.edit().putBoolean(ModuleSettings.TILE_BACKGROUND_COLOR, it).apply()
+            context.contentResolver.notifyChange(ModuleSettings.URI, null)
+        },
+        onTitleClick = if (enabled) ({ expanded = !expanded }) else null,
+        leftTrailingContent = {
+            if (enabled) BasicText(String.format(java.util.Locale.ROOT, "%.2f", amount / 100f),
+                style = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurfaceVariantSummary),
+                modifier = Modifier.padding(start = 12.dp))
+        },
+        showDivider = enabled,
+    )
+    AnimatedVisibility(visible = enabled && expanded, enter = expandVertically(), exit = shrinkVertically()) {
+        val minimum = ModuleSettings.TILE_BACKGROUND_SATURATION_MIN
+        val range = ModuleSettings.TILE_BACKGROUND_SATURATION_MAX - minimum
+        FluixSlider(
+            value = (amount - minimum) / range.toFloat(),
+            onValueChange = {
+                amount = (minimum + it * range).roundToInt().coerceIn(
+                    minimum, ModuleSettings.TILE_BACKGROUND_SATURATION_MAX)
+                preferences.edit().putInt(ModuleSettings.TILE_BACKGROUND_SATURATION, amount).apply()
                 context.contentResolver.notifyChange(ModuleSettings.URI, null)
             },
             modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),

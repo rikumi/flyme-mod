@@ -108,6 +108,8 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.ANIMATED_MUTE_SLASH);
         columns.add(ModuleSettings.WIFI_LABEL);
         columns.add(ModuleSettings.LIGHT_OPACITY);
+        columns.add(ModuleSettings.TILE_BACKGROUND_COLOR);
+        columns.add(ModuleSettings.TILE_BACKGROUND_SATURATION);
         columns.add(ModuleSettings.CONTROL_CENTER_BUTTONS_UP);
         columns.add(ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE);
         columns.add(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION);
@@ -225,6 +227,10 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.ANIMATED_MUTE_SLASH, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.WIFI_LABEL, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, prefs.getInt(ModuleSettings.LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT))));
+        values.add(prefs.getBoolean(ModuleSettings.TILE_BACKGROUND_COLOR, false) ? 1 : 0);
+        values.add(Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
+                Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX,
+                        prefs.getInt(ModuleSettings.TILE_BACKGROUND_SATURATION, ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT))));
         values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_BUTTONS_UP, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(40, prefs.getInt(ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE, 8))));
         values.add(prefs.getBoolean(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION, false) ? 1 : 0);

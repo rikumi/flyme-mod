@@ -82,6 +82,11 @@ public final class ModuleSettings {
     public static final String LIGHT_OPACITY = "light_tile_background_opacity";
     public static final int LIGHT_OPACITY_DEFAULT = 15;
     public static final int LIGHT_OPACITY_MAX = 30;
+    public static final String TILE_BACKGROUND_COLOR = "tile_background_color";
+    public static final String TILE_BACKGROUND_SATURATION = "tile_background_saturation";
+    public static final int TILE_BACKGROUND_SATURATION_DEFAULT = 100;
+    public static final int TILE_BACKGROUND_SATURATION_MIN = 50;
+    public static final int TILE_BACKGROUND_SATURATION_MAX = 150;
     public static final String NETWORK_DARK_SPINNER = "network_tile_dark_spinner_fix";
     public static final String DARKEN = "dark_mode_background_darken";
     public static final String CONTROL_CENTER_STYLE = "coloros_control_center_style";

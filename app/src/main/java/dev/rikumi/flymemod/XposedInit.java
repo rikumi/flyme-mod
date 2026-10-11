@@ -63,6 +63,8 @@ public final class XposedInit extends XposedModule {
     private volatile boolean settingsLoaded;
     private boolean scaleEnabled;
     private boolean lightEnabled;
+    private boolean tileBackgroundColorEnabled;
+    private int tileBackgroundSaturation = ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT;
     private TileBackdropHooks activeTileBackdropHooks;
     private int lightBackgroundOpacity = ModuleSettings.LIGHT_OPACITY_DEFAULT;
     private final Map<View, Object[]> lightBackgroundWrappers = new WeakHashMap<>();
@@ -736,7 +738,8 @@ public final class XposedInit extends XposedModule {
                 }, boolean.class, int.class, float.class);
 
         try {
-            activeTileBackdropHooks = new TileBackdropHooks(loader, () -> lightEnabled,
+            activeTileBackdropHooks = new TileBackdropHooks(loader, () -> tileBackgroundColorEnabled,
+                    () -> tileBackgroundSaturation / 100.0, () -> networkSplitStyle,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error),
                     message -> log(Log.INFO, "FlymeMod", message));
             activeTileBackdropHooks.install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
@@ -1957,6 +1960,12 @@ public final class XposedInit extends XposedModule {
                 }
                 scaleEnabled = cursor.getInt(0) != 0;
                 lightEnabled = cursor.getInt(1) != 0;
+                int tileColorColumn = cursor.getColumnIndex(ModuleSettings.TILE_BACKGROUND_COLOR);
+                tileBackgroundColorEnabled = tileColorColumn >= 0 && cursor.getInt(tileColorColumn) != 0;
+                int tileSaturationColumn = cursor.getColumnIndex(ModuleSettings.TILE_BACKGROUND_SATURATION);
+                tileBackgroundSaturation = tileSaturationColumn < 0 ? ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT
+                        : Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
+                                Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX, cursor.getInt(tileSaturationColumn)));
                 int notificationContourColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CONTOUR);
                 notificationContourEnabled = notificationContourColumn >= 0 && cursor.getInt(notificationContourColumn) != 0;
                 int mbackColumn = cursor.getColumnIndex(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
