@@ -27,8 +27,9 @@ for argument in sys.argv[1:]:
                             text=True, capture_output=True)
     if result.returncode:
         raise SystemExit(f'APK signature verification failed: {apk}\n{result.stderr}')
-    digests = re.findall(r'^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]+)$',
+    digests = re.findall(r'^Signer (?:#\d+|\(minSdkVersion=[^)\n]+\)) certificate SHA-256 digest: ([0-9a-fA-F]{64})$',
                          result.stdout, re.MULTILINE)
-    if digests != [expected]:
+    # v3/v3.1 output can repeat the same identity for several platform ranges.
+    if not digests or {digest.lower() for digest in digests} != {expected}:
         raise SystemExit(f'Unexpected signing certificate for {apk}: {digests}; expected {expected}')
     print(f'{apk.name}: verified SHA-256 {expected}')
