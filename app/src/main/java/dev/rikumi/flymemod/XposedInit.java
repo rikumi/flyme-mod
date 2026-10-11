@@ -128,6 +128,7 @@ public final class XposedInit extends XposedModule {
     private volatile boolean folderPagingEnabled;
     private volatile boolean folderCenterEnabled;
     private volatile boolean folderCloseTargetEnabled;
+    private volatile boolean editAppIconNameEnabled;
     private volatile boolean folderRestoreColorEnabled;
     private volatile boolean folderRadiusEnabled;
     private volatile int folderRadiusDp = ModuleSettings.FOLDER_RADIUS_DEFAULT;
@@ -249,6 +250,13 @@ public final class XposedInit extends XposedModule {
         }
         if ("com.meizu.flyme.launcher".equals(packageName)) {
             installLauncherIconHiding(loader);
+            try {
+                new LauncherIconEditHooks(loader, this::loadSettings, () -> editAppIconNameEnabled,
+                        (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error)).install(
+                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve launcher icon editing", error);
+            }
             try {
                 new FolderCloseTargetHooks(loader, this::loadSettings, () -> folderCloseTargetEnabled,
                         (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(
@@ -1902,6 +1910,8 @@ public final class XposedInit extends XposedModule {
                 folderCenterEnabled = folderCenterColumn >= 0 && cursor.getInt(folderCenterColumn) != 0;
                 int folderCloseTargetColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_CLOSE_TARGET);
                 folderCloseTargetEnabled = folderCloseTargetColumn >= 0 && cursor.getInt(folderCloseTargetColumn) != 0;
+                int iconEditColumn = cursor.getColumnIndex(ModuleSettings.EDIT_APP_ICON_NAME);
+                editAppIconNameEnabled = iconEditColumn >= 0 && cursor.getInt(iconEditColumn) != 0;
                 int folderColorColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RESTORE_COLOR);
                 folderRestoreColorEnabled = folderColorColumn >= 0 && cursor.getInt(folderColorColumn) != 0;
                 int folderRadiusEnabledColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RADIUS_ENABLED);

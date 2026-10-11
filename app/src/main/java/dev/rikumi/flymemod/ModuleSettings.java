@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 
 public final class ModuleSettings {
+    public static final String EDIT_APP_ICON_NAME = "edit_app_icon_name";
     public static final String DARK_APP_SPECIAL_PACKAGES = "dark_app_special_packages";
     public static final String PHOTO_PREVIEW_SYSTEM_ROTATION = "photo_preview_system_rotation";
     public static final String MBACK_MISSING_ASSISTANT_HOME = "mback_missing_assistant_home";

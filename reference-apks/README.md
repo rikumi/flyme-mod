@@ -220,3 +220,74 @@ Context 字段原始名为 `b`、List 字段为 `c`；JADX 为避免名称冲突
 并对它们 deoptimize，避免内联跳过 hook。
 新开关存于 LSPosed 远程偏好并参与一键启用，设置页位于“相机与杂项 / 系统杂项”。
 构建和源码核对不能替代 SDKStage 作用域启用后的实际列表与开关效果验证。
+
+## 单应用图标与名称编辑
+
+以此前设备提取的 `FlymeLauncher.apk`（versionCode 13000000）为目标。
+长按应用时，`PopupContainerWithArrow#populateAndShowRowsFlyme` 创建
+`SystemShortcutContainer`；在其 `setShortcuts(LayoutInflater,List,boolean)` 中
+追加同一 `item_system_shortcut` 原生布局，后续定位和间距仍由 Flyme 处理。
+仅匹配 `ItemInfoWithIcon` 且 `itemType == 0` 的应用，排除文件夹、组件和深层快捷方式。
+
+参考 ColorOS 桌面 `com.oplus.uxicon.ui.ui.UxEditPanelFragment`、
+`UxChangeIconPanelFragment` 的预览、选择和保存流程，并移植
+`UxIconPackLoader` / `com.oplus.uxicon.ui.util.d` 的目录读取顺序：
+`theme_iconpack`、`icon_pack`，然后资源或 assets 中的 `appfilter.xml`。
+补充 `drawable.xml` 中没有应用映射的可选图标。COUI/Oplus 框架控件以 Flyme
+进程可用的 Android 控件替换；图标包选择改为全屏网格，增加小字名称和搜索。
+图片按可见项异步加载，使用容量受限的位图缓存及图片任务队列。
+
+编辑数据独立保存在桌面私有偏好 `flymemod_icon_edits`，键包含应用组件和用户。
+`BubbleTextView#applyLabel(ItemInfo)` 和 `ItemInfoWithIcon#newIcon(Context,int)`
+对模型副本应用名称或位图，再交回原生方法；不改写原始模型、缓存、favorites
+或桌面行列数。保留原生折行、图标形状、按压效果和工作资料角标。
+保存后通过 `LauncherModel#onAppIconChanged(String,UserHandle)` 刷新对应应用；
+关闭开关恢复原生渲染，保留独立编辑记录，重新开启可继续使用。
+提供恢复默认操作，图标包资源缺失时回退原生图标。
+
+已核对原始 DEX 中 `ItemInfoWithIcon#clone()` 名称，未使用 JADX 展示的
+`mo3999clone` 别名。目录与渲染副本的模拟检查共 36 项通过；设备未连接，
+长按菜单、全屏选择和桌面实际刷新仍需实机验证。
+
+### Flyme 系统主题图标选择
+
+设备当前主题应用为 `com.meizu.customizecenter` 12.5.0（versionCode
+122050000）。`ThemeIconPackLoader` 的已安装主题索引位于
+`/data/customizecenter/icon_to_launcher`。当前设备的
+`/data/customizecenter/preview_icon` 为空；主题接收器的预览逻辑也只复制
+`appList` 中的图标，因此选择器读取 `/sdcard/Customize/Themes`、
+`/system/customizecenter/theme/mtpks` 和 `/custom/meizu/theme/mtpks` 中
+对应主题的完整 MTPK `icons` 模块，不发送主题应用或预览广播。
+桌面具有已授予的 `MANAGE_EXTERNAL_STORAGE` 权限。
+
+解码沿用主题应用 `bf.i`、`gf.a` 的格式，只将解码后的图标 ZIP 缓存在
+桌面私有缓存目录；源文件大小或修改时间改变时重新生成缓存。
+按 `FlymeThemeHelper#getRawPreviewIcon` 的规则处理包名 PNG、夜间版本及
+`_fg`/`_bg` 自适应图标，使用 Flyme 三参数 `AdaptiveIconDrawable` 构造器
+保持原生图标轮廓。名称显示包名，匹配被编辑应用的图标单独放在首行。
+已用设备安装的 LifeOS100 主题验证解码和目录读取，得到 42 个包名图标；
+目录去重、分层变体、搜索和路径检查通过，选择器实际界面仍需安装后验证。
+
+主题没有匹配应用图标时，首行显示可保存的“合成图标”，以独立标识
+`flyme-synth:<应用包名>` 持久化。读取应用原始图标，按所选主题的
+`filter_config.xml`、`icon_mask.png`、`icon_background.png`、
+`icon_border.png` 合成，调用 Flyme 原生位图遮罩和图层方法。
+`IconFilter` 使用独立实例，不修改全局滤镜单例；无模板时沿用原生
+系统遮罩与自适应图标轮廓。匹配优先、合成标识、首行筛选、搜索和
+原始目录隔离检查通过；合成图标的实际显示仍需设备验证。
+
+图标选择器增加“套用当前主题/图标包遮罩”，按桌面当前正在使用的样式
+处理已选图标，复选状态与独立编辑数据一起保存，旧数据默认不套用。
+网格、编辑面板和桌面渲染共用处理路径。主题使用原生
+`makeFlymeStyleIcon(Resources,Bitmap,ApplicationInfo)` 滤镜/遮罩/叠层流程；
+图标包使用独立 `AppIconPackItem` 实例的 `changeIcon(Context,Bitmap,int)`，
+不调用自动匹配应用图标的 `getIconForPackage`。仅有遮罩或前景叠层而没有
+背景图的图标包补充透明底层，以避免原生方法提前返回。
+已合成图标保留第一次合成结果，并在其上再次套用当前样式。
+原生模型副本与新遮罩标志的渲染回归检查共 23 项通过；设备实际显示待验证。
+
+普通图标包也保留 `appfilter.xml` 中的组件映射，并将匹配当前启动组件的
+图标单独置顶；没有精确组件匹配时使用同包名映射。解析支持
+`ComponentInfo{包名/类名}`、相对活动类名、同一 drawable 的多个映射，
+以及原生组件名转 drawable 名的查找规则。匹配区域按行数调整高度，
+搜索时保留分区。图标包目录与匹配回归检查共 22 项通过。

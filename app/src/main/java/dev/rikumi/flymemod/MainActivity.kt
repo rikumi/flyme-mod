@@ -71,7 +71,7 @@ private object SettingsHomeColors {
 
 private val CATEGORY_GROUPS: List<List<Category>> = listOf(
     listOf(
-        Category("desktop", "桌面", R.drawable.ic_flyme_home_apps, SettingsHomeColors.blueForeground, listOf("壁纸设置", "桌面动画设置", "桌面文件夹设置")),
+        Category("desktop", "桌面", R.drawable.ic_flyme_home_apps, SettingsHomeColors.blueForeground, listOf("桌面图标设置", "壁纸设置", "桌面动画设置", "桌面文件夹设置")),
         Category("quick_settings", "控制中心", R.drawable.ic_flyme_home_wireless, SettingsHomeColors.cyanForeground, listOf("控制中心背景", "控制中心主题", "控制中心布局", "控制中心动画", "音量调节设置")),
         Category("notification", "通知中心与状态栏", R.drawable.ic_flyme_home_notifications, SettingsHomeColors.cyanForeground, listOf("通知中心设置", "状态栏设置")),
         Category("lockscreen", "锁屏", R.drawable.ic_flyme_home_security, SettingsHomeColors.greenForeground, listOf("锁屏视觉")),
@@ -289,6 +289,9 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 }
                 if (category.id == "desktop" && groupTitle == "壁纸设置") {
                     item { WallpaperPreferences() }
+                }
+                if (category.id == "desktop" && groupTitle == "桌面图标设置") {
+                    item { PreferenceCard(listOf(ModuleSettings.EDIT_APP_ICON_NAME to "允许编辑图标和名称")) }
                 }
                 if (category.id == "desktop" && groupTitle == "桌面动画设置") {
                     item {
