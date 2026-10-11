@@ -299,6 +299,14 @@ public final class XposedInit extends XposedModule {
             return;
         }
         if (!"com.android.systemui".equals(packageName)) return;
+        try {
+            new AppNavigationHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                    (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                    .install(loader, (name, method, hooker, parameters) ->
+                            install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve SystemUI application navigation hooks", error);
+        }
 
         try {
             new LockWidgetStartupHooks(loader, this::loadSettings, () -> lockWidgetStartupFixEnabled).install(

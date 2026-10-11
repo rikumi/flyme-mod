@@ -14,11 +14,15 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -204,6 +209,13 @@ private fun HomeScreen(onOpenCategory: (String) -> Unit) {
 
 @Composable
 private fun CategoryScreen(category: Category, onBack: () -> Unit) {
+    var pickingNavigationApplications by remember { mutableStateOf(false) }
+    if (pickingNavigationApplications) {
+        BackHandler { pickingNavigationApplications = false }
+        HiddenAppsScreen(LocalContext.current, onBack = { pickingNavigationApplications = false },
+            navigationApplications = true)
+        return
+    }
     val listState = rememberLazyListState()
     val overscrollOffset = remember { mutableFloatStateOf(0f) }
     Scaffold(
@@ -307,6 +319,9 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                     item { FolderPreferences() }
                 }
                 if (category.id == "navigation" && groupTitle == "手势行为") {
+                    item { FluixCard {
+                        AppNavigationPreference { pickingNavigationApplications = true }
+                    } }
                     item { SystemSettingsPreferences() }
                     item { PreferenceCard(listOf(
                         ModuleSettings.MBACK_SYSTEM_TIMEOUT to "非压感 mBack 跟随系统长按超时",
@@ -652,6 +667,35 @@ private fun ApplicationPreference(key: String, title: String) {
         },
         title = title,
     )
+}
+
+@Composable
+private fun AppNavigationPreference(onSelectApplications: () -> Unit) {
+    val context = LocalContext.current
+    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, false)) }
+    FluixSwitchPreference(
+        title = "应用导航栏强制沉浸",
+        subtitle = "由 SystemUI 实现，无需勾选应用作用域",
+        checked = enabled,
+        onCheckedChange = {
+            preferences.edit().putBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, it).apply()
+            enabled = it
+            context.contentResolver.notifyChange(ModuleSettings.URI, null)
+        },
+    )
+    if (enabled) {
+        FluixItemDivider()
+        Row(Modifier.fillMaxWidth().heightIn(min = FLUIX_ROW_MIN_HEIGHT)
+            .clickable(onClick = onSelectApplications)
+            .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
+            verticalAlignment = Alignment.CenterVertically) {
+            BasicText("应用列表", style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+                modifier = Modifier.weight(1f))
+            BasicText("${ModuleSettings.navigationApplications(preferences).size} 个应用",
+                style = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurfaceVariantSummary))
+        }
+    }
 }
 
 @Composable

@@ -10,6 +10,12 @@ public final class ModuleSettings {
     public static final String DARK_APP_SPECIAL_PACKAGES = "dark_app_special_packages";
     public static final String PHOTO_PREVIEW_SYSTEM_ROTATION = "photo_preview_system_rotation";
     public static final String CAMERA_KEEP_FILTER = "camera_keep_filter";
+    public static final String APP_IMMERSIVE_NAVIGATION = "wechat_immersive_navigation";
+    public static final String APP_IMMERSIVE_NAVIGATION_PACKAGES = "app_immersive_navigation_packages";
+    public static java.util.Set<String> navigationApplications(SharedPreferences preferences) {
+        return new java.util.HashSet<>(preferences.getStringSet(APP_IMMERSIVE_NAVIGATION_PACKAGES,
+                java.util.Collections.singleton("com.tencent.mm")));
+    }
     public static final String MBACK_MISSING_ASSISTANT_HOME = "mback_missing_assistant_home";
     public static final String MBACK_SYSTEM_TIMEOUT = "mback_system_long_press_timeout";
     public static final String NOTIFICATION_CONTOUR = "coloros_notification_contour";
@@ -154,6 +160,10 @@ public final class ModuleSettings {
     public static SharedPreferences preferences(Context context) {
         SharedPreferences preferences = context.createDeviceProtectedStorageContext()
                 .getSharedPreferences(FILE, Context.MODE_PRIVATE);
+        if (!preferences.contains(APP_IMMERSIVE_NAVIGATION_PACKAGES)) {
+            preferences.edit().putStringSet(APP_IMMERSIVE_NAVIGATION_PACKAGES,
+                    java.util.Collections.singleton("com.tencent.mm")).commit();
+        }
         if (!preferences.contains(CONTROL_CENTER_STYLE)) {
             preferences.edit().putInt(CONTROL_CENTER_STYLE,
                     preferences.getBoolean(WHITE_ACTIVE, false) ? 1 : 0).commit();

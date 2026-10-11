@@ -50,11 +50,13 @@ private fun appEntry(context: Context, pkg: String): HiddenAppEntry {
 }
 
 /** Resolve launchable activities as root; package visibility does not determine this list. */
-private fun readLauncherApps(context: Context): List<HiddenAppEntry>? {
-    val output = runRoot("cmd package query-activities --components --user current -a android.intent.action.MAIN -c android.intent.category.LAUNCHER")
+private fun readLauncherApps(context: Context, allApplications: Boolean): List<HiddenAppEntry>? {
+    val output = runRoot(if (allApplications) "cmd package list packages -3 --user current" else
+        "cmd package query-activities --components --user current -a android.intent.action.MAIN -c android.intent.category.LAUNCHER")
         ?: return null
     val packages = output.lineSequence().mapNotNull {
-        ComponentName.unflattenFromString(it.trim())?.packageName
+        if (allApplications) it.trim().takeIf { line -> line.startsWith("package:") }?.removePrefix("package:")
+        else ComponentName.unflattenFromString(it.trim())?.packageName
     }.toSet()
     val collator = Collator.getInstance(context.resources.configuration.locales[0])
     return packages.map { appEntry(context, it) }.sortedWith { a, b ->
@@ -64,17 +66,20 @@ private fun readLauncherApps(context: Context): List<HiddenAppEntry>? {
 }
 
 @Composable
-internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit) {
+internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
+    navigationApplications: Boolean = false) {
     val preferences = remember(context) { ModuleSettings.preferences(context) }
-    var hidden by remember { mutableStateOf(preferences.getStringSet(ModuleSettings.HIDDEN_LAUNCHER_APPS, emptySet()).orEmpty().toSet()) }
+    val packagesKey = if (navigationApplications) ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES else ModuleSettings.HIDDEN_LAUNCHER_APPS
+    var hidden by remember(packagesKey) { mutableStateOf(preferences.getStringSet(packagesKey, emptySet()).orEmpty().toSet()) }
     var picking by remember { mutableStateOf(false) }
     var choices by remember { mutableStateOf<List<HiddenAppEntry>?>(null) }
     var entries by remember { mutableStateOf<List<HiddenAppEntry>>(emptyList()) }
     val listState = rememberLazyListState()
     val overscroll = remember { mutableFloatStateOf(0f) }
     fun save(packages: Set<String>) {
-        preferences.edit().putStringSet(ModuleSettings.HIDDEN_LAUNCHER_APPS, packages)
-            .putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true).apply()
+        val editor = preferences.edit().putStringSet(packagesKey, packages)
+        if (!navigationApplications) editor.putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true)
+        editor.apply()
         hidden = packages
         context.contentResolver.notifyChange(ModuleSettings.URI, null)
     }
@@ -86,14 +91,14 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit) {
         listState.scrollToItem(0)
         if (picking) {
             choices = null
-            val result = withContext(Dispatchers.IO) { readLauncherApps(context) }
+            val result = withContext(Dispatchers.IO) { readLauncherApps(context, navigationApplications) }
             choices = result.orEmpty()
             if (result == null) Toast.makeText(context, "读取失败，请检查 root 授权", Toast.LENGTH_SHORT).show()
         }
     }
     Scaffold(topBar = {
         FluixTopAppBar(
-            title = if (picking) "选择应用" else "隐藏应用",
+            title = if (picking) "选择应用" else if (navigationApplications) "应用列表" else "隐藏应用",
             dividerProgress = fluixTopBarDividerProgress(listState, overscroll),
             navigationIcon = {
                 IconButton(onClick = { if (picking) picking = false else onBack() }) {
@@ -108,14 +113,16 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit) {
         )
     }) { padding ->
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).fluixOverscroll(listState, overscroll)) {
-            item { FluixSmallTitle(if (picking) "有桌面图标的应用" else "彻底隐藏应用列表") }
+            item { FluixSmallTitle(if (navigationApplications) {
+                if (picking) "非系统应用" else "强制沉浸应用列表"
+            } else if (picking) "有桌面图标的应用" else "彻底隐藏应用列表") }
             val current = if (picking) choices?.filter { it.pkg !in hidden } else entries
             when {
                 current == null -> item { FluixSmallTitle("加载中…") }
                 current.isEmpty() -> item { FluixSmallTitle("暂无应用") }
                 else -> itemsIndexed(current, key = { _, app -> app.pkg }) { index, app ->
                     FluixCardRow(first = index == 0, last = index == current.lastIndex) {
-                        HiddenAppRow(app, picking,
+                        HiddenAppRow(app, picking, removeLabel = if (navigationApplications) "移除" else "取消隐藏",
                             onAdd = { save(hidden + app.pkg); picking = false },
                             onRemove = { save(hidden - app.pkg) },
                             onOpen = {
@@ -132,7 +139,7 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit) {
 }
 
 @Composable
-private fun HiddenAppRow(app: HiddenAppEntry, picking: Boolean, onAdd: () -> Unit, onRemove: () -> Unit, onOpen: () -> Unit) {
+private fun HiddenAppRow(app: HiddenAppEntry, picking: Boolean, removeLabel: String, onAdd: () -> Unit, onRemove: () -> Unit, onOpen: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         Row(Modifier.fillMaxWidth().heightIn(min = FLUIX_ROW_MIN_HEIGHT)
@@ -147,7 +154,7 @@ private fun HiddenAppRow(app: HiddenAppEntry, picking: Boolean, onAdd: () -> Uni
         if (expanded) Popup(alignment = Alignment.TopEnd, onDismissRequest = { expanded = false }, properties = PopupProperties(focusable = true)) {
             val shape = RoundedCornerShape(12.dp)
             Column(Modifier.width(160.dp).shadow(8.dp, shape).background(if (isSystemInDarkTheme()) FLUIX_POPUP_DARK else FLUIX_POPUP_LIGHT, shape).clip(shape)) {
-                listOf("打开" to onOpen, "取消隐藏" to onRemove).forEach { (label, action) ->
+                listOf("打开" to onOpen, removeLabel to onRemove).forEach { (label, action) ->
                     BasicText(label, style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
                         modifier = Modifier.fillMaxWidth().clickable { expanded = false; action() }.padding(horizontal = 20.dp, vertical = 12.dp))
                 }
