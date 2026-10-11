@@ -12,6 +12,7 @@ import android.view.ViewTreeObserver;
 import android.graphics.Rect;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -43,12 +44,13 @@ final class RowRevealHooks {
     private final Map<Object, Float> rawAlpha = new WeakHashMap<>();
     private final ThreadLocal<AlphaSeed> alphaSeed = new ThreadLocal<>();
     private final Map<Object, Reveal> reveals = new WeakHashMap<>();
+    private final Map<View, HeaderBinding> headerBindings = new WeakHashMap<>();
     private final ThreadLocal<MotionEvent> touch = new ThreadLocal<>();
     private final ThreadLocal<Reveal> currentReveal = new ThreadLocal<>();
     private final ThreadLocal<Boolean> writingReveal = new ThreadLocal<>();
     private final Field centerTracking, centerClosed, centerY, centerPointer, centerContext, centerFraction;
     private final Field panelY, panelPointer, panelClosed, panelView, panelFraction;
-    private final Method panelTracking, centerAlpha, panelAlpha;
+    private final Method panelTracking, centerAlpha, panelAlpha, centerCollapseTranslation;
     private static final long CONTENT_DURATION_MS = 300L;
 
     RowRevealHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled, BiConsumer<String, Throwable> log)
@@ -63,6 +65,8 @@ final class RowRevealHooks {
         panelFraction = field(shade, "mExpandedFraction");
         panelTracking = shade.getDeclaredMethod("isTracking"); panelTracking.setAccessible(true);
         centerAlpha = center.getDeclaredMethod("setAnimationAlpha", float.class);
+        centerCollapseTranslation = center.getDeclaredMethod("setCollapseAnimationTranslationY", float.class);
+        centerCollapseTranslation.setAccessible(true);
         panelAlpha = shade.getDeclaredMethod("setAnimationAlpha", float.class);
         centerAlpha.setAccessible(true); panelAlpha.setAccessible(true);
         this.settings = settings; this.log = log;
@@ -91,6 +95,40 @@ final class RowRevealHooks {
     }
 
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
+        deoptimize.accept(centerAlpha);
+        deoptimize.accept(centerCollapseTranslation);
+        deoptimize.accept(panelAlpha);
+        deoptimize.accept(combinedHeader.getDeclaringClass().getDeclaredMethod("setQsAlpha", float.class));
+        for (String callback : new String[]{CENTER + "$7", CENTER + "$8"}) {
+            try {
+                for (Method method : centerAlpha.getDeclaringClass().getClassLoader().loadClass(callback).getDeclaredMethods())
+                    if (method.getName().equals("onAnimationUpdate") || method.getName().equals("onAnimationEnd"))
+                        deoptimize.accept(method);
+            } catch (ClassNotFoundException error) {
+                log.accept("Cannot deoptimize separate header alpha callback", error);
+            }
+        }
+        installer.hook(View.class.getName(), "setAlpha", chain -> {
+            HeaderBinding binding = headerBindings.get(chain.getThisObject());
+            Object owner = binding == null ? null : binding.owner.get();
+            if (!enabled.getAsBoolean() || owner == null || reveals.get(owner) != binding.reveal)
+                return chain.proceed();
+            // Separate headers are siblings of the QS container. Merged headers
+            // already inherit the root's reveal alpha and must not fade a second time.
+            return chain.proceed(new Object[]{headerAlpha(binding.reveal.progress, binding.separate)});
+        }, float.class);
+        installer.hook(CENTER, "setCollapseAnimationTranslationY", chain -> {
+            Reveal reveal = reveals.get(chain.getThisObject());
+            if (enabled.getAsBoolean() && reveal != null && reveal.progress > 0f
+                    && (Float) chain.getArg(0) == 0f) {
+                // Native collapse $8 resets both header roots before our content fade
+                // finishes. The next origin/spring frame restores their old position,
+                // making the still-visible header jump down for one frame.
+                reveal.pendingTranslationReset = true;
+                return null;
+            }
+            return chain.proceed();
+        }, float.class);
         // Launcher handoff calls fling(open), then onTrackingStopped(false).
         // Preserve those hook boundaries even if ART compiled the small wrappers.
         for (Class<?> owner : new Class<?>[]{centerAlpha.getDeclaringClass(), panelAlpha.getDeclaringClass()}) {
@@ -270,7 +308,11 @@ final class RowRevealHooks {
         installer.hook(CENTER, "setAnimationAlpha", chain -> {
             float progress = (Float) chain.getArg(0);
             rememberAlpha(chain.getThisObject(), progress);
-            if (enabled.getAsBoolean()) progress = encodedProgress(visual(chain.getThisObject(), progress, true).progress);
+            if (enabled.getAsBoolean()) {
+                Reveal reveal = visual(chain.getThisObject(), progress, true);
+                bindHeaders(chain.getThisObject(), reveal, true);
+                progress = encodedProgress(reveal.progress);
+            }
             else retire(chain.getThisObject());
             Object result = chain.proceed(new Object[]{enabled.getAsBoolean() ? revealCurve(contentProgress(progress)) : progress});
             update(chain.getThisObject(), progress, true);
@@ -282,6 +324,7 @@ final class RowRevealHooks {
             if (reveal != null) reveals.put(chain.getThisObject(), reveal);
             else reveal = reveals.get(chain.getThisObject());
             if (enabled.getAsBoolean() && reveal != null) progress = encodedProgress(reveal.progress);
+            if (enabled.getAsBoolean() && reveal != null) bindHeaders(chain.getThisObject(), reveal, false);
             Object result = chain.proceed(new Object[]{enabled.getAsBoolean() ? revealCurve(contentProgress(progress)) : progress});
             update(chain.getThisObject(), progress, false);
             return result;
@@ -295,6 +338,28 @@ final class RowRevealHooks {
         ValueAnimator animator = reveal.animator;
         reveal.animator = null;
         if (animator != null) animator.cancel();
+    }
+    static float headerAlpha(float progress, boolean separate) {
+        return separate ? revealCurve(progress) : 1f;
+    }
+    private void bindHeaders(Object owner, Reveal reveal, boolean separate) throws IllegalAccessException {
+        for (Field field : new Field[]{separate ? separateHeader : combinedHeader,
+                separate ? separateStatusBar : combinedStatusBar}) {
+            View header = (View) field.get(owner);
+            if (header == null) continue;
+            HeaderBinding old = headerBindings.get(header);
+            if (old == null || old.owner.get() != owner || old.reveal != reveal || old.separate != separate)
+                headerBindings.put(header, new HeaderBinding(owner, reveal, separate));
+            header.setAlpha(headerAlpha(reveal.progress, separate));
+        }
+    }
+    private static final class HeaderBinding {
+        final WeakReference<Object> owner;
+        final Reveal reveal;
+        final boolean separate;
+        HeaderBinding(Object owner, Reveal reveal, boolean separate) {
+            this.owner = new WeakReference<>(owner); this.reveal = reveal; this.separate = separate;
+        }
     }
     private Context context(Object owner, boolean separate) throws IllegalAccessException {
         return separate ? (Context) centerContext.get(owner) : ((View) panelView.get(owner)).getContext();
@@ -331,7 +396,13 @@ final class RowRevealHooks {
             if (reveal.animator != frame || !enabled.getAsBoolean()) return;
             reveal.progress = (Float) frame.getAnimatedValue();
             writingReveal.set(true);
-            try { (separate ? centerAlpha : panelAlpha).invoke(owner, encodedProgress(reveal.progress)); }
+            try {
+                (separate ? centerAlpha : panelAlpha).invoke(owner, encodedProgress(reveal.progress));
+                if (separate && reveal.progress <= 0f && reveal.pendingTranslationReset) {
+                    reveal.pendingTranslationReset = false;
+                    centerCollapseTranslation.invoke(owner, 0f);
+                }
+            }
             catch (ReflectiveOperationException error) { log.accept("Cannot apply content reveal", error); }
             finally { writingReveal.remove(); }
         });
@@ -346,7 +417,7 @@ final class RowRevealHooks {
         return progress <= 0f ? 0f : .18f + .82f * progress;
     }
     private static final class Reveal {
-        boolean initialized, target, gesture, opening, settling;
+        boolean initialized, target, gesture, opening, settling, pendingTranslationReset;
         float progress;
         ValueAnimator animator;
     }
