@@ -82,8 +82,40 @@ jobs:
               output.write(f'version={name}\nprevious_tag={previous[1] if previous else ""}\n')
           print(f'Next version: {name} ({code})')
 
-      - name: Build debug APK
-        run: ./gradlew :app:assembleDebug
+      - name: Restore persistent signing key
+        env:
+          ANDROID_SIGNING_BUNDLE: ${{ secrets.ANDROID_SIGNING_BUNDLE }}
+        shell: python
+        run: |
+          import base64
+          import json
+          import os
+          from pathlib import Path
+
+          encoded = os.environ.get('ANDROID_SIGNING_BUNDLE', '')
+          if not encoded:
+              raise SystemExit('Configure the repository-specific ANDROID_SIGNING_BUNDLE secret; random debug signing is disabled.')
+          bundle = json.loads(encoded)
+          directory = Path(os.environ['RUNNER_TEMP']) / 'android-signing'
+          directory.mkdir(mode=0o700, exist_ok=True)
+          keystore = directory / 'module.keystore'
+          keystore.write_bytes(base64.b64decode(bundle['keystore'], validate=True))
+          keystore.chmod(0o600)
+          def property_value(value):
+              return str(value).replace('\\', '\\\\').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t').replace(' ', '\\ ')
+          properties = directory / 'signing.properties'
+          values = {'storeFile': str(keystore), 'storePassword': bundle['storePassword'],
+                    'keyAlias': bundle['keyAlias'], 'keyPassword': bundle['keyPassword']}
+          properties.write_text(''.join(f'{key}={property_value(value)}\n' for key, value in values.items()))
+          properties.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f'ANDROID_SIGNING_PROPERTIES={properties}\n')
+
+      - name: Build Debug and Release APKs
+        run: ./gradlew :app:assembleDebug :app:assembleRelease
+
+      - name: Verify APK signing identity
+        run: python3 scripts/verify-apk-signature.py app/build/outputs/apk/debug/*.apk app/build/outputs/apk/release/*.apk
 
       - name: Commit version bump and create tag
         env:
@@ -119,8 +151,10 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: flyme-mod-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: flyme-mod-apks
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
       - name: Create GitHub Release
@@ -129,7 +163,9 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
           body_path: release-notes.md
-          files: app/build/outputs/apk/debug/*.apk
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
           fail_on_unmatched_files: true
 
       - name: Sync README to Xposed-Modules-Repo
@@ -165,5 +201,11 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
           body_path: release-notes.md
-          files: app/build/outputs/apk/debug/*.apk
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
           fail_on_unmatched_files: true
+
+      - name: Remove signing material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/android-signing"

@@ -1,0 +1,4 @@
+storeFile=signing/module.keystore
+storePassword=replace-with-your-store-password
+keyAlias=module
+keyPassword=replace-with-your-key-password

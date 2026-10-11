@@ -3,6 +3,27 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
+// Both variants use an explicit, persistent key; never fall back to a runner-generated key.
+def signingPropertiesFile = rootProject.file(
+        System.getenv('ANDROID_SIGNING_PROPERTIES') ?: 'signing.properties')
+def signingProperties = new Properties()
+if (!signingPropertiesFile.isFile()) {
+    throw new GradleException('Missing signing.properties. See docs/signing.md; automatic debug signing is disabled.')
+}
+signingPropertiesFile.withInputStream { signingProperties.load(it) }
+['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].each { key ->
+    if (!signingProperties.getProperty(key)?.trim()) {
+        throw new GradleException("Missing ${key} in signing properties")
+    }
+}
+def signingStoreFile = new File(signingProperties.getProperty('storeFile'))
+if (!signingStoreFile.isAbsolute()) {
+    signingStoreFile = new File(signingPropertiesFile.parentFile, signingProperties.getProperty('storeFile'))
+}
+if (!signingStoreFile.isFile()) {
+    throw new GradleException('Configured signing keystore does not exist')
+}
+
 android {
     namespace 'dev.rikumi.flymemod'
     compileSdk 37
@@ -15,8 +36,21 @@ android {
         versionName '1.2.0'
     }
 
+    signingConfigs {
+        stable {
+            storeFile signingStoreFile
+            storePassword signingProperties.getProperty('storePassword')
+            keyAlias signingProperties.getProperty('keyAlias')
+            keyPassword signingProperties.getProperty('keyPassword')
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.stable
+        }
         release {
+            signingConfig signingConfigs.stable
             minifyEnabled false
         }
     }

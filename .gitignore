@@ -6,3 +6,8 @@ local.properties
 reference-apks/*.apk
 reference-apks/**/*.apk
 reference-apks/**/*.jar
+
+# Private APK signing material
+/signing.properties
+/signing/*.keystore
+/signing/*.jks
