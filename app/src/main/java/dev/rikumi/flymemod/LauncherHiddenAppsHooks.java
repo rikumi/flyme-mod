@@ -43,7 +43,7 @@ final class LauncherHiddenAppsHooks {
         launcher.getDeclaredMethod("onResume");
         installer.hook(launcher.getName(), "onResume", chain -> {
             Object result = chain.proceed();
-            try { LauncherFolderMetrics.publish((Context) chain.getThisObject(), loader); }
+            try { LauncherFolderMetrics.publishAsync((Context) chain.getThisObject(), loader, log); }
             catch (ReflectiveOperationException | RuntimeException error) { log.accept("Cannot read launcher folder layout", error); }
             return result;
         });

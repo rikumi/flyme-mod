@@ -142,6 +142,7 @@ public final class XposedInit extends XposedModule {
     private volatile Set<String> hiddenLauncherPackages = Collections.emptySet();
     private Set<String> appliedLauncherHiddenPackages = Collections.emptySet();
     private volatile boolean stackedRecentsEnabled;
+    private volatile boolean recentsHideNotRunningEnabled, recentsSwipeUpKillEnabled;
     private volatile boolean folderPagingEnabled;
     private volatile boolean folderCenterEnabled;
     private volatile boolean folderCloseTargetEnabled;
@@ -335,7 +336,7 @@ public final class XposedInit extends XposedModule {
             try {
                 new RecentsHooks(
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
-                        () -> launcherContext,
+                        () -> recentsHideNotRunningEnabled, () -> recentsSwipeUpKillEnabled,
                         (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(loader, this::deoptimize);
             } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme recent-task classes", e);
@@ -1982,6 +1983,12 @@ public final class XposedInit extends XposedModule {
                 sliderActiveCornersEnabled = sliderCornersColumn >= 0 && cursor.getInt(sliderCornersColumn) != 0;
                 int stackedRecentsColumn = cursor.getColumnIndex(ModuleSettings.STACKED_RECENTS);
                 stackedRecentsEnabled = stackedRecentsColumn >= 0 && cursor.getInt(stackedRecentsColumn) != 0;
+                // LauncherApplication.onCreate loads this snapshot before preloading
+                // tasks. Recents hooks must never query the provider on gesture frames.
+                int recentsHideColumn = cursor.getColumnIndex(ModuleSettings.RECENTS_HIDE_NOT_RUNNING);
+                recentsHideNotRunningEnabled = recentsHideColumn >= 0 && cursor.getInt(recentsHideColumn) != 0;
+                int recentsKillColumn = cursor.getColumnIndex(ModuleSettings.RECENTS_SWIPE_UP_KILL);
+                recentsSwipeUpKillEnabled = recentsKillColumn >= 0 && cursor.getInt(recentsKillColumn) != 0;
                 int headsUpWidthColumn = cursor.getColumnIndex(ModuleSettings.HEADS_UP_WIDTH);
                 headsUpWidthEnabled = headsUpWidthColumn >= 0 && cursor.getInt(headsUpWidthColumn) != 0;
                 int notificationLightColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_LIGHT);
