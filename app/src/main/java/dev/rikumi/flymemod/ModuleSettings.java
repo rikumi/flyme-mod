@@ -62,9 +62,9 @@ public final class ModuleSettings {
     public static final String BACK_GESTURE_REMOVE_SMART = "back_gesture_remove_smart";
     public static final String BACK_GESTURE_WIDTH_ENABLED = "back_gesture_width_enabled";
     public static final String BACK_GESTURE_WIDTH_DP = "back_gesture_width_dp";
-    // Fallback before settings arrive; the device-specific default is initialized by BackGestureWidthSettings.
-    public static final int BACK_GESTURE_WIDTH_DEFAULT = 0;
+    public static final int BACK_GESTURE_WIDTH_DEFAULT = 32;
     public static final String BACK_GESTURE_WIDTH_MAX_DP = "back_gesture_width_max_dp";
+    public static final int BACK_GESTURE_WIDTH_MAX_DEFAULT = 64;
     public static final String MBACK_SYSTEM_TIMEOUT = "mback_system_long_press_timeout";
     public static final String GESTURE_BAR_WIDTH_ENABLED = "gesture_bar_width_enabled";
     public static final String GESTURE_BAR_WIDTH_DP = "gesture_bar_width_dp";
@@ -126,8 +126,8 @@ public final class ModuleSettings {
     public static final String COLOROS_CONTOUR = "coloros_control_center_contour";
     public static final String LIGHT = "light_tile_background";
     public static final String LIGHT_OPACITY = "light_tile_background_opacity";
-    public static final int LIGHT_OPACITY_DEFAULT = 10;
-    public static final int LIGHT_OPACITY_MAX = 20;
+    public static final int LIGHT_OPACITY_DEFAULT = 12;
+    public static final int LIGHT_OPACITY_MAX = 24;
     public static final String TILE_CORNERS = "control_center_tile_corners";
     public static final String TILE_CORNER_PERCENT = "control_center_tile_corner_percent";
     public static final int TILE_CORNER_PERCENT_DEFAULT = 30;

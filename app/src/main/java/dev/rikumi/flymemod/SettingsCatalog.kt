@@ -207,13 +207,9 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
         SettingsGroup("导航与返回", listOf(
             CustomItem("app_navigation") { actions -> AppNavigationPreference(actions.onSelectNavigationApplications) },
             SwitchItem(ModuleSettings.BACK_GESTURE_REMOVE_SMART, "放宽侧滑返回判定", defaultEnabled = true),
-            CustomItem("back_gesture_width") { BackGestureWidthPreference() },
             SwitchItem(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, "侧边返回暗色背景", defaultEnabled = true,
                 slider = SliderSpec(ModuleSettings.BACK_GESTURE_DARK_OPACITY,
                     ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT, 0, 100, unit = "%", step = 5)),
-            SwitchItem(ModuleSettings.GESTURE_BAR_WIDTH_ENABLED, "调整手势滑动条宽度", defaultEnabled = true,
-                slider = SliderSpec(ModuleSettings.GESTURE_BAR_WIDTH_DP,
-                    ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT, 80, 120)),
         )),
         SettingsGroup("长按操作", listOf(
             SystemItem(SystemSetting.LONG_PRESS),

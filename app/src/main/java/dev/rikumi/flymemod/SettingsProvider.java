@@ -329,7 +329,7 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.COLOROS_CONTOUR, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, true) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false) ? 1 : 0);
-        values.add(Math.max(0, Math.min(prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_MAX_DP, 0),
+        values.add(Math.max(0, Math.min(prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_MAX_DP, ModuleSettings.BACK_GESTURE_WIDTH_MAX_DEFAULT),
                 prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP, ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT))));
         values.add(prefs.getBoolean(ModuleSettings.MBACK_SYSTEM_TIMEOUT, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.GESTURE_BAR_WIDTH_ENABLED, true) ? 1 : 0);

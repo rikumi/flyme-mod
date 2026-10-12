@@ -188,15 +188,12 @@ public final class XposedInit extends XposedModule {
     private boolean notificationContourEnabled, mbackSystemTimeoutEnabled, mbackMissingAssistantHomeEnabled;
     private boolean gestureBarWidthEnabled = true;
     private int gestureBarWidthDp=ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT;
-    private MBackRippleHooks activeMBackRippleHooks;
-    private GestureBarWidthHooks activeGestureBarWidthHooks;
     private boolean backGestureDarkBackgroundEnabled = true;
     private int backGestureDarkOpacity = ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT;
     private BackGestureBackgroundHooks activeBackGestureBackgroundHooks;
     private boolean backGestureWidthEnabled;
     private boolean backGestureRemoveSmart = true;
     private int backGestureWidthDp = ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT;
-    private BackGestureWidthHooks activeBackGestureWidthHooks;
     private int blurRadius = ModuleSettings.BLUR_DEFAULT;
     private boolean settingsErrorLogged;
     private final Map<View, Drawable> originalCenterBackgrounds = new WeakHashMap<>();
@@ -696,38 +693,17 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve back gesture background", error);
         }
         try {
-            activeBackGestureWidthHooks = new BackGestureWidthHooks(loader, this::loadSettings,
-                    () -> backGestureWidthEnabled, () -> backGestureWidthDp, () -> backGestureRemoveSmart,
-                    (message, error) -> log(error==null?Log.INFO:Log.ERROR, "FlymeMod", message, error));
             new BackGestureSmartHooks(loader, this::loadSettings, () -> backGestureRemoveSmart,
                     (message,error) -> log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error)).install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
-            activeBackGestureWidthHooks.install(
-                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),this::deoptimize);
         } catch (ReflectiveOperationException error) {
-            log(Log.ERROR, "FlymeMod", "Cannot resolve back gesture width", error);
+            log(Log.ERROR, "FlymeMod", "Cannot resolve back gesture direction", error);
         }
         try {
             new MBackAssistantHooks(loader, this::loadSettings, () -> mbackMissingAssistantHomeEnabled).install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
         } catch (ReflectiveOperationException error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve mBack assistant fallback", error);
-        }
-        try {
-            activeMBackRippleHooks=new MBackRippleHooks(loader, () -> gestureBarWidthEnabled, () -> gestureBarWidthDp,
-                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
-            activeMBackRippleHooks.install(
-                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),this::deoptimize);
-        } catch (ReflectiveOperationException error) {
-            log(Log.ERROR, "FlymeMod", "Cannot resolve mBack pressed ripple bounds", error);
-        }
-        try {
-            activeGestureBarWidthHooks=new GestureBarWidthHooks(loader,this::loadSettings,
-                    () -> gestureBarWidthEnabled, () -> gestureBarWidthDp);
-            activeGestureBarWidthHooks.install(
-                    (name, method, hooker, parameters) -> install(loader,name,method,hooker,parameters));
-        } catch(ReflectiveOperationException error) {
-            log(Log.ERROR,"FlymeMod","Cannot resolve gesture bar width",error);
         }
         try {
             new MBackTimeoutHooks(loader, this::loadSettings, () -> mbackSystemTimeoutEnabled,
@@ -2222,9 +2198,6 @@ public final class XposedInit extends XposedModule {
             Context appContext = context.getApplicationContext();
             moduleSettingsObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
                 @Override public void onChange(boolean selfChange) {
-                    boolean previousBackWidth = backGestureWidthEnabled;
-                    boolean previousBackSmart = backGestureRemoveSmart;
-                    int previousBackDp = backGestureWidthDp;
                     boolean previousWhiteActive = whiteActiveEnabled;
                     int previousOpacity = whiteActiveOpacity;
                     int previousStyle = controlCenterStyle;
@@ -2233,10 +2206,6 @@ public final class XposedInit extends XposedModule {
                     synchronized (XposedInit.this) { settingsLoaded = false; }
                     loadSettings(appContext);
                     if (activeBackGestureBackgroundHooks != null) activeBackGestureBackgroundHooks.refresh();
-                    if(activeMBackRippleHooks!=null)activeMBackRippleHooks.refresh();
-                    if(activeGestureBarWidthHooks!=null)activeGestureBarWidthHooks.refresh();
-                    if (activeBackGestureWidthHooks != null && (previousBackWidth != backGestureWidthEnabled
-                            || previousBackDp != backGestureWidthDp || previousBackSmart != backGestureRemoveSmart)) activeBackGestureWidthHooks.refresh();
                     reapplyStatusIconVisibility();
                     if (activeHeadsUpWidthHooks != null) activeHeadsUpWidthHooks.refresh();
                     if (activeClockFontHooks != null) activeClockFontHooks.refresh();

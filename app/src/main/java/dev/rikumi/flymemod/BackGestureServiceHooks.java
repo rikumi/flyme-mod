@@ -1,7 +1,6 @@
 package dev.rikumi.flymemod;
 
 import android.content.SharedPreferences;
-import android.content.Context;
 import android.view.MotionEvent;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -20,10 +19,6 @@ final class BackGestureServiceHooks {
                         Consumer<Method> deoptimize, BiConsumer<String,Throwable> log) throws ReflectiveOperationException {
         Class<?> recent = loader.loadClass("com.android.server.policy.gesture.RecentGestureListener");
         Class<?> side = loader.loadClass("com.android.server.policy.gesture.LeftRightGestureListener");
-        Field width = recent.getDeclaredField("GESTURE_VALID_LEFT_OFFSET");
-        width.setAccessible(true);
-        Field context = recent.getSuperclass().getDeclaredField("mContext");
-        context.setAccessible(true);
         deoptimize.accept(recent.getDeclaredMethod("interceptMotionBeforeQueueing", MotionEvent.class, int.class));
         deoptimize.accept(loader.loadClass("com.android.server.policy.gesture.SystemGesture")
                 .getDeclaredMethod("interceptMotionBeforeQueueing",MotionEvent.class,int.class));
@@ -60,21 +55,8 @@ final class BackGestureServiceHooks {
                                     +horizontal,null);
                     }
                 }
-                boolean overrideWidth=preferences.contains(ModuleSettings.BACK_GESTURE_WIDTH_DP)
-                        && preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false);
-                if(!overrideWidth) {
-                    try { return chain.proceed(); }
-                    finally { clearFirstMoveAxis(action, owner, firstMoveAxes); }
-                }
-                int amount=preferences.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,
-                        ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT);
-                int nativeWidth=width.getInt(owner);
-                width.setInt(owner, BackGestureWidthHooks.widthPixels((Context)context.get(owner),amount));
                 try { return chain.proceed(); }
-                finally {
-                    width.setInt(owner,nativeWidth);
-                    clearFirstMoveAxis(action, owner, firstMoveAxes);
-                }
+                finally { clearFirstMoveAxis(action, owner, firstMoveAxes); }
             }
         }, MotionEvent.class,int.class);
         installer.hook(recent.getName(),"checkRecentsGesture",chain -> {
@@ -104,17 +86,8 @@ final class BackGestureServiceHooks {
             }
             return null;
         },MotionEvent.class);
-        preferences.registerOnSharedPreferenceChangeListener((prefs,key) -> {
-            if(key==null || ModuleSettings.BACK_GESTURE_WIDTH_DP.equals(key)
-                    || ModuleSettings.BACK_GESTURE_WIDTH_ENABLED.equals(key))
-                log.accept("System side gesture width preferences: enabled="
-                        +prefs.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED,false)
-                        +" dp="+prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT),null);
-        });
-        log.accept("System side gesture hooks registered: relaxed="
-                +preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART,true)+" widthEnabled="
-                +preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED,false)
-                +" dp="+preferences.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT),null);
+        log.accept("System side gesture direction hooks registered: relaxed="
+                +preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART,true),null);
     }
 
     private static void clearFirstMoveAxis(int action, Object owner, Map<Object, Integer> firstMoveAxes) {
