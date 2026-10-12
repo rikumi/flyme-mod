@@ -24,6 +24,7 @@ import java.util.HashSet;
 import java.util.Set;
 import android.util.TypedValue;
 import java.lang.reflect.Executable;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.ref.WeakReference;
 import java.util.Collections;
@@ -41,74 +42,80 @@ final class ThemeColorHooks {
     interface Installer { void hook(Executable target, XposedInterface.Hooker hooker); }
     private static final int COLOR = 1, PRIMARY = 2, ICON = 4, BACKGROUND = 8, CUTOUT_ICON = 16, STORE_BACKGROUND = 32, RED_PROTECTED_ICON = 64, LEGACY_BACKGROUND = 128, INACTIVE_TAB_ICON = 256;
     private final SharedPreferences preferences;
-    private final int themeFamily;
     private final int legacyBackgroundFamily;
     private final String packageName;
     private final Map<View, Boolean> storePageBackgrounds = Collections.synchronizedMap(new WeakHashMap<>());
     private final Map<View, Boolean> dialogButtons = Collections.synchronizedMap(new WeakHashMap<>());
     private final BiConsumer<String, Throwable> log;
+    private final WirelessDebugTextHooks wirelessDebugText;
+    private final WirelessDebugPageHooks wirelessDebugPage;
     private final AtomicBoolean firstMatch = new AtomicBoolean();
     private final Map<Resources, Map<Integer, Integer>> targets = Collections.synchronizedMap(new WeakHashMap<>());
-    private final Map<Drawable, Integer> icons = Collections.synchronizedMap(new WeakHashMap<>());
-    private final Map<Drawable.ConstantState, Integer> iconStates = Collections.synchronizedMap(new WeakHashMap<>());
-    private final Set<Executable> iconDrawMethods = new HashSet<>();
-    private final ThreadLocal<Boolean> drawingIcon = ThreadLocal.withInitial(() -> false);
-    private final ThreadLocal<Paint> iconPaint = ThreadLocal.withInitial(Paint::new);
     private final ThreadLocal<Paint> sliderPaint = ThreadLocal.withInitial(Paint::new);
+    private final ThreadLocal<Paint> cursorPaint = ThreadLocal.withInitial(Paint::new);
+    private volatile android.graphics.ColorFilter cursorFilter;
+    private final ThreadLocal<Boolean> preservingIconColors = ThreadLocal.withInitial(() -> false);
+    private final ThreadLocal<Boolean> loadingControlTrack = ThreadLocal.withInitial(() -> false);
     private final ThreadLocal<Boolean> replacing = ThreadLocal.withInitial(() -> false);
     private volatile ThemeColorPalette palette = new ThemeColorPalette(false, 0);
     private volatile ThemeIconFilter iconFilters;
     private volatile boolean blackBackground;
     private volatile ThemeBackgroundFilter backgroundFilter;
+    private volatile ThemeBackgroundFilter appManagementBackgroundFilter;
     private volatile ThemeBackgroundFilter storeBackgroundFilter;
     private volatile ThemeBackgroundFilter windowBackgroundFilter;
     private final android.graphics.ColorFilter sidebarBlack = new PorterDuffColorFilter(0xff000000, PorterDuff.Mode.SRC_IN);
     private final ThreadLocal<Paint> backgroundPaint = ThreadLocal.withInitial(Paint::new);
+    private static java.lang.reflect.Field decorWindow;
     private boolean configured, enabled;
     private int selectedColor, installedHooks;
     private Method listStates, listColors, listCanApplyTheme;
-    private final Map<ImageView, Integer> assignedIcons = Collections.synchronizedMap(new WeakHashMap<>());
-    private final SettingsBlueIcon settingsBlueIcons = new SettingsBlueIcon();
-    private final ThreadLocal<Boolean> assigningIcon = ThreadLocal.withInitial(() -> false);
+    private final Map<Resources, android.util.SparseArray<String>> viewNames = new WeakHashMap<>();
+    private final Map<Resources,Integer> controlAccentAttributes=Collections.synchronizedMap(new WeakHashMap<>());
     private final AtomicBoolean settingsSwitchMatch = new AtomicBoolean();
-    private final AtomicBoolean settingsIconMatch = new AtomicBoolean();
+    private final AtomicBoolean controlFilterFailure=new AtomicBoolean();
     private record ColorSource(WeakReference<Resources> resources, int kind) {}
     private final Map<ColorStateList, ColorSource> themedLists = Collections.synchronizedMap(new WeakHashMap<>());
     private final SharedPreferences.OnSharedPreferenceChangeListener changes = (prefs, key) -> {
-        if (key == null || ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND.equals(key) || ModuleSettings.SYSTEM_THEME_COLOR_ENABLED.equals(key)
-                || ModuleSettings.SYSTEM_THEME_COLOR.equals(key)) read();
+        if (key == null || ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND.equals(key)) read();
     };
 
     ThemeColorHooks(String packageName, SharedPreferences preferences, BiConsumer<String, Throwable> log) {
         this.packageName = packageName;
-        this.legacyBackgroundFamily = ThemeColorTargets.legacyBackgroundFamily(packageName);
-        this.themeFamily = ThemeColorTargets.themeFamily(packageName);
+        this.legacyBackgroundFamily = DarkBackgroundPolicy.legacyFamily(packageName);
         this.preferences = preferences;
         this.log = log;
+        this.wirelessDebugText = new WirelessDebugTextHooks(packageName, preferences, log);
+        this.wirelessDebugPage = new WirelessDebugPageHooks(preferences, log);
     }
 
     private synchronized void read() {
         try {
-            boolean nextEnabled = preferences.getBoolean(ModuleSettings.SYSTEM_THEME_COLOR_ENABLED, false)
-                    && !ThemeColorTargets.colorExcluded(packageName);
-            int nextColor = preferences.getInt(ModuleSettings.SYSTEM_THEME_COLOR, ModuleSettings.SYSTEM_THEME_COLOR_DEFAULT);
+            // Custom system theme-color replacement was removed. This hook host remains
+            // for independent pure-black backgrounds and wireless-debugging fixes.
+            boolean nextEnabled = false;
+            int nextColor = 0;
             boolean nextBlack = preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false);
             if (configured && enabled == nextEnabled && selectedColor == nextColor && blackBackground == nextBlack) return;
             blackBackground = nextBlack;
             backgroundFilter = null;
+            appManagementBackgroundFilter = null;
             storeBackgroundFilter = null;
             windowBackgroundFilter = null;
             if (nextBlack) {
                 try {
-                    backgroundFilter = new ThemeBackgroundFilter(DarkBackgroundPolicy.legacyShades(legacyBackgroundFamily));
+                    backgroundFilter = new ThemeBackgroundFilter(DarkBackgroundPolicy.applicationShades(packageName, legacyBackgroundFamily));
                     windowBackgroundFilter = new ThemeBackgroundFilter(true);
+                    if ("com.meizu.safe".equals(packageName) || "com.android.settings".equals(packageName))
+                        appManagementBackgroundFilter = new ThemeBackgroundFilter(AppManagementBackgroundPolicy.SHADES);
                     if ("com.meizu.mstore".equals(packageName)) storeBackgroundFilter = windowBackgroundFilter;
                 }
                 catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                     log.accept("Cannot create pure black background filter", error);
                 }
             }
-            palette = new ThemeColorPalette(nextEnabled, nextColor, ThemeColorTargets.colors(), themeFamily);
+            palette = new ThemeColorPalette(false, 0, new int[0], 0);
+            cursorFilter = nextEnabled ? new PorterDuffColorFilter(0xff000000 | (nextColor & 0xffffff), PorterDuff.Mode.SRC_IN) : null;
             iconFilters = null;
             if (nextEnabled) {
                 try { iconFilters = new ThemeIconFilter(nextColor); }
@@ -120,65 +127,76 @@ final class ThemeColorHooks {
             selectedColor = nextColor;
             configured = true;
             firstMatch.set(false);
-            log.accept("Named theme resources configured: package=" + packageName + ", enabled=" + enabled
-                    + ", color=" + String.format(Locale.ROOT, "#%08X", selectedColor), null);
+            log.accept("Appearance background policy configured: package=" + packageName + ", black=" + blackBackground, null);
         } catch (RuntimeException error) {
             configured = false;
             blackBackground = false;
             backgroundFilter = null;
+            appManagementBackgroundFilter = null;
             storeBackgroundFilter = null;
             windowBackgroundFilter = null;
             palette = new ThemeColorPalette(false, 0);
+            cursorFilter = null;
             iconFilters = null;
-            log.accept("Cannot read system theme color", error);
+            log.accept("Cannot read appearance background settings", error);
         }
     }
 
     void install(ClassLoader loader, Installer installer, Consumer<Executable> deoptimizer) {
         read();
+        try {
+            decorWindow=Class.forName("com.android.internal.policy.DecorView",false,loader).getDeclaredField("mWindow");
+            decorWindow.setAccessible(true);
+        } catch(ReflectiveOperationException | RuntimeException error) {
+            log.accept("Cannot resolve native decor window owner",error);
+        }
         preferences.registerOnSharedPreferenceChangeListener(changes);
+        installCursorHooks(loader, installer, deoptimizer);
+        wirelessDebugText.install(loader, installer);
+        if ("com.android.settings".equals(packageName)) wirelessDebugPage.install(loader, installer, deoptimizer);
+        if ("com.android.settings".equals(packageName))
+        if ("com.android.settings".equals(packageName))
+            new SettingsHomeGoogleHooks(preferences, log).install(loader, installer, deoptimizer);
         try {
             listStates = ColorStateList.class.getDeclaredMethod("getStates");
             listColors = ColorStateList.class.getDeclaredMethod("getColors");
             listCanApplyTheme = ColorStateList.class.getDeclaredMethod("canApplyTheme");
         } catch (ReflectiveOperationException error) { log.accept("Cannot resolve color state data", error); }
         if (settingsProcess()) {
-            method(loader, installer, "com.meizu.common.widget.Switch", "getColorFromState", chain -> {
-                int original = (int) chain.proceed();
-                int mapped = palette.replaceResource(original, true);
-                if (mapped != original && settingsSwitchMatch.compareAndSet(false, true))
-                    log.accept("Settings Switch native track color replaced", null);
-                return mapped;
-            }, ColorStateList.class);
-            method(loader, installer, "android.widget.ImageView", "setImageResource", chain -> {
-                ImageView view = (ImageView) chain.getThisObject();
-                int kind = target(view.getResources(), (int) chain.getArg(0));
-                Object result = chain.proceed();
-                int mode = iconKindMode(kind);
-                if (mode == ThemeIconPolicy.NONE) assignedIcons.remove(view);
-                else assignedIcons.put(view, mode);
-                applySettingsIcon(view, mode);
-                return result;
-            }, int.class);
-            method(loader, installer, "android.widget.ImageView", "setImageDrawable", chain -> {
-                if (assigningIcon.get()) return chain.proceed();
-                ImageView view = (ImageView) chain.getThisObject();
-                int mode = iconMode((Drawable) chain.getArg(0));
-                Object result = chain.proceed();
-                if (mode == ThemeIconPolicy.NONE) assignedIcons.remove(view);
-                else assignedIcons.put(view, mode);
-                applySettingsIcon(view, mode);
-                return result;
-            }, Drawable.class);
-            method(loader, installer, "android.widget.ImageView", "setImageTintList", chain -> {
-                ImageView view = (ImageView) chain.getThisObject();
-                if (!assignedIcons.containsKey(view) || !enabled) return chain.proceed();
-                return chain.proceed(new Object[]{colorList((ColorStateList) chain.getArg(0), PRIMARY, view.getResources())});
-            }, ColorStateList.class);
-            // Switch.getColorFromState is final and called from this animation method; deopt the caller too.
-            deopt(loader, deoptimizer, "com.meizu.common.widget.Switch", "setThumbPosition", float.class);
-            deopt(loader, deoptimizer, "com.meizu.common.widget.Switch", "draw", Canvas.class);
-            deopt(loader, deoptimizer, "com.meizu.common.widget.Switch", "onDraw", Canvas.class);
+            try {
+                Class<?> switchType = Class.forName("com.meizu.common.widget.Switch", false, loader);
+                Field thumbOn = switchType.getField("mThumbOnColor"), thumbOff = switchType.getField("mThumbOffColor");
+                Field trackOn = switchType.getField("mTrackOnColorState"), trackOff = switchType.getField("mTrackOffColorState");
+                // Keep cached thumb state lists native so turning the theme off restores the ROM colors.
+                for (java.lang.reflect.Constructor<?> constructor : switchType.getDeclaredConstructors())
+                    installer.hook(constructor, chain -> {
+                        boolean previous = preservingIconColors.get();
+                        preservingIconColors.set(true);
+                        try { return chain.proceed(); }
+                        finally { preservingIconColors.set(previous); }
+                    });
+                method(loader, installer, "com.meizu.common.widget.Switch", "getColorFromState", chain -> {
+                    Object view = chain.getThisObject(), source = chain.getArg(0);
+                    boolean thumb = source == thumbOn.get(view) || source == thumbOff.get(view);
+                    boolean track = source == trackOn.get(view) || source == trackOff.get(view);
+                    boolean previous = preservingIconColors.get();
+                    preservingIconColors.set(true);
+                    int original;
+                    try { original = (int) chain.proceed(); }
+                    finally { preservingIconColors.set(previous); }
+                    if (thumb) return ThemeSwitchColorPolicy.thumb(original, enabled);
+                    int mapped = track ? palette.replaceResource(original, true) : original;
+                    if (mapped != original && settingsSwitchMatch.compareAndSet(false, true))
+                        log.accept("Settings Switch native track color replaced", null);
+                    return mapped;
+                }, ColorStateList.class);
+                // The ROM writes thumb/track colors on every position/state update; no drawable mutation is retained.
+                deopt(loader, deoptimizer, "com.meizu.common.widget.Switch", "setThumbPosition", float.class);
+                deopt(loader, deoptimizer, "com.meizu.common.widget.Switch", "draw", Canvas.class);
+                deopt(loader, deoptimizer, "com.meizu.common.widget.Switch", "onDraw", Canvas.class);
+            } catch (ReflectiveOperationException | LinkageError error) {
+                log.accept("Cannot resolve native Settings Switch color slots", error);
+            }
         }
         if (settingsProcess()) {
             for (String owner : new String[]{"android.widget.AbsSeekBar",
@@ -188,6 +206,7 @@ final class ThemeColorHooks {
                     ThemeIconFilter filters = iconFilters;
                     if (filters == null) return chain.proceed();
                     View view = (View) chain.getThisObject();
+                    if (ThemeControlResources.spectralSlider(packageName, view.getClass())) return chain.proceed();
                     Canvas canvas = (Canvas) chain.getArg(0);
                     Paint paint = sliderPaint.get();
                     paint.setColorFilter(filters.blueParts);
@@ -210,6 +229,7 @@ final class ThemeColorHooks {
         method(loader, installer, "android.app.Dialog", "show", chain -> {
             Object result = chain.proceed();
             Dialog dialog = (Dialog) chain.getThisObject();
+            wirelessDebugText.shown(dialog);
             if (dialog.getWindow() != null) markDialogButtons(dialog.getWindow().getDecorView());
             return result;
         });
@@ -217,19 +237,26 @@ final class ThemeColorHooks {
         method(loader, installer, "android.content.res.Resources$Theme", "resolveAttribute", chain -> {
             Object result = chain.proceed();
             TypedValue value = (TypedValue) chain.getArg(1);
-            if (!Boolean.TRUE.equals(result) || replacing.get()
+            if (!Boolean.TRUE.equals(result) || replacing.get() || preservingIconColors.get()
                     || value.type < TypedValue.TYPE_FIRST_COLOR_INT || value.type > TypedValue.TYPE_LAST_COLOR_INT) return result;
             Resources resources = ((Resources.Theme) chain.getThisObject()).getResources();
             try {
                 String name = resources.getResourceEntryName((int) chain.getArg(0));
                 if (ThemeTabPolicy.primaryAttribute(name)) value.data = palette.replaceResource(value.data, true);
-                if (legacyBackgroundFamily == 1 && "colorSurfaceBright".equals(name)
-                        || legacyBackgroundFamily == 2 && "colorSurfaceContainerLowest".equals(name))
-                    value.data = DarkBackgroundPolicy.replaceLegacy(value.data, blackBackground, night(resources), legacyBackgroundFamily);
+
             } catch (Resources.NotFoundException ignored) {}
             return result;
         }, int.class, TypedValue.class, boolean.class);
         if ("com.meizu.mstore".equals(packageName)) {
+            // Store 12.5.1: sg.c.a paints the inverse corners in rows adjoining
+            // the selected category. Keep the selected row's native drawing intact.
+            method(loader,installer,"sg.c","a",chain -> {
+                View sidebar=(View)chain.getThisObject();
+                if(blackBackground && night(sidebar.getResources()) && storeSidebar(sidebar)
+                        && normalActivityBackground(sidebar))return null;
+                return chain.proceed();
+            },Canvas.class,float.class,float.class,int.class);
+            deopt(loader,deoptimizer,"sg.c","onDraw",Canvas.class);
             method(loader, installer, "com.meizu.mstore.page.base.BaseFragment", "onCreateView", chain -> {
                 View root = (View) chain.proceed();
                 if (root != null) storePageBackgrounds.put(root, Boolean.TRUE);
@@ -304,89 +331,205 @@ final class ThemeColorHooks {
                 value(((TypedArray) chain.getThisObject()).getResources(), value.resourceId, value);
             return result;
         }, int.class, TypedValue.class);
+        // Keep icon artwork native, but allow verified slider tracks (including their nested
+        // drawables) to resolve their theme colors just like the rest of the control.
         method(loader, installer, "android.content.res.ResourcesImpl", "loadDrawable", chain -> {
-            Resources resources = (Resources) chain.getArg(0);
-            int kind = target(resources, (int) chain.getArg(2));
-            Drawable original = (Drawable) chain.proceed();
-            if (original != null && (kind == ICON || kind == CUTOUT_ICON || kind == RED_PROTECTED_ICON || kind == INACTIVE_TAB_ICON)) {
-                int mode = kind == CUTOUT_ICON ? ThemeIconPolicy.WHITE_CUTOUT :
-                        kind == RED_PROTECTED_ICON ? ThemeIconPolicy.PRESERVE_RED :
-                        kind == INACTIVE_TAB_ICON ? ThemeIconPolicy.INACTIVE_TAB : ThemeIconPolicy.COLOR_PARTS;
-                icons.put(original, mode);
-                Drawable.ConstantState state = original.getConstantState();
-                if (state != null) iconStates.put(state, mode);
-                installIconDraw(original, installer);
-            }
-            return original;
+            boolean previous=preservingIconColors.get(),previousTrack=loadingControlTrack.get();
+            boolean track=previousTrack;
+            if(!track)try {
+                track=ThemeControlResources.sliderTrack(((Resources)chain.getArg(0)).getResourceEntryName((int)chain.getArg(2)));
+            } catch(Resources.NotFoundException ignored) { }
+            loadingControlTrack.set(track);preservingIconColors.set(!track);
+            try {return chain.proceed();}
+            finally{preservingIconColors.set(previous);loadingControlTrack.set(previousTrack);}
         }, Resources.class, TypedValue.class, int.class, int.class, Resources.Theme.class);
-        // Preferences may copy their cached BitmapDrawable via ConstantState before ImageView sees it.
         method(loader, installer, "android.widget.ImageView", "onDraw", chain -> {
-            ImageView view = (ImageView) chain.getThisObject();
-            ThemeIconFilter filters = iconFilters;
-            int mode = assignedIcons.getOrDefault(view, iconMode(view.getDrawable()));
-            String id = viewId(view);
-            if (ThemeTabPolicy.galleryIcon(packageName, id)) mode = ThemeIconPolicy.COLOR_PARTS;
-            if (ThemeTabPolicy.storeIcon(packageName, id) || "com.meizu.mstore".equals(packageName)
-                    && "icon".equals(id) && storeTabParent(view) != null)
-                mode = selectedStoreTab(view) ? ThemeIconPolicy.WHITE_CUTOUT : ThemeIconPolicy.INACTIVE_TAB;
-            if (ThemeTabPolicy.installerUpgradeIcon(packageName, id)) mode = ThemeIconPolicy.WHITE_CUTOUT;
-            if (filters == null || drawingIcon.get() || mode == ThemeIconPolicy.NONE) return chain.proceed();
+            boolean previous=preservingIconColors.get();preservingIconColors.set(true);
             Canvas canvas = (Canvas) chain.getArg(0);
-            Paint paint = iconPaint.get();
-            paint.setColorFilter(filters.forMode(mode, night(view.getResources())));
-            int saved = canvas.saveLayer(0, 0, view.getWidth(), view.getHeight(), paint);
-            drawingIcon.set(true);
-            try { return chain.proceed(); }
-            finally {
-                drawingIcon.set(false);
-                canvas.restoreToCount(saved);
+            ImageView view = (ImageView) chain.getThisObject();
+            int saved = -1;
+            try {
+                Paint paint = wirelessDebugPage.iconPaint(view);
+                if (paint != null) saved = canvas.saveLayer(view.getScrollX(), view.getScrollY(),
+                        view.getScrollX() + view.getWidth(), view.getScrollY() + view.getHeight(), paint);
+                return chain.proceed();
+            } finally {
+                if (saved != -1) canvas.restoreToCount(saved);
+                preservingIconColors.set(previous);
             }
         }, Canvas.class);
         method(loader, installer, "android.widget.TextView", "onDraw", chain -> {
             TextView view = (TextView) chain.getThisObject();
+            ColorStateList original = view.getTextColors();
+            ColorStateList mapped = wirelessDebugText.textColors(view, iconFilters == null ? null : selectedColor);
+            if (mapped == null) mapped = original;
             ThemeIconFilter filter = iconFilters;
             boolean button = dialogButton(view);
-            if (filter == null || !button && !ThemeTabPolicy.galleryText(packageName, viewId(view))) return chain.proceed();
-            Canvas canvas = (Canvas) chain.getArg(0);
-            Paint paint = iconPaint.get();
-            paint.setColorFilter(button && themeFamily != 3 ? filter.preserveRedParts : filter.colorParts);
-            int saved = canvas.saveLayer(0, 0, view.getWidth(), view.getHeight(), paint);
-            try { return chain.proceed(); }
-            finally { canvas.restoreToCount(saved); }
+            // Recolor only text states; a layer filter would also recolor compound icons.
+            if (filter != null && (button || "com.meizu.media.gallery".equals(packageName)
+                    && ThemeTabPolicy.galleryText(packageName, viewId(view))))
+                mapped = colorList(mapped, PRIMARY, view.getResources());
+            if(mapped==original)return chain.proceed();
+            view.setTextColor(mapped);
+            try {return chain.proceed();}finally{view.setTextColor(original);}
         }, Canvas.class);
         // Verified on the device framework: this entry draws only mBackground, including RenderNodes.
         method(loader, installer, "android.view.View", "drawBackground", chain -> {
             View view = (View) chain.getThisObject();
-            ThemeIconFilter dialogColors = dialogButton(view) ? iconFilters : null;
+            // MzBreakerSeekbar paints a five-color temperature spectrum as its View background.
+            if (ThemeControlResources.spectralSlider(packageName, view.getClass())) return chain.proceed();
+            // Track caps, input underlines and icon-style borders are independent
+            // control backgrounds. Their later text and image drawing stays native.
+            ThemeIconFilter sliderColors=iconFilters;
+            boolean input=sliderColors!=null && ThemeControlResources.inputView(view.getClass());
+            boolean border=sliderColors!=null && "com.meizu.flyme.launcher".equals(packageName)
+                    && ThemeControlResources.iconStyleBorder(packageName,viewId(view));
+            boolean slider=sliderColors!=null && (settingsProcess() || "com.meizu.flyme.launcher".equals(packageName))
+                    && ThemeControlResources.sliderView(view.getClass());
+            if(sliderColors!=null && (input ||border ||slider) && view.getBackground()!=null) {
+                Canvas canvas=(Canvas)chain.getArg(0);
+                if(canvas.isHardwareAccelerated()) {
+                    Paint paint=sliderPaint.get();paint.setColorFilter(input ||border
+                            ?controlColorFilter(sliderColors,view):sliderColors.blueParts);
+                    int saved=canvas.saveLayer(view.getScrollX(),view.getScrollY(),
+                            view.getScrollX()+view.getWidth(),view.getScrollY()+view.getHeight(),paint);
+                    try{return chain.proceed();}finally{canvas.restoreToCount(saved);}
+                }
+            }
+            ThemeIconFilter dialogColors = iconFilters;
+            if (dialogColors != null && !dialogButton(view)) dialogColors = null;
+            if (dialogColors == null && !blackBackground) return chain.proceed();
             boolean sidebar = storeSidebar(view);
-            boolean storeGlobal = sidebar || storePageBackgrounds.containsKey(view)
+            boolean storeGlobal = "com.meizu.mstore".equals(packageName)
+                    && (sidebar || storePageBackgrounds.containsKey(view)
                     || ThemeTabPolicy.storeGlobalBackground(packageName, viewId(view))
-                    || "com.meizu.mstore".equals(packageName)
-                    && view.getClass().getName().equals("com.ashokvarma.bottomnavigation.BottomNavigationBar");
+                    || view.getClass().getName().equals("com.ashokvarma.bottomnavigation.BottomNavigationBar"));
             // The decor only draws the window surface. Its old and new dark shades can all
             // become black without changing similarly colored list and group backgrounds.
+            boolean blackAllowed=normalActivityBackground(view);
+            if(!blackAllowed && dialogColors==null)return chain.proceed();
             boolean windowSurface = "com.android.internal.policy.DecorView".equals(view.getClass().getName());
             ThemeBackgroundFilter filter = windowSurface ? windowBackgroundFilter
-                    : storeGlobal ? storeBackgroundFilter : backgroundFilter;
+                    : storeGlobal ? storeBackgroundFilter
+                    : appManagementSurface(view) ? appManagementBackgroundFilter : backgroundFilter;
             Drawable background = view.getBackground();
-            if (dialogColors == null && (!blackBackground || !sidebar && filter == null)
+            if(dialogColors!=null && (background instanceof BitmapDrawable
+                    || background instanceof android.graphics.drawable.VectorDrawable
+                    || background instanceof android.graphics.drawable.AdaptiveIconDrawable))dialogColors=null;
+            if (dialogColors == null && (!blackAllowed || !blackBackground || !sidebar && filter == null)
                     || background == null || dialogColors == null && background instanceof BitmapDrawable
                     || dialogColors == null && !night(view.getResources())) return chain.proceed();
             Canvas canvas = (Canvas) chain.getArg(0);
             Paint paint = backgroundPaint.get();
-            paint.setColorFilter(dialogColors != null
-                    ? (themeFamily == 3 ? dialogColors.colorParts : dialogColors.preserveRedParts)
-                    : sidebar ? sidebarBlack : filter.filter);
+            paint.setColorFilter(sidebar ? sidebarBlack : filter.filter);
             int saved = canvas.saveLayer(view.getScrollX(), view.getScrollY(),
                     view.getScrollX() + view.getWidth(), view.getScrollY() + view.getHeight(), paint);
             try { return chain.proceed(); }
             finally { canvas.restoreToCount(saved); }
         }, Canvas.class);
-        log.accept("Named theme resource hooks registered: hooks=" + installedHooks, null);
+        if(!settingsProcess()) {
+            // Background replacement now happens at drawing time in every scoped app.
+            // Compiled framework callers must not inline past the drawBackground hook.
+            deopt(loader,deoptimizer,"android.view.View","draw",Canvas.class);
+            deopt(loader,deoptimizer,"android.view.View","draw",Canvas.class,ViewGroup.class,long.class);
+            deopt(loader,deoptimizer,"android.view.View","updateDisplayListIfDirty");
+        }
+        log.accept("Appearance background hooks registered: hooks=" + installedHooks, null);
     }
 
     private boolean settingsProcess() {
         return "com.android.settings".equals(packageName) || "com.meizu.connectivitysettings".equals(packageName);
+    }
+
+    private void installCursorHooks(ClassLoader loader, Installer installer, Consumer<Executable> deoptimizer) {
+        try {
+            Class<?> editor = Class.forName("android.widget.Editor", false, loader);
+            java.lang.reflect.Field textView = editor.getDeclaredField("mTextView");
+            java.lang.reflect.Field drawable = editor.getDeclaredField("mDrawableForCursor");
+            java.lang.reflect.Field resource = TextView.class.getDeclaredField("mCursorDrawableRes");
+            textView.setAccessible(true);
+            drawable.setAccessible(true);
+            resource.setAccessible(true);
+            // Device framework: drawCursor draws only this drawable, with a vertical translation.
+            method(loader, installer, "android.widget.Editor", "drawCursor", chain -> {
+                android.graphics.ColorFilter filter = cursorFilter;
+                if (filter == null) return chain.proceed();
+                TextView view = (TextView) textView.get(chain.getThisObject());
+                Drawable cursor = (Drawable) drawable.get(chain.getThisObject());
+                if (!ThemeControlResources.inputView(view.getClass()) || inputError(view)
+                        || cursor == null || errorCursor(view.getResources(), resource.getInt(view))) return chain.proceed();
+                Rect bounds = cursor.getBounds();
+                int offset = (int) chain.getArg(1);
+                Canvas canvas = (Canvas) chain.getArg(0);
+                Paint paint = cursorPaint.get();
+                paint.setColorFilter(filter);
+                int saved = canvas.saveLayer(bounds.left, bounds.top + offset,
+                        bounds.right, bounds.bottom + offset, paint);
+                try { return chain.proceed(); }
+                finally { canvas.restoreToCount(saved); }
+            }, Canvas.class, int.class);
+            // Keep the cached native cursor intact so turning the setting off restores it.
+            method(loader, installer, "android.widget.TextView", "getTextCursorDrawable", chain -> {
+                boolean previous = preservingIconColors.get();
+                preservingIconColors.set(true);
+                try { return chain.proceed(); }
+                finally { preservingIconColors.set(previous); }
+            });
+            method(loader, installer, "android.widget.TextView", "setTextCursorDrawable", chain -> {
+                boolean previous = preservingIconColors.get();
+                preservingIconColors.set(true);
+                try { return chain.proceed(); }
+                finally { preservingIconColors.set(previous); }
+            }, int.class);
+            deopt(loader, deoptimizer, "android.widget.Editor", "onDraw", Canvas.class, android.text.Layout.class,
+                    java.util.List.class, java.util.List.class, android.graphics.Path.class, Paint.class, int.class);
+            deopt(loader, deoptimizer, "android.widget.Editor", "loadCursorDrawable");
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log.accept("Cannot resolve native input cursor drawing", error);
+        }
+    }
+
+    private static boolean errorCursor(Resources resources, int id) {
+        if (id == 0) return false;
+        try { return resources.getResourceEntryName(id).toLowerCase(Locale.ROOT).contains("error"); }
+        catch (Resources.NotFoundException ignored) { return true; }
+    }
+
+    private static boolean inputError(TextView view) {
+        if (view.getError() != null) return true;
+        // Flyme TextInputLayout keeps its error on the parent, not EditText.getError().
+        android.view.ViewParent parent = view.getParent();
+        for (int depth = 0; depth < 6 && parent instanceof View ancestor; depth++, parent = ancestor.getParent()) {
+            for (Class<?> type = ancestor.getClass(); type != null; type = type.getSuperclass()) {
+                if (!"com.meizu.textinputlayout.TextInputLayout".equals(type.getName())) continue;
+                try {
+                    Object error = type.getMethod("getError").invoke(ancestor);
+                    return error instanceof CharSequence text && text.length() != 0;
+                } catch (ReflectiveOperationException | RuntimeException ignored) { return true; }
+            }
+        }
+        return false;
+    }
+
+    private int nativeControlAccent(View view) {
+        Resources resources=view.getResources();
+        int attr=controlAccentAttributes.computeIfAbsent(resources,ignored -> {
+            int id=resources.getIdentifier("colorPrimary","attr",packageName);
+            return id==0?android.R.attr.colorAccent:id;
+        });
+        boolean previous=preservingIconColors.get();preservingIconColors.set(true);
+        try {
+            TypedArray colors=view.getContext().obtainStyledAttributes(new int[]{attr,android.R.attr.colorAccent});
+            try{return colors.getColor(0,colors.getColor(1,0xff206cff));}finally{colors.recycle();}
+        } finally{preservingIconColors.set(previous);}
+    }
+
+    private android.graphics.ColorFilter controlColorFilter(ThemeIconFilter filters,View view) {
+        try{return filters.forControlAccent(nativeControlAccent(view));}
+        catch(ReflectiveOperationException | RuntimeException | LinkageError error) {
+            if(controlFilterFailure.compareAndSet(false,true))log.accept("Cannot resolve native control background accent",error);
+            return filters.blueParts;
+        }
     }
 
     private void markDialogButtons(View view) {
@@ -406,33 +549,6 @@ final class ThemeColorHooks {
     private boolean dialogButton(View view) {
         return dialogButtons.containsKey(view) || "com.android.permissioncontroller".equals(packageName)
                 && "com.android.permissioncontroller.permission.ui.widget.SecureButton".equals(view.getClass().getName());
-    }
-
-    private static int iconKindMode(int kind) {
-        return kind == ICON ? ThemeIconPolicy.COLOR_PARTS : kind == CUTOUT_ICON ? ThemeIconPolicy.WHITE_CUTOUT :
-                kind == RED_PROTECTED_ICON ? ThemeIconPolicy.PRESERVE_RED :
-                kind == INACTIVE_TAB_ICON ? ThemeIconPolicy.INACTIVE_TAB : ThemeIconPolicy.NONE;
-    }
-
-    private void applySettingsIcon(ImageView view, int mode) {
-        Drawable original = view.getDrawable();
-        if (!enabled || mode == ThemeIconPolicy.NONE || original == null || assigningIcon.get()) return;
-        assigningIcon.set(true);
-        try {
-            boolean wasDrawing = drawingIcon.get();
-            Drawable mapped;
-            drawingIcon.set(true);
-            try { mapped = settingsBlueIcons.map(original, view.getResources(), selectedColor, palette); }
-            finally { drawingIcon.set(wasDrawing); }
-            if (mapped != original) {
-                view.setImageDrawable(mapped);
-                if (settingsIconMatch.compareAndSet(false, true)) log.accept("Settings named blue glyph pixels replaced", null);
-            }
-            ColorStateList tint = view.getImageTintList();
-            if (tint != null) view.setImageTintList(colorList(tint, PRIMARY, view.getResources()));
-        } catch (ReflectiveOperationException | RuntimeException error) {
-            log.accept("Cannot replace settings blue glyph", error);
-        } finally { assigningIcon.set(false); }
     }
 
     private void deopt(ClassLoader loader, Consumer<Executable> deoptimizer, String owner, String name, Class<?>... params) {
@@ -476,44 +592,20 @@ final class ThemeColorHooks {
         return false;
     }
 
-    private static String viewId(View view) {
-        try { return view.getResources().getResourceEntryName(view.getId()); }
-        catch (Resources.NotFoundException ignored) { return ""; }
-    }
-
-    private int iconMode(Drawable drawable) {
-        if (drawable == null) return ThemeIconPolicy.NONE;
-        Integer mode = icons.get(drawable);
-        if (mode != null) return mode;
-        Drawable.ConstantState state = drawable.getConstantState();
-        return state == null ? ThemeIconPolicy.NONE : iconStates.getOrDefault(state, ThemeIconPolicy.NONE);
-    }
-
-    private synchronized void installIconDraw(Drawable drawable, Installer installer) {
-        try {
-            // Resolve the actual implementation, preserving Drawable subclasses and native state behavior.
-            Method draw = drawable.getClass().getMethod("draw", Canvas.class);
-            if (iconDrawMethods.contains(draw)) return;
-            installer.hook(draw, chain -> {
-                ThemeIconFilter filters = iconFilters;
-                Drawable current = (Drawable) chain.getThisObject();
-                int mode = iconMode(current);
-                if (filters == null || drawingIcon.get() || mode == ThemeIconPolicy.NONE) return chain.proceed();
-                Canvas canvas = (Canvas) chain.getArg(0);
-                Rect bounds = current.getDirtyBounds();
-                Paint paint = iconPaint.get();
-                paint.setColorFilter(filters.forMode(mode, night(Resources.getSystem())));
-                int saved = canvas.saveLayer(bounds.left, bounds.top, bounds.right, bounds.bottom, paint);
-                drawingIcon.set(true);
-                try { return chain.proceed(); }
-                finally {
-                    drawingIcon.set(false);
-                    canvas.restoreToCount(saved);
-                }
-            });
-            iconDrawMethods.add(draw);
-        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-            log.accept("Cannot hook named icon drawable " + drawable.getClass().getName(), error);
+    private String viewId(View view) {
+        int id = view.getId();
+        if (id == View.NO_ID || id == 0) return "";
+        Resources resources = view.getResources();
+        synchronized (viewNames) {
+            android.util.SparseArray<String> names = viewNames.computeIfAbsent(resources,
+                    ignored -> new android.util.SparseArray<>());
+            String name = names.get(id);
+            if (name == null) {
+                try { name = resources.getResourceEntryName(id); }
+                catch (Resources.NotFoundException ignored) { name = ""; }
+                names.put(id, name);
+            }
+            return name;
         }
     }
 
@@ -527,22 +619,14 @@ final class ThemeColorHooks {
             int kind = 0;
             try {
                 String pkg = resources.getResourcePackageName(id);
-                if ("android".equals(pkg) || ThemeColorTargets.contains(pkg)) {
+                if ("android".equals(pkg) || DarkBackgroundTargets.contains(pkg)) {
                     String name = resources.getResourceEntryName(id), type = resources.getResourceTypeName(id);
                     if ("color".equals(type)) {
-                        if (ThemeColorTargets.isColorResource(pkg, name))
-                            kind = ThemeColorTargets.isPrimaryResource(pkg, name) ? PRIMARY : COLOR;
                         if (DarkBackgroundPolicy.resource(name)) kind |= BACKGROUND;
                         if (legacyBackgroundFamily == 1 && "fd_sys_color_surface_bright_default".equals(name)
                                 || legacyBackgroundFamily == 2 && "fd_sys_color_surface_container_lowest_default".equals(name))
                             kind |= LEGACY_BACKGROUND;
                         if ("com.meizu.mstore".equals(packageName) && "activity_background_color".equals(name)) kind |= STORE_BACKGROUND;
-                    }
-                    else if ("drawable".equals(type) || "mipmap".equals(type)) {
-                        int mode = ThemeIconPolicy.mode(pkg, name);
-                        kind = mode == ThemeIconPolicy.COLOR_PARTS ? ICON : mode == ThemeIconPolicy.WHITE_CUTOUT ? CUTOUT_ICON :
-                                mode == ThemeIconPolicy.PRESERVE_RED ? RED_PROTECTED_ICON :
-                                mode == ThemeIconPolicy.INACTIVE_TAB ? INACTIVE_TAB_ICON : 0;
                     }
                 }
             } catch (Resources.NotFoundException ignored) {}
@@ -551,15 +635,72 @@ final class ThemeColorHooks {
         }
     }
 
+    private boolean appManagementSurface(View view) {
+        if (appManagementBackgroundFilter == null) return false;
+        android.content.Context context = view.getContext();
+        View root = view.getRootView();
+        if (decorWindow != null && decorWindow.getDeclaringClass().isInstance(root)) {
+            try {
+                android.view.Window window = (android.view.Window) decorWindow.get(root);
+                if (window != null) context = window.getContext();
+            } catch (IllegalAccessException ignored) { }
+        }
+        for (int i = 0; i < 8 && context != null; i++) {
+            if (context instanceof android.app.Activity activity) {
+                String name = activity.getClass().getName();
+                String fragment = "com.android.settings.SubSettings".equals(name)
+                        ? activity.getIntent().getStringExtra(":settings:show_fragment") : null;
+                return AppManagementBackgroundPolicy.page(packageName, name, fragment);
+            }
+            if (!(context instanceof android.content.ContextWrapper wrapper)) return false;
+            android.content.Context base = wrapper.getBaseContext();
+            if (base == context) return false;
+            context = base;
+        }
+        return false;
+    }
+
+    private static boolean normalActivityBackground(View view) {
+        if (AnrDialogHooks.nativeSurface(view)) return false;
+        if(!(view.getRootView().getLayoutParams() instanceof android.view.WindowManager.LayoutParams params)
+                ||params.type!=android.view.WindowManager.LayoutParams.TYPE_BASE_APPLICATION)return false;
+        for(View current=view;current!=null;current=current.getParent() instanceof View parent?parent:null) {
+            for(Class<?> type=current.getClass();type!=null;type=type.getSuperclass()) {
+                String name=type.getName();
+                if(name.equals("com.android.launcher3.AbstractFloatingView") || name.contains("Popup")
+                        ||name.contains("Dialog") ||name.contains("BottomSheet") ||name.contains("Floating"))return false;
+            }
+        }
+        // DecorContext wraps the application rather than its Activity. Resolve the owning
+        // PhoneWindow for decor and descendants instead of rejecting ordinary app surfaces.
+        android.content.Context context=view.getContext();
+        View root=view.getRootView();
+        if(decorWindow!=null && decorWindow.getDeclaringClass().isInstance(root)) {
+            try {
+                android.view.Window window=(android.view.Window)decorWindow.get(root);
+                if(window!=null)context=window.getContext();
+            } catch(IllegalAccessException ignored) { }
+        }
+        for(int i=0;i<8 && context!=null;i++) {
+            if(context instanceof android.app.Activity activity) {
+                if(activity.getWindow().isFloating())return false;
+                TypedArray attributes=activity.obtainStyledAttributes(new int[]{android.R.attr.windowIsTranslucent});
+                try{return !attributes.getBoolean(0,false);}finally{attributes.recycle();}
+            }
+            if(!(context instanceof android.content.ContextWrapper wrapper))return false;
+            android.content.Context base=wrapper.getBaseContext();if(base==context)return false;context=base;
+        }
+        return false;
+    }
+
     private static boolean isColor(int kind) { return (kind & (COLOR | PRIMARY | BACKGROUND | STORE_BACKGROUND | LEGACY_BACKGROUND)) != 0; }
     private static boolean night(Resources resources) {
         return (resources.getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
     }
 
     private int color(int original, int kind, Resources resources) {
-        int mapped = (kind & BACKGROUND) == 0 ? original : DarkBackgroundPolicy.replace(original, blackBackground, night(resources));
-        if ((kind & LEGACY_BACKGROUND) != 0) mapped = DarkBackgroundPolicy.replaceLegacy(mapped, blackBackground, night(resources), legacyBackgroundFamily);
-        if ((kind & STORE_BACKGROUND) != 0) mapped = DarkBackgroundPolicy.replaceStoreGlobal(mapped, blackBackground, night(resources));
+        if(preservingIconColors.get())return original;
+        int mapped=original;
         if ((kind & (COLOR | PRIMARY)) != 0) mapped = palette.replaceResource(mapped, (kind & PRIMARY) != 0);
         if (original != mapped && firstMatch.compareAndSet(false, true))
             log.accept(String.format(Locale.ROOT, "Named theme resource first replacement: #%08X -> #%08X", original, mapped), null);
@@ -567,7 +708,7 @@ final class ThemeColorHooks {
     }
 
     private int stateColor(ColorStateList list, int original) {
-        if (replacing.get()) return original;
+        if (replacing.get() || preservingIconColors.get()) return original;
         ColorSource source = themedLists.get(list);
         Resources resources = source == null ? null : source.resources().get();
         return resources == null ? original : color(original, source.kind(), resources);

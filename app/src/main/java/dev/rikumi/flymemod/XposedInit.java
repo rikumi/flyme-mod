@@ -96,6 +96,7 @@ public final class XposedInit extends XposedModule {
     private boolean notificationReadLayerFixEnabled;
     private boolean nativeNotificationExpansionEnabled;
     private boolean headsUpWidthEnabled;
+    private HeadsUpWidthHooks activeHeadsUpWidthHooks;
     private boolean originalNotificationIconsEnabled;
     private boolean monochromeNotificationActionsEnabled;
     private boolean removeNotificationActionBackgroundEnabled;
@@ -109,7 +110,7 @@ public final class XposedInit extends XposedModule {
     private boolean lockClockSpacingEnabled, aodClockSpacingEnabled;
     private boolean statusBarClockSpacingEnabled;
     private boolean controlCenterClockDateUpEnabled;
-    private int controlCenterClockDateUpDistance = 16;
+    private int controlCenterClockDateUpDistance = ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE_DEFAULT;
     private boolean controlCenterButtonsUpEnabled;
     private int controlCenterButtonsUpDistance = 8;
     private int volumeFirstFourMode;
@@ -148,6 +149,9 @@ public final class XposedInit extends XposedModule {
     private volatile Set<String> hiddenLauncherPackages = Collections.emptySet();
     private Set<String> appliedLauncherHiddenPackages = Collections.emptySet();
     private volatile boolean stackedRecentsEnabled;
+    private volatile boolean recentsCornerEnabled;
+    private volatile int recentsCornerDp = RecentsCornerGeometry.MIN_DP;
+    private RecentsCornerHooks activeRecentsCornerHooks;
     private volatile boolean recentsHideNotRunningEnabled, recentsSwipeUpKillEnabled;
     private volatile boolean folderPagingEnabled;
     private volatile boolean folderCenterEnabled;
@@ -157,8 +161,9 @@ public final class XposedInit extends XposedModule {
     private volatile boolean lockWidgetStartupFixEnabled;
     private volatile boolean blockLockscreenLongPressEditEnabled;
     private volatile boolean folderRestoreColorEnabled;
-    private volatile boolean folderContourEnabled, widgetContourEnabled, menuContourEnabled;
+    private volatile boolean widgetContourEnabled, menuContourEnabled;
     private volatile boolean iconContourEnabled, folderMenuAlignmentEnabled;
+    private volatile boolean fixIconPackPreview = true;
     private volatile boolean folderRadiusEnabled;
     private volatile int folderRadiusDp = ModuleSettings.FOLDER_RADIUS_DEFAULT;
     private volatile Context launcherContext;
@@ -169,6 +174,10 @@ public final class XposedInit extends XposedModule {
     private WeatherRecommendationHooks activeWeatherRecommendationHooks;
     private WeatherBackgroundHooks activeWeatherBackgroundHooks;
     private ClockFontHooks activeClockFontHooks;
+    private StatusBarLyricHooks activeStatusBarLyricHooks;
+    private boolean statusBarLyricAvoidEnabled = ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT;
+    private ChargingInfoHooks activeChargingInfoHooks;
+    private int statusBarChargingInfoMode = ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT;
     private CarrierVisibilityHooks activeCarrierVisibilityHooks;
     private boolean hideCarrierEnabled;
     private SimpleQsTextHooks activeSimpleQsTextHooks;
@@ -177,7 +186,15 @@ public final class XposedInit extends XposedModule {
     private boolean colorOsContourEnabled;
     private ColorOsMaterialHooks activeColorOsMaterialHooks;
     private boolean notificationContourEnabled, mbackSystemTimeoutEnabled, mbackMissingAssistantHomeEnabled;
+    private boolean gestureBarWidthEnabled = true;
+    private int gestureBarWidthDp=ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT;
+    private MBackRippleHooks activeMBackRippleHooks;
+    private GestureBarWidthHooks activeGestureBarWidthHooks;
+    private boolean backGestureDarkBackgroundEnabled = true;
+    private int backGestureDarkOpacity = ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT;
+    private BackGestureBackgroundHooks activeBackGestureBackgroundHooks;
     private boolean backGestureWidthEnabled;
+    private boolean backGestureRemoveSmart = true;
     private int backGestureWidthDp = ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT;
     private BackGestureWidthHooks activeBackGestureWidthHooks;
     private int blurRadius = ModuleSettings.BLUR_DEFAULT;
@@ -186,19 +203,52 @@ public final class XposedInit extends XposedModule {
     private final Map<ImageView, Integer> sliderIconColors = new WeakHashMap<>();
     private final Set<ImageView> volumeSliderIcons = Collections.newSetFromMap(new WeakHashMap<>());
     private final Map<View, int[]> notificationContentInsets = new WeakHashMap<>();
+    private final Set<View> notificationPaddingHeightChanges = Collections.newSetFromMap(new WeakHashMap<>());
 
     private ThemeColorHooks themeColorHooks;
+    private final ImageDrawHookChain imageDrawHooks = new ImageDrawHookChain();
+
+    private boolean nightBlacklistInstalled;
 
     @Override public void onPackageReady(PackageReadyParam param) {
-        // Theme targets are generated from the device's first-party application inventory.
-        if (themeColorHooks == null && ThemeColorTargets.contains(param.getPackageName())) {
+        if (!nightBlacklistInstalled) {
+            try {
+                new NightModeBlacklistHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)).install(param.getClassLoader(),
+                        (name, method, hooker, parameters) -> install(param.getClassLoader(), name, method, hooker, parameters),
+                        this::deoptimize, (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error));
+                nightBlacklistInstalled = true;
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot install native dark blacklist listener", error);
+            }
+        }
+        if (themeColorHooks == null && DarkBackgroundTargets.contains(param.getPackageName())) {
             try {
                 themeColorHooks = new ThemeColorHooks(param.getPackageName(), getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
                         (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error));
-                themeColorHooks.install(param.getClassLoader(), (target, hooker) -> hook(target).intercept(hooker), this::deoptimize);
+                themeColorHooks.install(param.getClassLoader(), this::installDrawingHook, this::deoptimize);
             } catch (RuntimeException | LinkageError error) {
-                log(Log.ERROR, "FlymeMod", "Cannot initialize system theme color", error);
+                log(Log.ERROR, "FlymeMod", "Cannot initialize appearance background hooks", error);
             }
+        }
+        try {
+            if (!"dev.rikumi.flymemod".equals(param.getPackageName())) {
+                SystemIconPackHooks icons = new SystemIconPackHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                        (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+                ClassLoader iconLoader = param.getClassLoader();
+                SignalHooks.Installer iconInstaller = (name, method, hooker, parameters) ->
+                        install(iconLoader, name, method, hooker, parameters);
+                icons.install(iconLoader, iconInstaller, this::deoptimize);
+                if ("com.android.systemui".equals(param.getPackageName()))
+                    icons.installSystemUi(iconLoader, iconInstaller);
+                if ("com.android.settings".equals(param.getPackageName()))
+                    icons.installSettings(iconLoader, iconInstaller, this::deoptimize);
+                if ("com.meizu.flyme.launcher".equals(param.getPackageName()))
+                    new SystemIconPackLauncherHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                            (message, error) -> log(Log.ERROR, "FlymeMod", message, error))
+                            .install(iconLoader, iconInstaller, this::deoptimize);
+            }
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot initialize scoped system application icon pack", error);
         }
         installPackageHooks(param.getPackageName(), param.getClassLoader());
     }
@@ -206,8 +256,33 @@ public final class XposedInit extends XposedModule {
     @Override public void onSystemServerStarting(SystemServerStartingParam param) {
         ClassLoader loader = param.getClassLoader();
         try {
+            ZygoteRestartBootHooks.install(loader,
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                    () -> getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)
+                            .getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, true),
+                    this::deoptimize,
+                    (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve Zygote restart APEX boot notification", error);
+        }
+        try {
+            new AnrDialogHooks((message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                    .install(loader, this::installDrawingHook);
+        } catch (RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot initialize native ANR theme hooks", error);
+        }
+        try {
+            new StatusBarOverlayServiceHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                    (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                    .install(loader, (name, method, hooker, parameters) ->
+                            install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve status-bar overlay lifecycle", error);
+        }
+        try {
             BackGestureServiceHooks.install(loader, getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
-                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize,
+                    (message,error) -> log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme side gesture width", error);
         }
@@ -238,6 +313,17 @@ public final class XposedInit extends XposedModule {
     }
 
     private void installPackageHooks(String packageName, ClassLoader loader) {
+        if ("com.android.settings".equals(packageName)) {
+            try {
+                FingerprintAnimationHooks.installSettings(loader,
+                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                        this::deoptimize,
+                        () -> getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)
+                                .getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, true));
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve fingerprint animation settings", error);
+            }
+        }
         if ("com.meizu.flyme.sdkstage".equals(packageName)) {
             try {
                 new NightModeAppHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
@@ -342,6 +428,7 @@ public final class XposedInit extends XposedModule {
             }
             try {
                 new LauncherIconEditHooks(loader, this::loadSettings, () -> editAppIconNameEnabled,
+                        () -> iconContourEnabled, () -> menuContourEnabled,
                         (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error)).install(
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
             } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
@@ -371,6 +458,21 @@ public final class XposedInit extends XposedModule {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme recent-task classes", e);
             }
             try {
+                activeRecentsCornerHooks = new RecentsCornerHooks(loader, this::loadSettings,
+                        () -> recentsCornerEnabled, () -> recentsCornerDp,
+                        (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+                activeRecentsCornerHooks.install(
+                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme recent-task corner geometry", error);
+            }
+            try {
+                new RecentsThumbnailBorderHooks(loader,getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)).install(
+                        (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);
+            } catch(ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR,"FlymeMod","Cannot resolve recent-task thumbnail border",error);
+            }
+            try {
                 new FolderHooks(loader,
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                         () -> folderPagingEnabled, () -> folderCenterEnabled).install();
@@ -378,7 +480,22 @@ public final class XposedInit extends XposedModule {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme folder classes", e);
             }
             try {
-                new LauncherContourHooks(loader, this::loadSettings, () -> folderContourEnabled,
+                new LauncherIconPackPreviewHooks(loader, this::loadSettings, () -> fixIconPackPreview,
+                        (message,error) -> log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error)).install(
+                        (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);
+                new LauncherPreviewContourHooks(loader, this::loadSettings, () -> iconContourEnabled,
+                        (message,error) -> log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error)).install(
+                        (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);
+                new LauncherEditContourHooks(loader,this::loadSettings,() -> iconContourEnabled,
+                        (message,error) -> log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error)).install(
+                        (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);
+                new LauncherSettingsDialogHooks(loader).install(
+                        (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);
+            } catch(ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR,"FlymeMod","Cannot resolve launcher icon previews or accent controls",error);
+            }
+            try {
+                new LauncherContourHooks(loader, this::loadSettings, () -> iconContourEnabled,
                         () -> widgetContourEnabled, () -> menuContourEnabled, () -> folderRadiusEnabled,
                         () -> iconContourEnabled, () -> folderMenuAlignmentEnabled, () -> folderRadiusDp, (message, error) -> log(Log.ERROR, "FlymeMod", message, error))
                         .install(loader, (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
@@ -395,7 +512,22 @@ public final class XposedInit extends XposedModule {
             }
             return;
         }
+        if("com.flyme.systemuieditor".equals(packageName)) {
+            try {
+                new ClockPreviewFontHooks(loader,getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                        (message,error) -> log(Log.ERROR,"FlymeMod",message,error)).install(
+                        (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);
+            } catch(ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR,"FlymeMod","Cannot resolve clock editor preview classes",error);
+            }
+        }
         if (!"com.android.systemui".equals(packageName)) return;
+        try {
+            new SplashScreenBlackHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)).install(loader,
+                    (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);
+        } catch(ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR,"FlymeMod","Cannot resolve system splash background classes",error);
+        }
         try {
             new AppNavigationHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
                     (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
@@ -418,6 +550,15 @@ public final class XposedInit extends XposedModule {
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve lockscreen long press edit hooks", error);
         }
+        try {
+            FingerprintAnimationHooks.installSystemUi(loader,
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                    this::deoptimize,
+                    () -> getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)
+                            .getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, true));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve fingerprint animation effects", error);
+        }
 
         install(loader, "com.android.systemui.statusbar.phone.ui.StatusBarIconControllerImpl",
                 "setIconVisibility", chain -> {
@@ -438,6 +579,13 @@ public final class XposedInit extends XposedModule {
                     return chain.proceed(hookedArgs.toArray());
                 }, String.class, boolean.class);
 
+        try {
+            activeStatusBarLyricHooks = new StatusBarLyricHooks(this::loadSettings, () -> statusBarLyricAvoidEnabled);
+            activeStatusBarLyricHooks.install(loader, (name, method, hooker, parameters) ->
+                    install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve status-bar lyric clock hooks", error);
+        }
         try {
             activeClockFontHooks = new ClockFontHooks(loader, this::loadSettings, () -> lockClockFont, () -> lockClockFont,
                     () -> statusBarClockFont, () -> controlCenterClockFont,
@@ -540,11 +688,21 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve notification assistant suggestion hooks", error);
         }
         try {
-            activeBackGestureWidthHooks = new BackGestureWidthHooks(loader, this::loadSettings,
-                    () -> backGestureWidthEnabled, () -> backGestureWidthDp,
-                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
-            activeBackGestureWidthHooks.install(
+            activeBackGestureBackgroundHooks = new BackGestureBackgroundHooks(loader, this::loadSettings,
+                    () -> backGestureDarkBackgroundEnabled, () -> backGestureDarkOpacity);
+            activeBackGestureBackgroundHooks.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve back gesture background", error);
+        }
+        try {
+            activeBackGestureWidthHooks = new BackGestureWidthHooks(loader, this::loadSettings,
+                    () -> backGestureWidthEnabled, () -> backGestureWidthDp, () -> backGestureRemoveSmart,
+                    (message, error) -> log(error==null?Log.INFO:Log.ERROR, "FlymeMod", message, error));
+            new BackGestureSmartHooks(loader, this::loadSettings, () -> backGestureRemoveSmart).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+            activeBackGestureWidthHooks.install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),this::deoptimize);
         } catch (ReflectiveOperationException error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve back gesture width", error);
         }
@@ -555,10 +713,20 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve mBack assistant fallback", error);
         }
         try {
-            new MBackRippleHooks(loader).install(
-                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+            activeMBackRippleHooks=new MBackRippleHooks(loader, () -> gestureBarWidthEnabled, () -> gestureBarWidthDp,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeMBackRippleHooks.install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),this::deoptimize);
         } catch (ReflectiveOperationException error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve mBack pressed ripple bounds", error);
+        }
+        try {
+            activeGestureBarWidthHooks=new GestureBarWidthHooks(loader,this::loadSettings,
+                    () -> gestureBarWidthEnabled, () -> gestureBarWidthDp);
+            activeGestureBarWidthHooks.install(
+                    (name, method, hooker, parameters) -> install(loader,name,method,hooker,parameters));
+        } catch(ReflectiveOperationException error) {
+            log(Log.ERROR,"FlymeMod","Cannot resolve gesture bar width",error);
         }
         try {
             new MBackTimeoutHooks(loader, this::loadSettings, () -> mbackSystemTimeoutEnabled,
@@ -575,8 +743,9 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve native notification expansion hooks", error);
         }
         try {
-            new HeadsUpWidthHooks(loader, this::loadSettings, () -> headsUpWidthEnabled).install(
-                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+            activeHeadsUpWidthHooks = new HeadsUpWidthHooks(loader, this::loadSettings, () -> headsUpWidthEnabled);
+            activeHeadsUpWidthHooks.install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
         } catch (ReflectiveOperationException e) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve heads-up width classes", e);
         }
@@ -603,6 +772,8 @@ public final class XposedInit extends XposedModule {
             activeColorOsMaterialHooks = new ColorOsMaterialHooks(loader, this::loadSettings,
                     () -> colorOsContourEnabled, () -> networkSplitStyle != 0, () -> notificationContourEnabled,
                     () -> notificationLightOpacity, activeTileCornerHooks,
+                    view -> notificationCustomCornersEnabled && activeNotificationAppearanceHooks != null
+                            ? activeNotificationAppearanceHooks.radius(view) : Double.NaN,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
             activeColorOsMaterialHooks.install(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
@@ -624,6 +795,21 @@ public final class XposedInit extends XposedModule {
                     (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters));
         } catch (ReflectiveOperationException | RuntimeException error) {
             log(Log.ERROR,"FlymeMod","Cannot resolve notification action bar background",error);
+        }
+        try {
+            activeChargingInfoHooks = new ChargingInfoHooks(loader, this::loadSettings,
+                    () -> statusBarChargingInfoMode, (view, reference) -> {
+                        if (activeClockFontHooks != null) activeClockFontHooks.applyStatusBarFont(view, reference);
+                        else {
+                            view.setTypeface(reference.getTypeface());
+                            view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, reference.getTextSize());
+                            view.setIncludeFontPadding(reference.getIncludeFontPadding());
+                        }
+                    }, (message, error) -> log(Log.ERROR, "FlymeMod", message, error),
+                    message -> log(Log.INFO, "FlymeMod", message));
+            activeChargingInfoHooks.install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme charging information view", error);
         }
         try {
             new SignalHooks(loader,
@@ -962,6 +1148,19 @@ public final class XposedInit extends XposedModule {
 
     private void installNotificationAppearanceLayout(ClassLoader loader) {
         String row = "com.android.systemui.statusbar.notification.row.";
+        // Flyme's redacted base/live public templates bypass getViewHeight():
+        // the row returns the inner public view height without the content insets.
+        install(loader, row + "ExpandableNotificationRow", "getMinHeight", chain ->
+                notificationPublicHeight((View) chain.getThisObject(), (Integer) chain.proceed()));
+        install(loader, row + "ExpandableNotificationRow", "onLayout", chain -> {
+            Object result = chain.proceed();
+            View notification = (View) chain.getThisObject();
+            // Padding changes before native onLayout snapshots intrinsic height.
+            // Notify after children have their final bounds, including restoration.
+            if (notificationPaddingHeightChanges.remove(notification))
+                notification.getClass().getMethod("notifyHeightChanged", boolean.class).invoke(notification, false);
+            return result;
+        }, boolean.class, int.class, int.class, int.class, int.class);
         // The content container includes padding in measured, collapsed, expanded
         // and heads-up heights. Header-only padding cannot enlarge the card.
         install(loader, row + "NotificationContentView", "onMeasure", chain -> {
@@ -969,7 +1168,12 @@ public final class XposedInit extends XposedModule {
             loadSettings(content.getContext());
             int requestedPadding = notificationCustomCornersEnabled && activeNotificationAppearanceHooks != null
                     ? Math.round(activeNotificationAppearanceHooks.radius(content) * .25f) : 0;
+            int previousExtra = notificationAddedVerticalPadding(content);
             applyNotificationContentPadding(content, requestedPadding);
+            if (previousExtra != notificationAddedVerticalPadding(content)) {
+                View notification = (View) content.getClass().getField("mContainingNotification").get(content);
+                if (notification != null) notificationPaddingHeightChanges.add(notification);
+            }
             // measureChildWithMargins subtracts outer padding from both expanded and
             // heads-up caps. Contracted measurement already adds it before measuring.
             java.lang.reflect.Field maxHeight = content.getClass().getField("mNotificationMaxHeight");
@@ -1826,6 +2030,22 @@ public final class XposedInit extends XposedModule {
         return insets == null ? 0 : 2 * insets[4];
     }
 
+    private int notificationPublicHeight(View notification, int nativeHeight) throws ReflectiveOperationException {
+        if (!notification.getClass().getField("mShowingPublic").getBoolean(notification)) return nativeHeight;
+        View content = (View) notification.getClass().getMethod("getShowingLayout").invoke(notification);
+        if (content == null) return nativeHeight;
+        int extra = notificationAddedVerticalPadding(content);
+        if (extra == 0) return nativeHeight;
+        Object wrapper = content.getClass().getMethod("getNotificationViewWrapper").invoke(content);
+        if (wrapper == null) return nativeHeight;
+        // Match only the two direct getHeight() branches of Flyme getMinHeight().
+        // Other publicVersion templates already include padding via getViewHeight().
+        boolean live = (Boolean) notification.getClass().getMethod("isLiveNotification").invoke(notification);
+        View publicView = live ? (View) wrapper.getClass().getMethod("getLivePublicView").invoke(wrapper) : null;
+        if (publicView == null) publicView = (View) wrapper.getClass().getMethod("getBasePublicView").invoke(wrapper);
+        return publicView == null ? nativeHeight : nativeHeight + extra;
+    }
+
     private void installMonochromeNotificationActions(ClassLoader loader) {
         String row = "com.android.systemui.statusbar.notification.row.";
         try {
@@ -2002,6 +2222,7 @@ public final class XposedInit extends XposedModule {
             moduleSettingsObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
                 @Override public void onChange(boolean selfChange) {
                     boolean previousBackWidth = backGestureWidthEnabled;
+                    boolean previousBackSmart = backGestureRemoveSmart;
                     int previousBackDp = backGestureWidthDp;
                     boolean previousWhiteActive = whiteActiveEnabled;
                     int previousOpacity = whiteActiveOpacity;
@@ -2010,10 +2231,17 @@ public final class XposedInit extends XposedModule {
                     int previousLightOpacity = lightBackgroundOpacity;
                     synchronized (XposedInit.this) { settingsLoaded = false; }
                     loadSettings(appContext);
+                    if (activeBackGestureBackgroundHooks != null) activeBackGestureBackgroundHooks.refresh();
+                    if(activeMBackRippleHooks!=null)activeMBackRippleHooks.refresh();
+                    if(activeGestureBarWidthHooks!=null)activeGestureBarWidthHooks.refresh();
                     if (activeBackGestureWidthHooks != null && (previousBackWidth != backGestureWidthEnabled
-                            || previousBackDp != backGestureWidthDp)) activeBackGestureWidthHooks.refresh();
+                            || previousBackDp != backGestureWidthDp || previousBackSmart != backGestureRemoveSmart)) activeBackGestureWidthHooks.refresh();
                     reapplyStatusIconVisibility();
+                    if (activeHeadsUpWidthHooks != null) activeHeadsUpWidthHooks.refresh();
                     if (activeClockFontHooks != null) activeClockFontHooks.refresh();
+                    if (activeChargingInfoHooks != null) activeChargingInfoHooks.refresh();
+                    if (activeStatusBarLyricHooks != null) activeStatusBarLyricHooks.refresh();
+                    if (activeRecentsCornerHooks != null) activeRecentsCornerHooks.refresh();
                     if (activeCarrierVisibilityHooks != null) activeCarrierVisibilityHooks.refresh();
                     if (activeSimpleQsTextHooks != null) activeSimpleQsTextHooks.refresh();
                     if (activeCombinedSettingsButtonHooks != null) activeCombinedSettingsButtonHooks.refresh();
@@ -2074,12 +2302,24 @@ public final class XposedInit extends XposedModule {
                         : Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
                                 Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX, cursor.getInt(notificationSaturationColumn)));
                 notificationContourEnabled = notificationContourColumn >= 0 && cursor.getInt(notificationContourColumn) != 0;
+                int backDarkColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND);
+                backGestureDarkBackgroundEnabled = backDarkColumn < 0 || cursor.getInt(backDarkColumn) != 0;
+                int backDarkOpacityColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_DARK_OPACITY);
+                backGestureDarkOpacity = ModuleSettings.backGestureDarkOpacity(backDarkOpacityColumn < 0
+                        ? ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT : cursor.getInt(backDarkOpacityColumn));
+                int backSmartColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_REMOVE_SMART);
+                backGestureRemoveSmart = backSmartColumn < 0 || cursor.getInt(backSmartColumn) != 0;
                 int backWidthColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED);
                 backGestureWidthEnabled = backWidthColumn >= 0 && cursor.getInt(backWidthColumn) != 0;
                 int backDpColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_WIDTH_DP);
                 backGestureWidthDp = backDpColumn < 0 ? ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT
                         : Math.max(0, cursor.getInt(backDpColumn));
                 int mbackColumn = cursor.getColumnIndex(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
+                int gestureBarColumn=cursor.getColumnIndex(ModuleSettings.GESTURE_BAR_WIDTH_ENABLED);
+                gestureBarWidthEnabled=gestureBarColumn<0 || cursor.getInt(gestureBarColumn)!=0;
+                int gestureBarDpColumn=cursor.getColumnIndex(ModuleSettings.GESTURE_BAR_WIDTH_DP);
+                gestureBarWidthDp=ModuleSettings.gestureBarWidth(gestureBarDpColumn<0?
+                        ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT:cursor.getInt(gestureBarDpColumn));
                 mbackSystemTimeoutEnabled = mbackColumn >= 0 && cursor.getInt(mbackColumn) != 0;
                 int mbackAssistantColumn = cursor.getColumnIndex(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME);
                 mbackMissingAssistantHomeEnabled = mbackAssistantColumn >= 0 && cursor.getInt(mbackAssistantColumn) != 0;
@@ -2102,6 +2342,11 @@ public final class XposedInit extends XposedModule {
                 whiteActiveOpacity = opacityColumn < 0 ? 90 : Math.max(50, Math.min(100, cursor.getInt(opacityColumn)));
                 int sliderCornersColumn = cursor.getColumnIndex(ModuleSettings.SLIDER_ACTIVE_CORNERS);
                 sliderActiveCornersEnabled = sliderCornersColumn >= 0 && cursor.getInt(sliderCornersColumn) != 0;
+                int recentsCornerColumn = cursor.getColumnIndex(ModuleSettings.RECENTS_CORNER_ENABLED);
+                recentsCornerEnabled = recentsCornerColumn >= 0 && cursor.getInt(recentsCornerColumn) != 0;
+                int recentsCornerDpColumn = cursor.getColumnIndex(ModuleSettings.RECENTS_CORNER_DP);
+                recentsCornerDp = recentsCornerDpColumn < 0 ? RecentsCornerGeometry.MIN_DP
+                        : RecentsCornerGeometry.clamp(cursor.getInt(recentsCornerDpColumn));
                 int stackedRecentsColumn = cursor.getColumnIndex(ModuleSettings.STACKED_RECENTS);
                 stackedRecentsEnabled = stackedRecentsColumn >= 0 && cursor.getInt(stackedRecentsColumn) != 0;
                 // LauncherApplication.onCreate loads this snapshot before preloading
@@ -2147,6 +2392,10 @@ public final class XposedInit extends XposedModule {
                 int aodFontColumn = cursor.getColumnIndex(ModuleSettings.AOD_CLOCK_FONT);
                 aodClockFont = aodFontColumn < 0 ? 0 : Math.max(0, Math.min(ModuleSettings.CLOCK_FONT_NAMES.length - 1, cursor.getInt(aodFontColumn)));
                 int statusFontColumn = cursor.getColumnIndex(ModuleSettings.STATUS_BAR_CLOCK_FONT);
+                int lyricAvoidColumn = cursor.getColumnIndex(ModuleSettings.STATUS_BAR_LYRIC_AVOID);
+                statusBarLyricAvoidEnabled = lyricAvoidColumn < 0 ? ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT : cursor.getInt(lyricAvoidColumn) != 0;
+                int chargingInfoColumn = cursor.getColumnIndex(ModuleSettings.STATUS_BAR_CHARGING_INFO);
+                statusBarChargingInfoMode = chargingInfoColumn < 0 ? ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT : Math.max(0, Math.min(2, cursor.getInt(chargingInfoColumn)));
                 statusBarClockFont = statusFontColumn < 0 ? 0 : Math.max(0, Math.min(ModuleSettings.CLOCK_FONT_NAMES.length - 1, cursor.getInt(statusFontColumn)));
                 int controlCenterFontColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_CLOCK_FONT);
                 controlCenterClockFont = controlCenterFontColumn < 0 ? 0 : Math.max(0, Math.min(ModuleSettings.CLOCK_FONT_NAMES.length - 1, cursor.getInt(controlCenterFontColumn)));
@@ -2167,7 +2416,7 @@ public final class XposedInit extends XposedModule {
                 int controlCenterDateUpColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP);
                 controlCenterClockDateUpEnabled = controlCenterDateUpColumn >= 0 && cursor.getInt(controlCenterDateUpColumn) != 0;
                 int controlCenterDateUpDistanceColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE);
-                controlCenterClockDateUpDistance = controlCenterDateUpDistanceColumn < 0 ? 16
+                controlCenterClockDateUpDistance = controlCenterDateUpDistanceColumn < 0 ? ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE_DEFAULT
                         : Math.max(0, Math.min(40, cursor.getInt(controlCenterDateUpDistanceColumn)));
                 int buttonsUpColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_BUTTONS_UP);
                 controlCenterButtonsUpEnabled = buttonsUpColumn >= 0 && cursor.getInt(buttonsUpColumn) != 0;
@@ -2254,12 +2503,12 @@ public final class XposedInit extends XposedModule {
                 lockWidgetStartupFixEnabled = lockWidgetColumn >= 0 && cursor.getInt(lockWidgetColumn) != 0;
                 int lockLongPressColumn = cursor.getColumnIndex(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT);
                 blockLockscreenLongPressEditEnabled = lockLongPressColumn >= 0 && cursor.getInt(lockLongPressColumn) != 0;
+                int fixPackColumn = cursor.getColumnIndex(ModuleSettings.FIX_ICON_PACK_PREVIEW);
+                fixIconPackPreview = fixPackColumn < 0 || cursor.getInt(fixPackColumn) != 0;
                 int iconContourColumn = cursor.getColumnIndex(ModuleSettings.ICON_CONTOUR);
                 iconContourEnabled = iconContourColumn >= 0 && cursor.getInt(iconContourColumn) != 0;
                 int folderMenuAlignmentColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_MENU_ALIGNMENT);
                 folderMenuAlignmentEnabled = folderMenuAlignmentColumn >= 0 && cursor.getInt(folderMenuAlignmentColumn) != 0;
-                int folderContourColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_CONTOUR);
-                folderContourEnabled = folderContourColumn >= 0 && cursor.getInt(folderContourColumn) != 0;
                 int widgetContourColumn = cursor.getColumnIndex(ModuleSettings.WIDGET_CONTOUR);
                 widgetContourEnabled = widgetContourColumn >= 0 && cursor.getInt(widgetContourColumn) != 0;
                 int menuContourColumn = cursor.getColumnIndex(ModuleSettings.MENU_CONTOUR);
@@ -2276,6 +2525,7 @@ public final class XposedInit extends XposedModule {
                         + ", light=" + lightEnabled + ", darken=" + darkenEnabled
                         + ", headsUpWidth=" + headsUpWidthEnabled + ", whiteActive=" + whiteActiveEnabled + ", notificationCorners=" + notificationCustomCornersEnabled
                         + ", originalNotificationIcons=" + originalNotificationIconsEnabled
+                        + ", statusBarChargingInfo=" + statusBarChargingInfoMode
                         + ", monochromeNotificationActions=" + monochromeNotificationActionsEnabled
                         + ", volumeFirstFour=" + volumeFirstFourMode
                         + ", limitAodMovement=" + limitAodMovementEnabled
@@ -2347,9 +2597,16 @@ public final class XposedInit extends XposedModule {
                          Class<?>... parameters) {
         try {
             Method target = Class.forName(name, false, loader).getDeclaredMethod(method, parameters);
-            hook(target).intercept(hooker);
+            installDrawingHook(target, hooker);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             log(Log.ERROR, "FlymeMod", "Cannot hook " + name + "#" + method, e);
         }
+    }
+
+    private void installDrawingHook(java.lang.reflect.Executable target, XposedInterface.Hooker hooker) {
+        if (target.getDeclaringClass() == ImageView.class && target.getName().equals("onDraw")
+                && java.util.Arrays.equals(target.getParameterTypes(), new Class<?>[]{android.graphics.Canvas.class})) {
+            if (imageDrawHooks.add(hooker)) hook(target).intercept(imageDrawHooks);
+        } else hook(target).intercept(hooker);
     }
 }

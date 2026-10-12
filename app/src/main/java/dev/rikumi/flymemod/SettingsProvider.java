@@ -11,9 +11,30 @@ import android.os.Process;
 
 /** Read-only settings bridge, accessible only to this app and supported system apps. */
 public final class SettingsProvider extends ContentProvider {
+    private final ChargingInputReader chargingInputReader = new ChargingInputReader();
     @Override public boolean onCreate() { return true; }
 
     @Override public android.os.Bundle call(String method, String arg, android.os.Bundle extras) {
+        if (ChargingInfo.METHOD.equals(method)) {
+            int uid = Binder.getCallingUid();
+            boolean allowed = uid == Process.myUid();
+            try { allowed |= uid == getContext().getPackageManager().getPackageUid("com.android.systemui", 0); }
+            catch (android.content.pm.PackageManager.NameNotFoundException ignored) {}
+            if (!allowed) throw new SecurityException("Only SystemUI may read charging input");
+            android.os.Bundle result = new android.os.Bundle();
+            int mode = ModuleSettings.preferences(getContext()).getInt(ModuleSettings.STATUS_BAR_CHARGING_INFO, ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT);
+            if (mode == ChargingInfo.POWER || mode == ChargingInfo.VOLTAGE_CURRENT) {
+                long identity = Binder.clearCallingIdentity();
+                try {
+                    String raw = chargingInputReader.read();
+                    result.putString("sample_micro", raw);
+                    result.putString("sample", ChargingInfo.legacySample(raw));
+                    result.putString("status", chargingInputReader.status());
+                }
+                finally { Binder.restoreCallingIdentity(identity); }
+            }
+            return result;
+        }
         boolean folderMetrics = LauncherFolderMetrics.METHOD.equals(method);
         if (!folderMetrics && !"hide_launcher_application".equals(method)) return super.call(method, arg, extras);
         int caller = Binder.getCallingUid();
@@ -33,6 +54,10 @@ public final class SettingsProvider extends ContentProvider {
                     throw new IllegalArgumentException("Invalid folder metric: " + key);
                 editor.putFloat(LauncherFolderMetrics.PREFIX + key, size);
             }
+            float textWidth=extras.getFloat("textWidth",extras.getFloat("folderCellWidthPx"));
+            if(!Float.isFinite(textWidth) || textWidth<=0f || textWidth>600f)
+                throw new IllegalArgumentException("Invalid folder metric: textWidth");
+            editor.putFloat(LauncherFolderMetrics.PREFIX+"textWidth",textWidth);
             if (!editor.commit()) throw new IllegalStateException("保存文件夹布局失败");
             return android.os.Bundle.EMPTY;
         }
@@ -45,6 +70,8 @@ public final class SettingsProvider extends ContentProvider {
                 ModuleSettings.HIDDEN_LAUNCHER_APPS, java.util.Collections.emptySet()));
         packages.add(arg);
         if (!prefs.edit().putStringSet(ModuleSettings.HIDDEN_LAUNCHER_APPS, packages)
+                .putString(ModuleSettings.HIDDEN_LAUNCHER_APP_ORDER,String.join("\n",HiddenAppOrder.reconcile(
+                        packages,prefs.getString(ModuleSettings.HIDDEN_LAUNCHER_APP_ORDER,""))))
                 .putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true).commit())
             throw new IllegalStateException("保存隐藏应用失败");
         getContext().getContentResolver().notifyChange(ModuleSettings.URI, null);
@@ -80,6 +107,8 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.LOCK_CLOCK_FONT);
         columns.add(ModuleSettings.AOD_CLOCK_FONT);
         columns.add(ModuleSettings.STATUS_BAR_CLOCK_FONT);
+        columns.add(ModuleSettings.STATUS_BAR_LYRIC_AVOID);
+        columns.add(ModuleSettings.STATUS_BAR_CHARGING_INFO);
         columns.add(ModuleSettings.CONTROL_CENTER_CLOCK_FONT);
         columns.add(ModuleSettings.LOCK_CLOCK_MONOSPACE);
         columns.add(ModuleSettings.AOD_CLOCK_MONOSPACE);
@@ -126,15 +155,21 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS);
         columns.add(ModuleSettings.FOLDER_CLOSE_TARGET);
         columns.add(ModuleSettings.EDIT_APP_ICON_NAME);
+        columns.add(ModuleSettings.SYSTEM_ICON_PACK);
         columns.add(ModuleSettings.LOCK_WIDGET_STARTUP_FIX);
         columns.add(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT);
         columns.add(ModuleSettings.HIDE_CARRIER);
         columns.add(ModuleSettings.LAUNCHER_HIDE_APP_MENU);
         columns.add(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS);
+        columns.add(ModuleSettings.RECENTS_CORNER_ENABLED);
+        columns.add(ModuleSettings.RECENTS_CORNER_DP);
         columns.add(ModuleSettings.COLOROS_CONTOUR);
+        columns.add(ModuleSettings.BACK_GESTURE_REMOVE_SMART);
         columns.add(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED);
         columns.add(ModuleSettings.BACK_GESTURE_WIDTH_DP);
         columns.add(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
+        columns.add(ModuleSettings.GESTURE_BAR_WIDTH_ENABLED);
+        columns.add(ModuleSettings.GESTURE_BAR_WIDTH_DP);
         columns.add(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME);
         columns.add(ModuleSettings.NOTIFICATION_CONTOUR);
         columns.add(ModuleSettings.CONTROL_CENTER_STYLE);
@@ -155,13 +190,18 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.STORE_HIDE_HIGH_RATED);
         columns.add(ModuleSettings.STORE_HIDE_EVERYONE_WATCHING);
         columns.add(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND);
-        columns.add(ModuleSettings.SYSTEM_THEME_COLOR_ENABLED);
-        columns.add(ModuleSettings.SYSTEM_THEME_COLOR);
+        columns.add(ModuleSettings.WIRELESS_DEBUG_THEME_FIX);
+        columns.add(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK);
+        columns.add(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION);
+        columns.add(ModuleSettings.DARK_APP_WHITELIST_MODE);
+        columns.add(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE);
+        columns.add(ModuleSettings.FIX_ICON_PACK_PREVIEW);
         columns.add(ModuleSettings.ICON_CONTOUR);
         columns.add(ModuleSettings.FOLDER_MENU_ALIGNMENT);
-        columns.add(ModuleSettings.FOLDER_CONTOUR);
         columns.add(ModuleSettings.WIDGET_CONTOUR);
         columns.add(ModuleSettings.MENU_CONTOUR);
+        columns.add(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND);
+        columns.add(ModuleSettings.BACK_GESTURE_DARK_OPACITY);
         MatrixCursor cursor = new MatrixCursor(columns.toArray(new String[0]));
         java.util.List<Object> values = new java.util.ArrayList<>(java.util.Arrays.asList(new Object[]{prefs.getBoolean(ModuleSettings.SCALE, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.LIGHT, false) ? 1 : 0,
@@ -220,6 +260,8 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getInt(ModuleSettings.LOCK_CLOCK_FONT, 0));
         values.add(prefs.getInt(ModuleSettings.AOD_CLOCK_FONT, 0));
         values.add(prefs.getInt(ModuleSettings.STATUS_BAR_CLOCK_FONT, 0));
+        values.add(prefs.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT) ? 1 : 0);
+        values.add(Math.max(0, Math.min(2, prefs.getInt(ModuleSettings.STATUS_BAR_CHARGING_INFO, ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT))));
         values.add(prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_FONT, 0));
         values.add(prefs.getBoolean(ModuleSettings.LOCK_CLOCK_MONOSPACE, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.AOD_CLOCK_MONOSPACE, false) ? 1 : 0);
@@ -239,7 +281,8 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_SPACING_ENABLED, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true)
                 ? String.join("\n", prefs.getStringSet(ModuleSettings.HIDDEN_LAUNCHER_APPS, java.util.Collections.emptySet())) : "");
-        values.add(Math.max(0, Math.min(40, prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE, 16))));
+        values.add(Math.max(0, Math.min(40, prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE,
+                ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE_DEFAULT))));
         values.add(ModuleSettings.networkSplitStyle(prefs) != 0 ? 1 : 0);
         // Retain the provider column for compatibility; radiant backgrounds use fixed 90% alpha.
         values.add(90);
@@ -275,16 +318,23 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.FOLDER_CLOSE_TARGET, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.EDIT_APP_ICON_NAME, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.LOCK_WIDGET_STARTUP_FIX, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.HIDE_CARRIER, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.LAUNCHER_HIDE_APP_MENU, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.RECENTS_CORNER_ENABLED, false) ? 1 : 0);
+        values.add(RecentsCornerSettings.radiusDp(getContext(), prefs));
         values.add(prefs.getBoolean(ModuleSettings.COLOROS_CONTOUR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, true) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_MAX_DP, 0),
                 prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP, ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT))));
         values.add(prefs.getBoolean(ModuleSettings.MBACK_SYSTEM_TIMEOUT, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.GESTURE_BAR_WIDTH_ENABLED, true) ? 1 : 0);
+        values.add(ModuleSettings.gestureBarWidth(prefs.getInt(ModuleSettings.GESTURE_BAR_WIDTH_DP,
+                ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT)));
         values.add(prefs.getBoolean(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CONTOUR, false) ? 1 : 0);
         values.add(ModuleSettings.controlCenterStyle(prefs));
@@ -305,13 +355,19 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_HIGH_RATED, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_EVERYONE_WATCHING, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.SYSTEM_THEME_COLOR_ENABLED, false) ? 1 : 0);
-        values.add(prefs.getInt(ModuleSettings.SYSTEM_THEME_COLOR, ModuleSettings.SYSTEM_THEME_COLOR_DEFAULT));
+        values.add(prefs.getBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, true) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, true) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, true) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, true) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, true) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FIX_ICON_PACK_PREVIEW, true) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.ICON_CONTOUR, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.FOLDER_MENU_ALIGNMENT, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.FOLDER_CONTOUR, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.WIDGET_CONTOUR, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.MENU_CONTOUR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, true) ? 1 : 0);
+        values.add(ModuleSettings.backGestureDarkOpacity(prefs.getInt(ModuleSettings.BACK_GESTURE_DARK_OPACITY,
+                ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT)));
         cursor.addRow(values);
         return cursor;
     }

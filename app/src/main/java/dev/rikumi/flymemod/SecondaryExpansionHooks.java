@@ -427,18 +427,10 @@ final class SecondaryExpansionHooks {
             tile.setPivotX(original.targetX); tile.setPivotY(original.targetY);
             return;
         }
-        float left = Float.POSITIVE_INFINITY, right = Float.NEGATIVE_INFINITY;
-        if (rowRoot instanceof ViewGroup group) {
-            for (int i = 0; i < group.getChildCount(); i++) {
-                View sibling = group.getChildAt(i);
-                if (sibling.getVisibility() == View.GONE || sibling.getTop() > cell.getTop() + 1
-                        || sibling.getBottom() <= cell.getTop() + 1) continue;
-                left = Math.min(left, sibling.getLeft());
-                right = Math.max(right, sibling.getRight());
-            }
-        }
-        float center = Float.isFinite(left) ? (left + right) / 2f : rowRoot.getWidth() / 2f;
-        original.targetX = center - coordinate(tile, rowRoot, false);
+        // Sparse rows must share the same horizontal pivot as complete rows.
+        // Convert the screen-wide shade root's center into each tile's local coordinates.
+        View screenRoot = state.full.getRootView();
+        original.targetX = screenRoot.getWidth() / 2f - coordinate(tile, screenRoot, false);
         original.targetY = coordinate(cell, rowRoot, true) - coordinate(tile, rowRoot, true);
         original.calculated = true;
         tile.setPivotX(original.targetX); tile.setPivotY(original.targetY);

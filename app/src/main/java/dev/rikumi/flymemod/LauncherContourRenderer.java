@@ -6,7 +6,7 @@ import android.graphics.*;
 import android.view.View;
 import java.nio.charset.StandardCharsets;
 
-/** Uses the exact AGSL assets and QS light/night uniforms used by ColorOsMaterialHooks. */
+/** Shared white contour geometry for backgrounds and alpha silhouettes. */
 final class LauncherContourRenderer {
     private final RuntimeShader round, nativeCurve;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -19,10 +19,11 @@ final class LauncherContourRenderer {
     private int lastGeneration, lastWidth, lastHeight;
     private float lastStroke;
 
-    LauncherContourRenderer(View view) throws Exception {
-        Context module = view.getContext().createPackageContext("dev.rikumi.flymemod", 0);
+    LauncherContourRenderer(View view) throws Exception { this(view.getContext()); }
+    LauncherContourRenderer(Context context) throws Exception {
+        Context module = context.createPackageContext("dev.rikumi.flymemod", 0);
         round = new RuntimeShader(source(module, "contour_round"));
-        nativeCurve = new RuntimeShader(source(module, "contour_native_path"));
+        nativeCurve = new RuntimeShader(source(module, "contour_icon_path"));
     }
     private static String source(Context context, String name) throws Exception {
         try (java.io.InputStream input = context.getAssets().open("coloros_material/" + name + ".agsl")) {
@@ -33,6 +34,9 @@ final class LauncherContourRenderer {
         draw(view, canvas, bounds, radius, 1f, null);
     }
     void draw(View view, Canvas canvas, RectF bounds, float radius, float alpha, Bitmap mask) {
+        draw(view.getContext(),canvas,bounds,radius,alpha,mask);
+    }
+    void draw(Context context, Canvas canvas, RectF bounds, float radius, float alpha, Bitmap mask) {
         if (bounds.isEmpty() || alpha <= 0) return;
         RuntimeShader shader = mask == null ? round : nativeCurve;
         if (mask != null) {
@@ -48,8 +52,8 @@ final class LauncherContourRenderer {
         shader.setFloatUniform("uRatio", .5f + width/(4f*(width+height)));
         shader.setFloatUniform("u_corner", radius); shader.setFloatUniform("u_weight", .2f);
         shader.setColorUniform("uColor", Color.WHITE);
-        near[0] = far[0] = 2f * view.getResources().getDisplayMetrics().density;
-        boolean night = (view.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+        near[0] = far[0] = 2f * context.getResources().getDisplayMetrics().density;
+        boolean night = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
         near[1] = night ? .2f : .4f;
         shader.setFloatUniform("uNearLineParams", near); shader.setFloatUniform("uFarLineParams", far);

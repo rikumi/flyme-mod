@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 气球资源不可用时的无底色回退。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp" android:height="43.2dp"
+    android:viewportWidth="100" android:viewportHeight="108">
+    <path android:fillColor="#8C8C8C"
+        android:pathData="M50,0C77.614,0 100,22.7 100,50.8C100,78 83.8,91.7 50,108C16.2,91.7 0,78 0,50.8C0,22.7 22.386,0 50,0Z" />
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFF"
+        android:strokeWidth="7" android:strokeLineCap="round"
+        android:pathData="M41.4,17C29.4,20.2 21.3,28.1 18.5,38.5" />
+</vector>

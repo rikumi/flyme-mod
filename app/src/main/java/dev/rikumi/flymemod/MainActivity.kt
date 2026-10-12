@@ -119,18 +119,25 @@ class MainActivity : ComponentActivity() {
         resumeRequest++
     }
 
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            launcherEntry = false
+            intent.removeExtra(ModuleSettings.LAUNCHER_ENTRY_EXTRA)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         readPageRequest()
         setContent {
             val moduleTheme = rememberModuleThemeSettings()
-            val customAccent = moduleTheme.accent
             val darkPage = if (moduleTheme.blackBackground) Color.Black else FLUIX_PAGE_DARK
             MiuixTheme(
-                controller = remember(customAccent, moduleTheme.blackBackground) {
+                controller = remember(moduleTheme.blackBackground) {
                     ThemeController(
                         colorSchemeMode = ColorSchemeMode.System,
-                        lightColors = moduleAccentColors(lightColorScheme(
+                        lightColors = lightColorScheme(
                             primary = Color(0xFF206CFF),
                             background = FLUIX_PAGE_LIGHT,
                             surface = FLUIX_PAGE_LIGHT,
@@ -138,8 +145,8 @@ class MainActivity : ComponentActivity() {
                             onSurfaceVariantSummary = FLUIX_SUMMARY_LIGHT,
                             surfaceContainer = FLUIX_GROUP_LIGHT,
                             dividerLine = Color.Transparent,
-                        ), customAccent),
-                        darkColors = moduleAccentColors(darkColorScheme(
+                        ),
+                        darkColors = darkColorScheme(
                             primary = Color(0xFF1564ED),
                             background = darkPage,
                             surface = darkPage,
@@ -147,21 +154,21 @@ class MainActivity : ComponentActivity() {
                             onSurfaceVariantSummary = FLUIX_SUMMARY_DARK,
                             surfaceContainer = FLUIX_GROUP_DARK,
                             dividerLine = Color.Transparent,
-                        ), customAccent),
+                        ),
                     )
                 },
                 textStyles = fluixTextStyles(),
             ) {
                 FluixStatusBar()
-                FluixOverscrollHost { SettingsScreen(requestedPage, pageRequest, resumeRequest, launcherEntry, ::returnToLauncher, customAccent) }
+                FluixOverscrollHost { SettingsScreen(requestedPage, pageRequest, resumeRequest, launcherEntry, ::returnToLauncher) }
+                if (RestartUiState.showLoading) RestartLoadingOverlay()
             }
         }
     }
 }
 
 @Composable
-private fun SettingsScreen(requestedPage: String?, pageRequest: Int, resumeRequest: Int, launcherEntry: Boolean, onReturnToLauncher: () -> Unit, customAccent: Color?) {
-    val missingScopes = rememberMissingScopes(resumeRequest)
+private fun SettingsScreen(requestedPage: String?, pageRequest: Int, resumeRequest: Int, launcherEntry: Boolean, onReturnToLauncher: () -> Unit) {
     var openCategoryId by remember { mutableStateOf(requestedPage?.takeIf { page -> CATEGORIES.any { it.id == page } }) }
     LaunchedEffect(pageRequest) {
         if (requestedPage != null && CATEGORIES.any { it.id == requestedPage }) openCategoryId = requestedPage
@@ -192,7 +199,7 @@ private fun SettingsScreen(requestedPage: String?, pageRequest: Int, resumeReque
     ) { pageId ->
         val category = CATEGORIES.firstOrNull { it.id == pageId }
         if (category == null) {
-            HomeScreen(missingScopes, customAccent, onOpenCategory = { openCategoryId = it })
+            HomeScreen(onOpenCategory = { openCategoryId = it })
         } else if (category.id == DISABLED_APPS_ID) {
             DisabledAppsScreen(LocalContext.current, onBack = { openCategoryId = null })
         } else if (category.id == "hidden_apps") {
@@ -204,7 +211,7 @@ private fun SettingsScreen(requestedPage: String?, pageRequest: Int, resumeReque
 }
 
 @Composable
-private fun HomeScreen(missingScopes: Boolean, customAccent: Color?, onOpenCategory: (String) -> Unit) {
+private fun HomeScreen(onOpenCategory: (String) -> Unit) {
     val listState = rememberLazyListState()
     val overscrollOffset = remember { mutableFloatStateOf(0f) }
     Scaffold(
@@ -226,9 +233,6 @@ private fun HomeScreen(missingScopes: Boolean, customAccent: Color?, onOpenCateg
             item(key = "module_controls") {
                 HomeModuleControls()
             }
-            if (missingScopes) {
-                item(key = "scope_warning") { ScopeWarningCard() }
-            }
             CATEGORY_GROUPS.forEach { group ->
                 item(key = "category_group/${group.first().id}") {
                     FluixCard {
@@ -236,7 +240,7 @@ private fun HomeScreen(missingScopes: Boolean, customAccent: Color?, onOpenCateg
                             if (index > 0) FluixItemDivider(startInset = FLUIX_CATEGORY_TEXT_START)
                             FluixCategoryRow(
                                 icon = category.icon,
-                                iconForeground = customAccent ?: category.iconForeground,
+                                iconForeground = category.iconForeground,
                                 title = category.title,
                                 onClick = { onOpenCategory(category.id) },
                             )

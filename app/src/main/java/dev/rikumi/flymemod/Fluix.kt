@@ -104,6 +104,7 @@ import androidx.compose.ui.window.PopupProperties
 
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.Dialog
 import android.os.VibrationEffect
@@ -112,6 +113,7 @@ import android.view.HapticFeedbackConstants
 import top.yukonga.miuix.kmp.theme.miuixShape
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -238,6 +240,8 @@ private val FLUIX_LARGE_TITLE_START = 24.dp
 private val FLUIX_CATEGORY_ICON = 40.dp
 private val FLUIX_CATEGORY_ICON_GAP = 10.dp
 private val FLUIX_HOME_CATEGORY_ROW_HPADDING = 12.dp
+// 首页分类与启动入口共用行尾边距，使相同尺寸的箭头对齐。
+private val FLUIX_HOME_CHEVRON_END_PADDING = FLUIX_HOME_CATEGORY_ROW_HPADDING
 private val FLUIX_HOME_CATEGORY_ROW_VPADDING = 10.dp
 private val FLUIX_HOME_CATEGORY_ROW_MIN_HEIGHT = 60.dp
 
@@ -626,31 +630,6 @@ internal fun FluixCard(
     )
 }
 
-@Composable
-internal fun FluixScopeWarningCard(onClick: () -> Unit) {
-    val summary = MiuixTheme.colorScheme.onSurfaceVariantSummary
-    FluixCard(backgroundColor = Color(0xFFFFBE0A).copy(alpha = 0.18f)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = FLUIX_ROW_MIN_HEIGHT)
-                .clickable(onClick = onClick)
-                .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BasicText(
-                text = "有作用域未勾选，请前往勾选",
-                style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
-                modifier = Modifier.weight(1f),
-            )
-            Icon(
-                imageVector = MiuixIcons.ChevronForward,
-                contentDescription = null,
-                tint = summary.copy(alpha = summary.alpha * FLUIX_CATEGORY_CHEVRON_ALPHA),
-                modifier = Modifier.padding(start = 12.dp).size(FLUIX_CATEGORY_CHEVRON),
-            )
-        }
-    }
-}
-
 // 超长列表用的单行卡片容器: 与 FluixCard 同款外观(圆角/底色/边距), 但每行各占一个独立容器。
 // 上百行若塞进同一个 Card, 该容器会变成上万像素高, 首屏要一次性组合全部行, 且滚动到后半段时
 // 命中测试会失效(表现为"前面能点、后面点不动")。故长列表应逐行使用本容器。
@@ -711,7 +690,12 @@ internal fun FluixCategoryRow(
             .fillMaxWidth()
             .heightIn(min = FLUIX_HOME_CATEGORY_ROW_MIN_HEIGHT)
             .clickable { onClick() }
-            .padding(horizontal = FLUIX_HOME_CATEGORY_ROW_HPADDING, vertical = FLUIX_HOME_CATEGORY_ROW_VPADDING),
+            .padding(
+                start = FLUIX_HOME_CATEGORY_ROW_HPADDING,
+                end = FLUIX_HOME_CHEVRON_END_PADDING,
+                top = FLUIX_HOME_CATEGORY_ROW_VPADDING,
+                bottom = FLUIX_HOME_CATEGORY_ROW_VPADDING,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -942,10 +926,16 @@ fun FluixSwitchPreference(
     leftTrailingContent: @Composable RowScope.() -> Unit = {},
     showDivider: Boolean = false,
 ) {
+    val density = LocalDensity.current
+    var rowHeightPx by remember { mutableStateOf(0) }
+    val dividerHeight = with(density) {
+        (rowHeightPx - 2 * FLUIX_ROW_VPADDING.toPx()).coerceAtLeast(0f).toDp()
+    }
     val tick = fluixSwitchTick()
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .onSizeChanged { rowHeightPx = it.height }
             .clickable {
                 tick()
                 onCheckedChange(!checked)
@@ -1001,6 +991,15 @@ fun FluixSwitchPreference(
                     }
                     leftTrailingContent()
                 }
+            }
+            if (showDivider) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterVertically)
+                        .width((1f / density.density).dp)
+                        .height(dividerHeight)
+                        .background(MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.2f)),
+                )
             }
             Row(
                 modifier = Modifier.padding(
@@ -1417,6 +1416,7 @@ internal fun FluixActionPairRow(
     onRightClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val density = LocalDensity.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -1429,7 +1429,13 @@ internal fun FluixActionPairRow(
             onClick = onLeftClick,
             modifier = Modifier.weight(1f),
         )
-        Spacer(modifier = Modifier.width(8.dp).fillMaxHeight())
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(vertical = FLUIX_ROW_VPADDING)
+                .width((1f / density.density).dp)
+                .background(MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.2f)),
+        )
         FluixActionCell(
             title = rightTitle,
             onClick = onRightClick,
@@ -1450,7 +1456,12 @@ private fun FluixActionCell(
             .fillMaxHeight()
             .clickable { onClick() }
             .heightIn(min = FLUIX_ROW_MIN_HEIGHT)
-            .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
+            .padding(
+                start = FLUIX_ROW_HPADDING,
+                end = FLUIX_HOME_CHEVRON_END_PADDING,
+                top = FLUIX_ROW_VPADDING,
+                bottom = FLUIX_ROW_VPADDING,
+            ),
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(
@@ -1463,6 +1474,8 @@ private fun FluixActionCell(
                     color = MiuixTheme.colorScheme.onSurface,
                 ),
                 modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             // 与分类入口行同一枚前进箭头(同尺寸、同压低后的不透明度)。
             Icon(

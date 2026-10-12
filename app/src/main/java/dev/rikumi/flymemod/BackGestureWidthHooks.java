@@ -20,14 +20,15 @@ final class BackGestureWidthHooks {
     private final Field context, left, right, mlWidth, uiThread;
     private final Method update, executor;
     private final Consumer<Context> settings;
-    private final BooleanSupplier enabled;
+    private final BooleanSupplier enabled, removeSmart;
     private final IntSupplier widthDp;
     private final BiConsumer<String, Throwable> log;
+    private final Map<Object, Integer> nativeMlWidths = Collections.synchronizedMap(new WeakHashMap<>());
     private final Map<Object, Boolean> handlers = Collections.synchronizedMap(new WeakHashMap<>());
 
     BackGestureWidthHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled,
-                          IntSupplier widthDp, BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
-        this.settings = settings; this.enabled = enabled; this.widthDp = widthDp; this.log = log;
+                          IntSupplier widthDp, BooleanSupplier removeSmart, BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
+        this.settings = settings; this.enabled = enabled; this.widthDp = widthDp; this.removeSmart = removeSmart; this.log = log;
         Class<?> type = loader.loadClass(OWNER);
         context = type.getField("mContext"); left = type.getField("mEdgeWidthLeft");
         right = type.getField("mEdgeWidthRight"); mlWidth = type.getField("mMLEnableWidth");
@@ -37,23 +38,63 @@ final class BackGestureWidthHooks {
         type.getDeclaredMethod("isWithinTouchRegion", MotionEvent.class);
     }
 
-    void install(SignalHooks.Installer installer) {
+    void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
         installer.hook(OWNER, "updateCurrentUserResources", chain -> {
             Object owner = chain.getThisObject();
             settings.accept((Context) context.get(owner));
             Object result = chain.proceed();
+            nativeMlWidths.put(owner, mlWidth.getInt(owner));
             handlers.put(owner, true);
-            if (enabled.getAsBoolean()) {
-                int pixels = widthPixels((Context) context.get(owner), widthDp.getAsInt());
-                left.setInt(owner, pixels);
-                right.setInt(owner, pixels);
-                mlWidth.setInt(owner, Math.min(mlWidth.getInt(owner),
-                        Math.min(left.getInt(owner), right.getInt(owner))));
-            }
+            apply(owner);
             return result;
         });
-        installer.hook(OWNER, "isWithinTouchRegion", chain ->
-                enabled.getAsBoolean() && widthDp.getAsInt() == 0 ? false : chain.proceed(), MotionEvent.class);
+        installer.hook(OWNER, "isWithinTouchRegion", chain -> {
+            Object owner=chain.getThisObject();
+            settings.accept((Context)context.get(owner));
+            handlers.put(owner,true);
+            synchronized(owner) {
+                apply(owner);
+                return enabled.getAsBoolean() && widthDp.getAsInt()==0?false:chain.proceed();
+            }
+        }, MotionEvent.class);
+        Class<?> type=context.getDeclaringClass();
+        installer.hook(OWNER,"onMotionEvent",chain -> {
+            prepare(chain.getThisObject());
+            return chain.proceed();
+        },MotionEvent.class);
+        Class<?> listener=type.getClassLoader().loadClass(OWNER+"$SystemUIGestureListener");
+        Field outer=null;
+        for(Field field:listener.getDeclaredFields()) if(field.getType()==type) { outer=field; break; }
+        if(outer==null)throw new NoSuchFieldException("SystemUIGestureListener outer handler");
+        outer.setAccessible(true);
+        Field ownerField=outer;
+        installer.hook(listener.getName(),"onGesturePreTriggerBefore",chain -> {
+            prepare(ownerField.get(chain.getThisObject()));
+            return chain.proceed();
+        },int.class,MotionEvent.class);
+        deoptimize.accept(type.getDeclaredMethod("onMotionEvent",MotionEvent.class));
+        deoptimize.accept(listener.getDeclaredMethod("onGesturePreTriggerBefore",int.class,MotionEvent.class));
+        deoptimize.accept(type.getDeclaredMethod("onInputEvent",android.view.InputEvent.class));
+        deoptimize.accept(type.getDeclaredMethod("lambda$updateGestureEvent$18",MotionEvent.class));
+    }
+
+    private void prepare(Object owner) throws IllegalAccessException {
+        settings.accept((Context)context.get(owner));
+        handlers.put(owner,true);
+        synchronized(owner) { apply(owner); }
+    }
+
+    private void apply(Object owner) throws IllegalAccessException {
+        nativeMlWidths.putIfAbsent(owner, mlWidth.getInt(owner));
+        if(enabled.getAsBoolean()) {
+            int pixels=widthPixels((Context)context.get(owner),widthDp.getAsInt());
+            boolean changed=left.getInt(owner)!=pixels || right.getInt(owner)!=pixels;
+            left.setInt(owner,pixels); right.setInt(owner,pixels);
+            if(changed)log.accept("Back gesture width: dp="+widthDp.getAsInt()+" pixels="+pixels,null);
+        }
+        // Cover the entire geometric edge band only when smart filtering is removed.
+        mlWidth.setInt(owner, removeSmart.getAsBoolean() ? Math.max(left.getInt(owner),right.getInt(owner))
+                : Math.min(nativeMlWidths.get(owner),Math.min(left.getInt(owner),right.getInt(owner))));
     }
 
     void refresh() {

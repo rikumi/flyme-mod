@@ -13,7 +13,9 @@ com.android.soundrecorder
 com.android.systemui
 com.flyme.meizu.store
 com.flyme.sceneengine
+com.flyme.systemuieditor
 com.meizu.account
+com.meizu.battery
 com.meizu.callsetting
 com.meizu.connectivitysettings
 com.meizu.customizecenter
@@ -34,3 +36,5 @@ com.meizu.picker
 com.meizu.voiceassistant
 com.meizu.wear
 system
+com.meizu.safe
+com.google.android.gms

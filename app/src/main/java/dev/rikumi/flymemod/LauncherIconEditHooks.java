@@ -35,7 +35,7 @@ final class LauncherIconEditHooks {
     private static final String ITEM = "com.android.launcher3.model.data.ItemInfoWithIcon";
     private final ClassLoader loader;
     private final Consumer<Context> settings;
-    private final BooleanSupplier enabled;
+    private final BooleanSupplier enabled, iconContour, menuContour;
     private final BiConsumer<String, Throwable> log;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ColorOsIconPackCatalog catalog = new ColorOsIconPackCatalog();
@@ -49,8 +49,10 @@ final class LauncherIconEditHooks {
     private final java.util.concurrent.ExecutorService saves = Executors.newSingleThreadExecutor();
 
     LauncherIconEditHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled,
+            BooleanSupplier iconContour, BooleanSupplier menuContour,
             BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
         this.loader = loader; this.settings = settings; this.enabled = enabled; this.log = log;
+        this.iconContour = iconContour; this.menuContour = menuContour;
         Class<?> item = loader.loadClass(ITEM), info = loader.loadClass("com.android.launcher3.model.data.ItemInfo");
         title = info.getField("title");
         description = info.getField("contentDescription");
@@ -239,7 +241,7 @@ final class LauncherIconEditHooks {
                 Bitmap pixels = original == null ? null : (Bitmap) iconPixels.get(original);
                 CharSequence nativeTitle = (CharSequence) title.get(item);
                 String label = nativeTitle == null ? ((ComponentName) component.invoke(item)).getPackageName() : nativeTitle.toString();
-                new LauncherIconEditor((Context) launcher, catalog, log).show(label, ((ComponentName) component.invoke(item)).getPackageName(), ((ComponentName) component.invoke(item)).flattenToString(), pixels, read(item),
+                new LauncherIconEditor((Context) launcher, catalog, settings, iconContour, menuContour, log).show(label, ((ComponentName) component.invoke(item)).getPackageName(), ((ComponentName) component.invoke(item)).flattenToString(), pixels, read(item),
                         (edit, done) -> save(item, edit, done));
             } catch (Exception error) {
                 log.accept("Cannot open launcher icon editor", error);

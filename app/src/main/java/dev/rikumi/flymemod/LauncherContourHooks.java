@@ -30,7 +30,7 @@ final class LauncherContourHooks {
     private final Method folderBounds, widgetDragBounds, widgetScale, generatePath;
     private final Field springPopup, blurSmoothness, blurView, leftAligned, iconInfo, iconPixels, iconScale;
     private final Method anchorView, reorient, folderPreview;
-    private final Class<?> folderIcon, bubbleTextView, pressedWidget, widgetTitle;
+    private final Class<?> folderIcon, bubbleTextView, floatingIconView, pressedWidget, widgetTitle;
     private final Method pressedWidgetBounds;
     private final Object customWidgetTag;
     private final Map<Drawable, IconMask> iconMasks = new WeakHashMap<>();
@@ -59,6 +59,7 @@ final class LauncherContourHooks {
         folderIcon = loader.loadClass("com.android.launcher3.folder.FolderIcon");
         folderPreview = folderIcon.getMethod("getFolderBackground");
         bubbleTextView = loader.loadClass("com.android.launcher3.BubbleTextView");
+        floatingIconView = loader.loadClass("com.android.launcher3.views.FloatingIconView");
         Class<?> fast = loader.loadClass("com.android.launcher3.icons.FastBitmapDrawable");
         fast.getDeclaredMethod("draw", Canvas.class);
         iconInfo = field(fast, "mBitmapInfo"); iconScale = field(fast, "mScale");
@@ -166,12 +167,15 @@ final class LauncherContourHooks {
         installer.hook("com.android.launcher3.icons.FastBitmapDrawable", "draw", chain -> {
             Object result = chain.proceed();
             Drawable drawable = (Drawable) chain.getThisObject();
-            if (!(drawable.getCallback() instanceof View host) || !bubbleTextView.isInstance(host)) return result;
+            if(IconContourDrawScope.isRaw() || LauncherPreviewContourHooks.drawsTransitionIcon())return result;
+            if (!(drawable.getCallback() instanceof View host) || !(bubbleTextView.isInstance(host)
+                    || host instanceof ImageView && floatingIconView.isInstance(host.getParent()))) return result;
             track(host);
             if (icon.getAsBoolean()) try { drawIcon(host, drawable, (Canvas)chain.getArg(0)); }
             catch (Exception | LinkageError error) { report(host, error); }
             return result;
         }, Canvas.class);
+        new LauncherIconSurfaceContourHooks(loader, settings, icon, log).install(installer, deoptimize);
         for (String method : new String[]{"setAlpha", "setVisible"}) {
             installer.hook("com.meizu.flyme.launcher.utils.BackgroundBlurUtils", method, chain -> {
                 Object result = chain.proceed();
@@ -336,9 +340,10 @@ final class LauncherContourHooks {
             int w=readable.getWidth(), h=readable.getHeight();
             int[] pixels=new int[w*h]; readable.getPixels(pixels,0,w,0,0,w,h);
             if (readable != source) readable.recycle();
-            // Exclude the weak bitmap shadow from the icon silhouette.
+            Bitmap mask=Bitmap.createBitmap(IconContourPixels.mask(pixels,w,h,2f*density*w/bounds.width()),
+                    w,h,Bitmap.Config.ARGB_8888);
+            // Exclude the weak bitmap shadow from the inner shadow silhouette.
             for (int i=0;i<pixels.length;i++) pixels[i]=(pixels[i]>>>24)>=64 ? 0xff000000 : 0;
-            Bitmap mask=distanceMask(pixels,w,h,2f*density*w/bounds.width());
             Bitmap shadow=Bitmap.createBitmap(IconInnerShadow.pixels(pixels,w,h,3f*density*w/bounds.width()),
                     w,h,Bitmap.Config.ARGB_8888);
             cache = new IconMask(source,mask,shadow,bounds,density); iconMasks.put(drawable,cache);

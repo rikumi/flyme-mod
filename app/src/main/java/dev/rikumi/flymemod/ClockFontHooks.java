@@ -56,6 +56,7 @@ final class ClockFontHooks {
     private final Field headerClock;
     private final Field headerAmPm;
     private final Field headerDate;
+    private final Field headerLunar;
     private final Field headerClockGroup;
     private final Field headerDateGroup;
     private final Field statusBarClock;
@@ -76,9 +77,8 @@ final class ClockFontHooks {
     private final Map<TextView, Boolean> originalHeaderFontPadding = new WeakHashMap<>();
     private final CardIconOverflow headerClockOverflow = new CardIconOverflow();
     private final Map<TextView, Boolean> splitDigitViews = new WeakHashMap<>();
-    private final Map<Integer, Typeface> fonts = new HashMap<>();
+    private final ClockTypefaceLoader fontLoader = new ClockTypefaceLoader();
     private final ThreadLocal<Boolean> applying = ThreadLocal.withInitial(() -> false);
-    private Context moduleContext;
     private boolean failed;
 
     ClockFontHooks(ClassLoader loader, Consumer<Context> settings, IntSupplier lockFont,
@@ -127,6 +127,7 @@ final class ClockFontHooks {
         headerClock = statusBarHeader.getField("mTime");
         headerAmPm = statusBarHeader.getField("mAmPm");
         headerDate = statusBarHeader.getField("mDateExpanded");
+        headerLunar = statusBarHeader.getField("mLunarView");
         headerClockGroup = statusBarHeader.getField("mClockView");
         headerDateGroup = statusBarHeader.getField("mDateGroup");
         headerButtons = new Field[]{statusBarHeader.getField("mQsTilesSettingButton"),
@@ -506,6 +507,15 @@ final class ClockFontHooks {
         applyClockSpacing(view, false);
     }
 
+    void applyStatusBarFont(TextView view, TextView reference) {
+        // Use the native baseline, so Default never inherits a previously overridden face.
+        view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, reference.getTextSize());
+        view.setIncludeFontPadding(reference.getIncludeFontPadding());
+        view.setLetterSpacing(originalSpacing.getOrDefault(reference, reference.getLetterSpacing()));
+        view.setTypeface(originals.getOrDefault(reference, reference.getTypeface()));
+        applyStatusBarFont(view);
+    }
+
     private void applyClockSpacing(TextView view, boolean rememberOriginal) {
         spacingViews.put(view, false);
         applySpacing(view, false, rememberOriginal);
@@ -604,13 +614,15 @@ final class ClockFontHooks {
             TextView clock = (TextView) headerClock.get(owner);
             TextView amPm = (TextView) headerAmPm.get(owner);
             TextView date = (TextView) headerDate.get(owner);
-            // SplitClockView is translated to the date baseline. Its horizontal parent
+            TextView lunar = (TextView) headerLunar.get(owner);
+            TextView baselineTarget = !hideLunar.getAsBoolean() && lunar != null && lunar.isShown()
+                    ? lunar : date;
+            // SplitClockView follows the bottom visible date/lunar baseline. Its horizontal parent
             // still has the pre-translation bounds, which otherwise cuts off the clock top.
             if (clock != null) headerClockOverflow.apply(clock, header,
-                    Boolean.TRUE.equals(customFontApplied.get(clock)) || controlCenterMonospace.getAsBoolean()
-                            || controlCenterDateUpEnabled.getAsBoolean() || hideLunar.getAsBoolean());
-            if (clock == null || date == null || !date.isShown() || date.getHeight() == 0
-                    || !clock.isLaidOut() || date.getBaseline() < 0 || clock.getBaseline() < 0) return;
+                    true);
+            if (clock == null || baselineTarget == null || !baselineTarget.isShown() || baselineTarget.getHeight() == 0
+                    || !clock.isLaidOut() || baselineTarget.getBaseline() < 0 || clock.getBaseline() < 0) return;
             settings.accept(header.getContext());
             Float nativeClockTranslation = originalHeaderTranslationY.get(clock);
             if (nativeClockTranslation == null) {
@@ -621,18 +633,6 @@ final class ClockFontHooks {
             if (amPm != null && nativeAmPmTranslation == null) {
                 nativeAmPmTranslation = amPm.getTranslationY();
                 originalHeaderTranslationY.put(amPm, nativeAmPmTranslation);
-            }
-            if (controlCenterFont.getAsInt() == 0 && !hideLunar.getAsBoolean()) {
-                if (Float.compare(clock.getTranslationY(), nativeClockTranslation) != 0) {
-                    clock.setTranslationY(nativeClockTranslation);
-                }
-                if (amPm != null && nativeAmPmTranslation != null
-                        && Float.compare(amPm.getTranslationY(), nativeAmPmTranslation) != 0) {
-                    amPm.setTranslationY(nativeAmPmTranslation);
-                }
-                View group = (View) headerClockGroup.get(owner);
-                if (group != null) applyGroupOffset(group, dateUpOffset(header));
-                return;
             }
             // Move the complete SplitClockView, keeping the glyphs inside its clipping
             // bounds. Its TextClock draws at height - 3px, not TextView.getBaseline().
@@ -647,13 +647,13 @@ final class ClockFontHooks {
             if (clockGroup == null) return;
             originalGroupTranslationY.putIfAbsent(clockGroup, clockGroup.getTranslationY());
             float clockBaseline = baselineInHeader(clock, header);
-            float dateBaseline = baselineInHeader(date, header);
-            float offset = dateBaseline - clockBaseline;
+            float targetBaseline = baselineInHeader(baselineTarget, header);
+            float offset = targetBaseline - clockBaseline;
             if (Math.abs(offset) > 0.01f) {
                 clockGroup.setTranslationY(clockGroup.getTranslationY() + offset);
             }
         } catch (IllegalAccessException | RuntimeException error) {
-            log.accept("Cannot align control center clock baseline with date", error);
+            log.accept("Cannot align control center clock with visible date or lunar baseline", error);
         }
     }
 
@@ -797,7 +797,8 @@ final class ClockFontHooks {
     private String fontFeatures(TextView view, String nativeFeatures) {
         boolean enabled;
         String clockId = clockKind(view);
-        if ("mz_clock".equals(clockId)) enabled = controlCenterMonospace.getAsBoolean();
+        if ("flyme_mod_charging_top".equals(view.getTag()) || "flyme_mod_charging_bottom".equals(view.getTag())) enabled = false;
+        else if ("mz_clock".equals(clockId)) enabled = controlCenterMonospace.getAsBoolean();
         else if ("clock".equals(clockId) || "status_extra".equals(clockId)) enabled = statusBarMonospace.getAsBoolean();
         else {
             ViewParent parent = view.getParent();
@@ -911,26 +912,7 @@ final class ClockFontHooks {
             if (family <= 0 || family >= ModuleSettings.CLOCK_FONT_NAMES.length) return null;
             int selectedWeight = "mz_clock".equals(clockId) ? controlCenterWeight.getAsInt()
                     : ("clock".equals(clockId) || "status_extra".equals(clockId)) ? statusBarWeight.getAsInt() : weight.getAsInt();
-            int fontWeight = selectedWeight == 0 ? nativeFont == null ? 400 : nativeFont.getWeight() : selectedWeight;
-            fontWeight = Math.max(100, Math.min(900, fontWeight));
-            if (family == 2) fontWeight = Math.max(200, Math.min(800, fontWeight));
-            if (family == 3) fontWeight = Math.max(300, fontWeight);
-            if (family == 4) fontWeight = fontWeight >= 600 ? 700 : fontWeight >= 500 ? 500 : 400;
-            int key = family * 1000 + fontWeight;
-            Typeface cached = fonts.get(key);
-            if (cached != null) return cached;
-            if (moduleContext == null) moduleContext = context.createPackageContext("dev.rikumi.flymemod", 0);
-            String asset;
-            if (family == 4) {
-                asset = fontWeight >= 600 ? "Lato-Bold.ttf" : fontWeight >= 500 ? "Lato-Medium.ttf" : "Lato-Regular.ttf";
-            } else asset = ModuleSettings.CLOCK_FONT_NAMES[family] + ".ttf";
-            Typeface.Builder builder = new Typeface.Builder(moduleContext.getAssets(), "clock_fonts/" + asset);
-            if (family != 4) builder.setFontVariationSettings("'wght' " + fontWeight
-                    + (family == 1 ? ", 'opsz' 32" : ""));
-            Typeface result = builder.setWeight(fontWeight).setItalic(false).build();
-            if (result == null) throw new IllegalStateException("Cannot load clock font " + asset);
-            fonts.put(key, result);
-            return result;
+            return fontLoader.resolve(context, family, selectedWeight, nativeFont);
         } catch (Exception | LinkageError error) {
             fail(error);
             return null;

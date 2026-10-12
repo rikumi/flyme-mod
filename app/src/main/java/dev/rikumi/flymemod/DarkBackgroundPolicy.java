@@ -6,11 +6,32 @@ import java.util.Locale;
 final class DarkBackgroundPolicy {
     static final int[] SHADES = { 0x0b0b0c, 0x232323 };
 
+    static int legacyFamily(String packageName) {
+        return switch (packageName) {
+            case "com.android.alarmclock", "com.meizu.connectivitysettings", "com.meizu.mstore" -> 1;
+            default -> 0;
+        };
+    }
+
     static final int[] LEGACY_BRIGHT_SHADES = { 0x0b0b0c, 0x232323, 0x17171a, 0x202020 };
     static final int[] LEGACY_LOWEST_SHADES = { 0x0b0b0c, 0x232323, 0x1c1c1e, 0x2d2d2d };
 
     static int[] legacyShades(int family) {
         return family == 1 ? LEGACY_BRIGHT_SHADES : family == 2 ? LEGACY_LOWEST_SHADES : SHADES;
+    }
+    // Battery 12.0.24: BaseTheme uses surface_default; shape_card_bg uses
+    // colorSurfaceContainerLowest, with both ordinary and v888 night variants.
+    static final int[] BATTERY_SURFACE_SHADES = { 0x0b0b0c, 0x232323, 0x17171a, 0x202020, 0x1c1c1e, 0x2d2d2d };
+    // Dialer 8.2.6 / Mms 12.3.4 use both bright and lowest surfaces in page layouts;
+    // ordinary night and v888 night resources use different shades of each surface.
+    static final int[] PHONE_MESSAGE_SURFACE_SHADES = { 0x0b0b0c, 0x232323, 0x17171a, 0x202020, 0x1c1c1e, 0x2d2d2d };
+
+    static int[] applicationShades(String packageName, int legacyFamily) {
+        return switch (packageName) {
+            case "com.meizu.battery" -> BATTERY_SURFACE_SHADES;
+            case "com.android.dialer", "com.android.mms" -> PHONE_MESSAGE_SURFACE_SHADES;
+            default -> legacyShades(legacyFamily);
+        };
     }
     static int replaceLegacy(int color, boolean enabled, boolean night, int family) {
         if (enabled && night) for (int rgb : legacyShades(family))

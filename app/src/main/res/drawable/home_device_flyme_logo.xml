@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 气球主体单独染色，高光始终保持白色。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/home_device_balloon_body" android:drawable="@drawable/home_device_balloon_body" />
+    <item android:drawable="@drawable/home_device_balloon_highlight" />
+</layer-list>

@@ -51,9 +51,13 @@ final class LauncherIconEditor {
             new ArrayBlockingQueue<>(32), new ThreadPoolExecutor.DiscardOldestPolicy());
     private final int foreground, muted;
     private Dialog activePicker;
+    private final LauncherIconEditorContour contours;
 
-    LauncherIconEditor(Context ctx, ColorOsIconPackCatalog catalog, BiConsumer<String, Throwable> log) {
+    LauncherIconEditor(Context ctx, ColorOsIconPackCatalog catalog, java.util.function.Consumer<Context> settings,
+            java.util.function.BooleanSupplier iconContour, java.util.function.BooleanSupplier menuContour,
+            BiConsumer<String, Throwable> log) {
         this.ctx = ctx; this.catalog = catalog; this.log = log;
+        contours = new LauncherIconEditorContour(settings, iconContour, menuContour, log);
         boolean dark = (ctx.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
         foreground = dark ? Color.WHITE : Color.BLACK;
@@ -63,7 +67,7 @@ final class LauncherIconEditor {
     void show(String originalName, String applicationPackage, String applicationComponent, Bitmap originalIcon, Edit previous, Save save) {
         LinearLayout root = column();
         root.setPadding(dp(24), dp(12), dp(24), dp(8));
-        ImageView preview = new ImageView(ctx);
+        ImageView preview = contours.image(ctx);
         preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
         preview.setImageBitmap(originalIcon);
         LinearLayout.LayoutParams previewParams = new LinearLayout.LayoutParams(dp(72), dp(72));
@@ -143,6 +147,7 @@ final class LauncherIconEditor {
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(view -> save.save(null, dialog::dismiss));
         });
         dialog.show();
+        contours.background(dialog.getWindow().getDecorView());
         if (previous != null && previous.pack != null) loadPreview(preview, previous.pack, previous.drawable, previous.mask, dialog);
     }
 
@@ -201,6 +206,8 @@ final class LauncherIconEditor {
                 packPopup.setHorizontalOffset(getLayoutDirection() == View.LAYOUT_DIRECTION_RTL
                         ? -dp(16) + padding.right : -dp(16) - padding.left);
                 packPopup.show();
+                if (packPopup.getListView() != null && packPopup.getListView().getParent() instanceof View popupBody)
+                    contours.background(popupBody);
                 packPopup.setSelection(getSelectedItemPosition());
                 return true;
             }
@@ -268,6 +275,7 @@ final class LauncherIconEditor {
         // Window content respects system-bar/IME insets; only the former half
         // panel's height constraint is removed, never drawing under the keyboard.
         dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        contours.background(root);
         applyMask.setOnCheckedChangeListener((button, checked) -> {
             matchingAdapter.mask = checked; adapter.mask = checked;
             matchingAdapter.notifyDataSetChanged(); adapter.notifyDataSetChanged();
@@ -395,7 +403,7 @@ final class LauncherIconEditor {
             if (reused instanceof LinearLayout layout) cell = layout;
             else {
                 cell = column(); cell.setGravity(Gravity.CENTER_HORIZONTAL);
-                ImageView image = new ImageView(ctx); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                ImageView image = contours.image(ctx); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 cell.addView(image, new LinearLayout.LayoutParams(dp(56), dp(56)));
                 TextView label = text("", 11, muted); label.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL); label.setMaxLines(2);
                 label.setEllipsize(android.text.TextUtils.TruncateAt.END);

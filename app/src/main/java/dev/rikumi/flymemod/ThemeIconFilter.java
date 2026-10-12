@@ -4,6 +4,8 @@ import android.graphics.ColorFilter;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.Map;
 
 /** A pixel color filter preserves neutral glyph details inside multicolored UI resources. */
 final class ThemeIconFilter {
@@ -34,10 +36,13 @@ final class ThemeIconFilter {
     final ColorFilter whiteCutout;
     final ColorFilter preserveRedParts;
     final ColorFilter blueParts;
+    private final int selectedColor;
+    private final Map<Integer,ColorFilter> controlAccents=new HashMap<>();
     private final ColorFilter inactiveLight = new PorterDuffColorFilter(0xff757575, PorterDuff.Mode.SRC_IN);
     private final ColorFilter inactiveDark = new PorterDuffColorFilter(0xffb0b0b0, PorterDuff.Mode.SRC_IN);
 
     ThemeIconFilter(int color) throws ReflectiveOperationException {
+        selectedColor=color;
         // Verified against the MEIZU 22 framework; avoid linking this new API on older systems.
         Class<?> type = Class.forName("android.graphics.RuntimeColorFilter");
         Method setColor = type.getMethod("setColorUniform", String.class, int.class);
@@ -47,6 +52,25 @@ final class ThemeIconFilter {
         Object blue = type.getConstructor(String.class).newInstance(BLUE_AGSL);
         setColor.invoke(blue, "themeColor", color | 0xff000000);
         blueParts = (ColorFilter) blue;
+    }
+
+    synchronized ColorFilter forControlAccent(int source) throws ReflectiveOperationException {
+        // Native input selectors may use a green/red/yellow app accent rather than Flyme blue.
+        // Match that exact accent, keeping neutral and unrelated error-state colors intact.
+        int family=ThemeColorPalette.family(source);
+        if(family==0)return blueParts;
+        int rgb=source&0xffffff;
+        ColorFilter cached=controlAccents.get(rgb);
+        if(cached!=null)return cached;
+        String shader=BLUE_AGSL.replace("half4 main", "layout(color) uniform half4 sourceColor;\nhalf4 main")
+                .replace("  if (chroma <", "  half3 delta = abs(rgb - sourceColor.rgb);\n"
+                        + "  if (max(max(delta.r, delta.g), delta.b) <= 0.006) return half4(themeColor.rgb * c.a, c.a);\n  if (chroma <");
+        Class<?> type=Class.forName("android.graphics.RuntimeColorFilter");
+        Object filter=type.getConstructor(String.class).newInstance(shader);
+        Method setColor=type.getMethod("setColorUniform",String.class,int.class);
+        setColor.invoke(filter,"themeColor",selectedColor|0xff000000);
+        setColor.invoke(filter,"sourceColor",source|0xff000000);
+        cached=(ColorFilter)filter;controlAccents.put(rgb,cached);return cached;
     }
 
     ColorFilter forMode(int mode, boolean night) {

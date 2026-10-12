@@ -81,7 +81,7 @@ final class CollapsedCardHeightHooks {
             int original = (Integer) chain.proceed();
             State state = panels.get(mini.get(chain.getThisObject()));
             if (state == null) return original;
-            syncHeight(state, false);
+            if (!state.syncingMinimum) syncHeight(state, false);
             if (!isCombined(chain.getThisObject()) || !state.managed) {
                 return original;
             }
@@ -96,11 +96,16 @@ final class CollapsedCardHeightHooks {
             Object qs = controllerQs.get(controller);
             State state = qs == null ? null : containers.get(getContainer.invoke(qs));
             if (state != null) {
-                state.controller = new WeakReference<>(controller);
+                if (state.controller.get() != controller) state.controller = new WeakReference<>(controller);
                 syncHeight(state, false);
                 if (state.managed || geometryEnabled.getAsBoolean()) {
                     float before = ((Number) getHeight.invoke(controller)).floatValue();
-                    updateMin.invoke(controller);
+                    // Native updateMinHeight synchronously asks the hooked QS minimum
+                    // again. The current card measurements were just synchronized above.
+                    boolean previous = state.syncingMinimum;
+                    state.syncingMinimum = true;
+                    try { updateMin.invoke(controller); }
+                    finally { state.syncingMinimum = previous; }
                     float after = ((Number) getHeight.invoke(controller)).floatValue();
                     if (before != after && ((Number) chain.getArg(0)).floatValue() == before) {
                         return chain.proceed(new Object[]{after});
@@ -117,7 +122,11 @@ final class CollapsedCardHeightHooks {
         if (panel == null || parent == null) return;
         View wrapper = find(panel, "connectivity_slider_wrapper");
         if (wrapper == null) return;
-        State state = new State(owner, wrapper, wrapper.getLayoutParams().height);
+        // Resource names are stable for this component's lifetime. Resolving the
+        // full panel on each height query scans the APK's resource string pool.
+        int fullPanelId = panel.getResources().getIdentifier(
+                "mz_quick_settings_panel", "id", "com.android.systemui");
+        State state = new State(owner, wrapper, wrapper.getLayoutParams().height, fullPanelId);
         panels.put(panel, state);
         containers.put(parent, state);
         panel.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
@@ -133,7 +142,7 @@ final class CollapsedCardHeightHooks {
                 }
             }
         });
-        View full = find((View) root.get(owner), "mz_quick_settings_panel");
+        View full = find((View) root.get(owner), state.fullPanelId);
         if (full != null) {
             WeakReference<View> panelRef = new WeakReference<>(panel);
             for (Field field : cards) {
@@ -158,7 +167,9 @@ final class CollapsedCardHeightHooks {
         boolean active = enabled.getAsBoolean() && isCombined(owner);
         int desired = state.originalHeight;
         if (active) {
-            View full = find((View) root.get(owner), "mz_quick_settings_panel");
+            // Look up the current view by cached ID rather than retaining the view:
+            // panel replacement and fresh measurements must remain observable.
+            View full = find((View) root.get(owner), state.fullPanelId);
             int measured = 0;
             if (full != null) for (Field field : cards) {
                 View card = (View) field.get(full);
@@ -186,20 +197,27 @@ final class CollapsedCardHeightHooks {
     private static View find(View view, String name) {
         if (view == null) return null;
         int id = view.getResources().getIdentifier(name, "id", "com.android.systemui");
-        return id == 0 ? null : view.findViewById(id);
+        return find(view, id);
+    }
+
+    private static View find(View view, int id) {
+        return view == null || id == 0 ? null : view.findViewById(id);
     }
 
     private static final class State {
         final WeakReference<Object> owner;
         final WeakReference<View> wrapper;
+        final int fullPanelId;
         WeakReference<Object> controller = new WeakReference<>(null);
         int originalHeight;
         boolean overridden;
         boolean managed;
-        State(Object owner, View wrapper, int originalHeight) {
+        boolean syncingMinimum;
+        State(Object owner, View wrapper, int originalHeight, int fullPanelId) {
             this.owner = new WeakReference<>(owner);
             this.wrapper = new WeakReference<>(wrapper);
             this.originalHeight = originalHeight;
+            this.fullPanelId = fullPanelId;
         }
     }
 }

@@ -6,9 +6,11 @@ import android.net.Uri;
 
 public final class ModuleSettings {
     public static final String DARK_SYSTEM_APP_BLACK_BACKGROUND = "dark_system_app_black_background";
-    public static final String SYSTEM_THEME_COLOR_ENABLED = "system_theme_color_enabled";
-    public static final String SYSTEM_THEME_COLOR = "system_theme_color";
-    public static final int SYSTEM_THEME_COLOR_DEFAULT = 0xFF206CFF;
+    public static final String WIRELESS_DEBUG_THEME_FIX = "wireless_debug_theme_fix";
+    public static final String FIX_ZYGOTE_RESTART_UNLOCK = "fix_zygote_restart_unlock";
+    public static final String REMOVE_FINGERPRINT_ANIMATION = "remove_fingerprint_animation";
+    public static final String SETTINGS_HOME_FORCE_GOOGLE = "settings_home_force_google";
+    public static final String SYSTEM_ICON_PACK = "system_application_icon_pack";
     public static final String EDIT_APP_ICON_NAME = "edit_app_icon_name";
     public static final String LOCK_WIDGET_STARTUP_FIX = "lock_widget_startup_fix";
     public static final String HIDE_CARRIER = "hide_lockscreen_notification_carrier";
@@ -16,6 +18,7 @@ public final class ModuleSettings {
     public static final String LAUNCHER_SPREAD_HIDDEN_APPS = "launcher_spread_hidden_apps";
     public static final String SETTINGS_PAGE_EXTRA = "flymemod_settings_page";
     public static final String LAUNCHER_ENTRY_EXTRA = "flymemod_launcher_entry";
+    public static final String DARK_APP_WHITELIST_MODE = "dark_app_whitelist_mode";
     public static final String DARK_APP_SPECIAL_PACKAGES = "dark_app_special_packages";
     public static final String PHOTO_PREVIEW_SYSTEM_ROTATION = "photo_preview_system_rotation";
     public static final String CAMERA_DISABLE_AUTO_NIGHT = "camera_disable_auto_night";
@@ -38,6 +41,7 @@ public final class ModuleSettings {
     public static final String APP_IMMERSIVE_NAVIGATION = "wechat_immersive_navigation";
     public static final String APP_IMMERSIVE_NAVIGATION_PACKAGES = "app_immersive_navigation_packages";
     public static final String LANDSCAPE_GAME_PACKAGES = "landscape_game_packages";
+    public static final String LANDSCAPE_GAME_ENABLED = "landscape_game_enabled";
     public static final String LANDSCAPE_GAME_MODE_PREFIX = "landscape_game_mode_";
     public static final String LANDSCAPE_GAME_MODES = "landscape_game_modes";
     public static java.util.Set<String> navigationApplications(SharedPreferences preferences) {
@@ -49,12 +53,23 @@ public final class ModuleSettings {
     public static final int SMALL_WINDOW_LIMIT_DEFAULT = 3;
     public static final int SMALL_WINDOW_LIMIT_MAX = 6;
     public static final String MBACK_MISSING_ASSISTANT_HOME = "mback_missing_assistant_home";
+    public static final String BACK_GESTURE_DARK_BACKGROUND = "back_gesture_dark_background";
+    public static final String BACK_GESTURE_DARK_OPACITY = "back_gesture_dark_opacity";
+    public static final int BACK_GESTURE_DARK_OPACITY_DEFAULT = 50;
+    public static int backGestureDarkOpacity(int value) {
+        return Math.round(Math.max(0, Math.min(100, value)) / 5f) * 5;
+    }
+    public static final String BACK_GESTURE_REMOVE_SMART = "back_gesture_remove_smart";
     public static final String BACK_GESTURE_WIDTH_ENABLED = "back_gesture_width_enabled";
     public static final String BACK_GESTURE_WIDTH_DP = "back_gesture_width_dp";
     // Fallback before settings arrive; the device-specific default is initialized by BackGestureWidthSettings.
     public static final int BACK_GESTURE_WIDTH_DEFAULT = 0;
     public static final String BACK_GESTURE_WIDTH_MAX_DP = "back_gesture_width_max_dp";
     public static final String MBACK_SYSTEM_TIMEOUT = "mback_system_long_press_timeout";
+    public static final String GESTURE_BAR_WIDTH_ENABLED = "gesture_bar_width_enabled";
+    public static final String GESTURE_BAR_WIDTH_DP = "gesture_bar_width_dp";
+    public static final int GESTURE_BAR_WIDTH_DEFAULT = 100;
+    public static int gestureBarWidth(int value) { return Math.max(80, Math.min(120, value)); }
     public static final String NOTIFICATION_CONTOUR = "coloros_notification_contour";
     public static final String QS_TRANSLATION_ORIGIN = "control_center_translation_origin_fix";
     public static final String SECONDARY_EXPANSION_FIX = "combined_secondary_expansion_fix";
@@ -79,6 +94,10 @@ public final class ModuleSettings {
     public static final String LOCK_CLOCK_FONT = "lock_clock_font";
     public static final String AOD_CLOCK_FONT = "aod_clock_font";
     public static final String STATUS_BAR_CLOCK_FONT = "status_bar_clock_font";
+    public static final String STATUS_BAR_LYRIC_AVOID = "status_bar_lyric_avoid";
+    public static final String STATUS_BAR_CHARGING_INFO = "status_bar_charging_info";
+    public static final int STATUS_BAR_CHARGING_INFO_DEFAULT = 1;
+    public static final boolean STATUS_BAR_LYRIC_AVOID_DEFAULT = true;
     public static final String CONTROL_CENTER_CLOCK_FONT = "control_center_clock_font";
     public static final String LOCK_CLOCK_MONOSPACE = "lock_clock_monospace";
     public static final String AOD_CLOCK_MONOSPACE = "aod_clock_monospace";
@@ -88,6 +107,7 @@ public final class ModuleSettings {
     public static final String CONTROL_CENTER_CLOCK_WEIGHT = "control_center_clock_weight";
     public static final String CONTROL_CENTER_CLOCK_DATE_UP = "control_center_clock_date_up";
     public static final String CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE = "control_center_clock_date_up_distance";
+    public static final int CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE_DEFAULT = 8;
     public static final String CONTROL_CENTER_BUTTONS_UP = "control_center_buttons_up";
     public static final String CONTROL_CENTER_BUTTONS_UP_DISTANCE = "control_center_buttons_up_distance";
     public static final String CLOCK_FONT_WEIGHT = "clock_font_weight";
@@ -106,8 +126,8 @@ public final class ModuleSettings {
     public static final String COLOROS_CONTOUR = "coloros_control_center_contour";
     public static final String LIGHT = "light_tile_background";
     public static final String LIGHT_OPACITY = "light_tile_background_opacity";
-    public static final int LIGHT_OPACITY_DEFAULT = 15;
-    public static final int LIGHT_OPACITY_MAX = 30;
+    public static final int LIGHT_OPACITY_DEFAULT = 10;
+    public static final int LIGHT_OPACITY_MAX = 20;
     public static final String TILE_CORNERS = "control_center_tile_corners";
     public static final String TILE_CORNER_PERCENT = "control_center_tile_corner_percent";
     public static final int TILE_CORNER_PERCENT_DEFAULT = 30;
@@ -150,14 +170,17 @@ public final class ModuleSettings {
     public static final String WALLPAPER_STARTUP_FIX = "wallpaper_startup_dim_fix";
     public static final String HIDE_GBOARD = "hide_gboard_enabled";
     public static final String HIDDEN_LAUNCHER_APPS = "hidden_launcher_apps";
+    public static final String HIDDEN_LAUNCHER_APP_ORDER = "hidden_launcher_app_order";
     public static final String HIDDEN_LAUNCHER_APPS_ENABLED = "hidden_launcher_apps_enabled";
     public static final String RECENTS_SWIPE_UP_KILL = "recents_swipe_up_kill_enabled";
+    public static final String RECENTS_CORNER_ENABLED = "recents_corner_radius_enabled";
+    public static final String RECENTS_CORNER_DP = "recents_corner_radius_dp";
     public static final String STACKED_RECENTS = "stacked_recents_enabled";
     public static final String RECENTS_HIDE_NOT_RUNNING = "recents_hide_not_running_enabled";
     public static final String FOLDER_PAGING = "folder_horizontal_paging";
+    public static final String FIX_ICON_PACK_PREVIEW = "fix_icon_pack_preview";
     public static final String ICON_CONTOUR = "launcher_icon_contour";
     public static final String FOLDER_MENU_ALIGNMENT = "launcher_folder_menu_alignment";
-    public static final String FOLDER_CONTOUR = "launcher_folder_contour";
     public static final String WIDGET_CONTOUR = "launcher_widget_contour";
     public static final String MENU_CONTOUR = "launcher_menu_contour";
     public static final String FOLDER_RESTORE_COLOR = "folder_restore_background_color";
@@ -228,7 +251,13 @@ public final class ModuleSettings {
     public static SharedPreferences preferences(Context context) {
         SharedPreferences preferences = context.createDeviceProtectedStorageContext()
                 .getSharedPreferences(FILE, Context.MODE_PRIVATE);
+        DesktopFeatureDefaults.initialize(preferences);
+        if(preferences.contains("launcher_folder_contour")) {
+            preferences.edit().putBoolean(ICON_CONTOUR,preferences.getBoolean(ICON_CONTOUR,false)
+                    ||preferences.getBoolean("launcher_folder_contour",false)).remove("launcher_folder_contour").commit();
+        }
         BackGestureWidthSettings.initialize(context, preferences);
+        RecentsCornerSettings.initialize(context, preferences);
         if (!preferences.contains(APP_IMMERSIVE_NAVIGATION_PACKAGES)) {
             preferences.edit().putStringSet(APP_IMMERSIVE_NAVIGATION_PACKAGES,
                     java.util.Collections.singleton("com.tencent.mm")).commit();
@@ -248,6 +277,10 @@ public final class ModuleSettings {
             preferences.edit().putStringSet(HIDDEN_LAUNCHER_APPS, hidden)
                     .putBoolean(HIDDEN_LAUNCHER_APPS_ENABLED, true)
                     .putBoolean("hidden_launcher_apps_migrated", true).commit();
+        }
+        if(!preferences.contains(HIDDEN_LAUNCHER_APP_ORDER)) {
+            preferences.edit().putString(HIDDEN_LAUNCHER_APP_ORDER,String.join("\n",HiddenAppOrder.reconcile(
+                    preferences.getStringSet(HIDDEN_LAUNCHER_APPS,java.util.Collections.emptySet()),""))).commit();
         }
         int formatVersion = preferences.getInt(CLOCK_SPACING_FORMAT_VERSION, 0);
         if (formatVersion < 2) {

@@ -4,6 +4,8 @@
 
     <!-- Fluix 控件的触摸反馈 -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Complete background icon index, including installed packages without Launcher activities. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <queries>
         <intent>
@@ -11,6 +13,7 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
         <package android:name="com.android.systemui" />
+        <package android:name="com.flyme.systemuieditor" />
         <package android:name="com.android.settings" />
         <package android:name="com.meizu.mstore" />
         <package android:name="com.meizu.flyme.weather" />
@@ -33,6 +36,7 @@
         <package android:name="com.flyme.meizu.store" />
         <package android:name="com.flyme.sceneengine" />
         <package android:name="com.meizu.account" />
+        <package android:name="com.meizu.battery" />
         <package android:name="com.meizu.callsetting" />
         <package android:name="com.meizu.connectivitysettings" />
         <package android:name="com.meizu.customizecenter" />
@@ -44,6 +48,7 @@
         <package android:name="com.meizu.net.pedometer" />
         <package android:name="com.meizu.notepaper" />
         <package android:name="com.meizu.picker" />
+        <package android:name="com.meizu.safe" />
         <package android:name="com.meizu.voiceassistant" />
         <package android:name="com.meizu.wear" />
         <!-- End recommended scope visibility -->
@@ -65,6 +70,22 @@
             android:authorities="dev.rikumi.flymemod.settings"
             android:directBootAware="true"
             android:exported="true" />
+
+        <provider
+            android:name=".SystemIconPackProvider"
+            android:authorities="dev.rikumi.flymemod.icons"
+            android:exported="true" />
+        <receiver android:name=".SystemIconPackPackages" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+                <action android:name="android.intent.action.PACKAGE_CHANGED" />
+                <action android:name="android.intent.action.PACKAGE_REMOVED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.PACKAGE_FULLY_REMOVED" />
+                <data android:scheme="package" />
+            </intent-filter>
+            <intent-filter><action android:name="android.intent.action.USER_UNLOCKED" /></intent-filter>
+        </receiver>
 
         <activity
             android:name=".MainActivity"

@@ -120,7 +120,8 @@ internal fun ColorSettingRow(item: ColorItem) {
         onCheckedChange = {
             enabled = it
             expanded = it
-            preferences.edit().putBoolean(item.key, it).apply()
+            val editor = preferences.edit().putBoolean(item.key, it)
+            editor.apply()
             context.contentResolver.notifyChange(ModuleSettings.URI, null)
         },
         onTitleClick = if (enabled) ({ expanded = !expanded }) else null,
@@ -133,7 +134,8 @@ internal fun ColorSettingRow(item: ColorItem) {
     AnimatedVisibility(visible = enabled && expanded) {
         ColorPickerEditor(color, opaque = true, onDismiss = { expanded = false }) {
             color = it or 0xff000000.toInt()
-            preferences.edit().putInt(item.colorKey, color).apply()
+            val editor = preferences.edit().putInt(item.colorKey, color)
+            editor.apply()
             context.contentResolver.notifyChange(ModuleSettings.URI, null)
         }
     }

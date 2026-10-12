@@ -8,10 +8,15 @@ internal val HIDE_DISABLED_APPS_ITEM = SwitchItem(ModuleSettings.HIDE_DISABLED_A
 
 internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
     "desktop" to listOf(
-        SettingsGroup("桌面图标设置", listOf(
+        SettingsGroup("轮廓光", listOf(
             SwitchItem(ModuleSettings.ICON_CONTOUR, "图标轮廓光"),
-            SwitchItem(ModuleSettings.EDIT_APP_ICON_NAME, "允许编辑图标和名称"),
             SwitchItem(ModuleSettings.MENU_CONTOUR, "长按菜单轮廓光"),
+            SwitchItem(ModuleSettings.WIDGET_CONTOUR, "小组件背景轮廓光"),
+        )),
+        SettingsGroup("桌面图标设置", listOf(
+            SwitchItem(ModuleSettings.EDIT_APP_ICON_NAME, "允许编辑图标和名称"),
+            SwitchItem(ModuleSettings.SYSTEM_ICON_PACK, "系统级应用图标包图标"),
+            SwitchItem(ModuleSettings.FIX_ICON_PACK_PREVIEW, "修复选择图标包图标显示", defaultEnabled = true),
             SwitchItem(ModuleSettings.LAUNCHER_HIDE_APP_MENU, "允许隐藏应用"),
             SwitchItem(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS, "桌面双指张开查看隐藏应用"),
         )),
@@ -19,7 +24,6 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.FOLDER_PAGING, "桌面文件夹水平分页", notifyChange = false),
             SwitchItem(ModuleSettings.FOLDER_CENTER, "桌面文件夹垂直居中", notifyChange = false),
             SwitchItem(ModuleSettings.FOLDER_MENU_ALIGNMENT, "修复文件夹长按菜单对齐"),
-            SwitchItem(ModuleSettings.FOLDER_CONTOUR, "文件夹背景轮廓光"),
             SwitchItem(ModuleSettings.FOLDER_RESTORE_COLOR, "恢复文件夹背景色"),
             SwitchItem(ModuleSettings.FOLDER_RADIUS_ENABLED, "调整文件夹圆角大小",
                 slider = SliderSpec(
@@ -27,9 +31,6 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
                     unit = "dp",
                 ),
             ),
-        )),
-        SettingsGroup("桌面小组件设置", listOf(
-            SwitchItem(ModuleSettings.WIDGET_CONTOUR, "小组件背景轮廓光"),
         )),
         SettingsGroup("壁纸设置", listOf(
             SwitchItem(ModuleSettings.WALLPAPER_STARTUP_FIX, "修复开机时壁纸强制调暗", notifyChange = false),
@@ -49,8 +50,10 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
                 ),
             ),
         )),
-        SettingsGroup("控制中心主题", listOf(
+        SettingsGroup("轮廓光", listOf(
             SwitchItem(ModuleSettings.COLOROS_CONTOUR, "ColorOS 轮廓光"),
+        )),
+        SettingsGroup("控制中心主题", listOf(
             SwitchItem(ModuleSettings.LIGHT, "控制中心磁贴亮色背景",
                 slider = SliderSpec(
                     ModuleSettings.LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT, 0, ModuleSettings.LIGHT_OPACITY_MAX,
@@ -79,7 +82,8 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.CONTROL_CENTER_CLOCK_MONOSPACE, "控制中心时钟字体等宽"),
             SwitchItem(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP, "控制中心时钟日期上移",
                 slider = SliderSpec(
-                    ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE, 16, 0, 40,
+                    ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE,
+                    ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE_DEFAULT, 0, 40,
                     unit = "dp",
                     notifyOnRelease = true,
                 ),
@@ -117,6 +121,9 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
         )),
     ),
     "notification" to listOf(
+        SettingsGroup("轮廓光", listOf(
+            SwitchItem(ModuleSettings.NOTIFICATION_CONTOUR, "ColorOS 通知轮廓光"),
+        )),
         SettingsGroup("通知中心主题", listOf(
             SwitchItem(ModuleSettings.NOTIFICATION_LIGHT, "通知亮色背景",
                 slider = SliderSpec(
@@ -136,7 +143,6 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
                     unit = "%",
                 ),
             ),
-            SwitchItem(ModuleSettings.NOTIFICATION_CONTOUR, "ColorOS 通知轮廓光"),
         )),
         SettingsGroup("通知中心设置", listOf(
             SwitchItem(ModuleSettings.HEADS_UP_WIDTH, "增加浮动通知宽度"),
@@ -150,6 +156,8 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.ORIGINAL_NOTIFICATION_ICONS, "恢复原生第三方通知图标"),
             SwitchItem(ModuleSettings.MERGE_DUAL_SIGNAL, "合并双卡信号"),
             SwitchItem(ModuleSettings.SEPARATE_NETWORK_TYPE, "独立显示网络制式"),
+            SwitchItem(ModuleSettings.STATUS_BAR_LYRIC_AVOID, "避让第三方状态栏歌词", defaultEnabled = ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT),
+            SelectItem(ModuleSettings.STATUS_BAR_CHARGING_INFO, "状态栏显示充电功率", listOf("关闭", "功率值", "电压电流值"), defaultValue = ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT),
         )),
         SettingsGroup("状态栏图标隐藏", listOf(
             SwitchItem(ModuleSettings.HIDE_STATUS_ICON_KEYS[0], "隐藏睡眠模式图标"),
@@ -180,6 +188,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT, "屏蔽锁屏长按编辑"),
         )),
         SettingsGroup("锁屏视觉", listOf(
+            SwitchItem(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, "去除指纹解锁动画", defaultEnabled = true),
             SwitchItem(ModuleSettings.HIDE_CARRIER, "隐藏锁屏和通知中心运营商"),
             SwitchItem(ModuleSettings.LIMIT_AOD_MOVEMENT, "限制息屏显示移动范围"),
             SelectItem(ModuleSettings.LOCK_CLOCK_FONT, "锁屏和息屏时钟字体", ModuleSettings.CLOCK_FONT_NAMES.toList()),
@@ -197,7 +206,14 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
     "navigation" to listOf(
         SettingsGroup("导航与返回", listOf(
             CustomItem("app_navigation") { actions -> AppNavigationPreference(actions.onSelectNavigationApplications) },
+            SwitchItem(ModuleSettings.BACK_GESTURE_REMOVE_SMART, "放宽侧滑返回判定", defaultEnabled = true),
             CustomItem("back_gesture_width") { BackGestureWidthPreference() },
+            SwitchItem(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, "侧边返回暗色背景", defaultEnabled = true,
+                slider = SliderSpec(ModuleSettings.BACK_GESTURE_DARK_OPACITY,
+                    ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT, 0, 100, unit = "%", step = 5)),
+            SwitchItem(ModuleSettings.GESTURE_BAR_WIDTH_ENABLED, "调整手势滑动条宽度", defaultEnabled = true,
+                slider = SliderSpec(ModuleSettings.GESTURE_BAR_WIDTH_DP,
+                    ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT, 80, 120)),
         )),
         SettingsGroup("长按操作", listOf(
             SystemItem(SystemSetting.LONG_PRESS),
@@ -209,6 +225,12 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.HOME_ICON_MINIMUM_SIZE, "限制回桌面动画最小图标尺寸"),
         )),
         SettingsGroup("多任务切换", listOf(
+            SwitchItem(ModuleSettings.RECENTS_CORNER_ENABLED, "修正多任务卡片圆角尺寸",
+                slider = SliderSpec(
+                    ModuleSettings.RECENTS_CORNER_DP, RecentsCornerGeometry.MIN_DP,
+                    RecentsCornerGeometry.MIN_DP, RecentsCornerGeometry.MAX_DP,
+                ),
+            ),
             SwitchItem(ModuleSettings.STACKED_RECENTS, "ColorOS 堆叠多任务"),
             SwitchItem(ModuleSettings.RECENTS_SWIPE_UP_KILL, "多任务上划彻底结束进程"),
             SwitchItem(ModuleSettings.RECENTS_HIDE_NOT_RUNNING, "多任务隐藏未在运行的应用"),
@@ -266,10 +288,12 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
                 )),
         )),
         SettingsGroup("系统杂项", listOf(
-            ColorItem(ModuleSettings.SYSTEM_THEME_COLOR_ENABLED, "自定义系统主题色",
-                ModuleSettings.SYSTEM_THEME_COLOR, ModuleSettings.SYSTEM_THEME_COLOR_DEFAULT),
+            SwitchItem(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, "修复重启系统服务后解锁卡顿", defaultEnabled = true),
+            SwitchItem(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, "强制显示设置首页 Google", defaultEnabled = true),
             SwitchItem(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, "深色模式系统应用背景纯黑"),
-            SwitchItem(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, "深色应用管理支持选择特殊应用"),
+            SwitchItem(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, "修复无线调试配对页面主题适配", defaultEnabled = true),
+            SwitchItem(ModuleSettings.DARK_APP_WHITELIST_MODE, "强制深色适配使用白名单", defaultEnabled = true),
+            SwitchItem(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, "强制深色黑名单支持关闭特殊应用"),
             ActionItem("landscape_games", "横屏游戏宽度适配") { it.onSelectGameApplications() },
         )),
     ),

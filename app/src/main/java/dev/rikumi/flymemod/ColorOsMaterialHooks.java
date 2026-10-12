@@ -21,6 +21,9 @@ final class ColorOsMaterialHooks {
     // View-owned identity survives repeated hook installation, including different
     // module class loaders. Each tile may expose exactly one contour drawable.
     private static final int TILE_CONTOUR_TAG = 0x7e464d01;
+    private static final Map<Class<?>, Map<String, Optional<Field>>> FIELD_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<android.content.res.Resources, Map<String, Integer>> resourceIds = new WeakHashMap<>();
     private final TileCornerHooks corners;
     private final Consumer<Context> settings;
     private final BooleanSupplier contourEnabled, splitNetworkEnabled, notificationEnabled;
@@ -30,7 +33,9 @@ final class ColorOsMaterialHooks {
     private final Set<View> notificationErrors = Collections.newSetFromMap(new WeakHashMap<>());
     private final BiConsumer<String, Throwable> log;
     private final Map<View, Host> hosts = new WeakHashMap<>();
+    private final Set<View> mediaViews = Collections.newSetFromMap(new WeakHashMap<>());
     private final ClassLoader loader;
+    private final MediaSwipeCornerHooks mediaSwipeCorners;
     private final Map<String, String> sources = new HashMap<>();
     private Context assets;
     private final Class<?> notificationOutline;
@@ -38,10 +43,12 @@ final class ColorOsMaterialHooks {
 
     ColorOsMaterialHooks(ClassLoader loader, Consumer<Context> settings,
             BooleanSupplier contour, BooleanSupplier splitNetwork, BooleanSupplier notification, IntSupplier notificationOpacity,
-            TileCornerHooks corners, BiConsumer<String, Throwable> log)
+            TileCornerHooks corners, ToDoubleFunction<View> notificationRadius, BiConsumer<String, Throwable> log)
             throws ReflectiveOperationException {
         this.corners = corners; this.loader = loader; this.settings = settings; contourEnabled = contour; splitNetworkEnabled = splitNetwork; notificationEnabled = notification; this.log = log;
         this.notificationOpacity = notificationOpacity;
+        mediaSwipeCorners = new MediaSwipeCornerHooks(loader, settings,
+                view -> notificationEnabled.getAsBoolean() ? notificationRadius.applyAsDouble(view) : Double.NaN);
         notificationOutline = loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableOutlineView");
         childNeedsClipping = notificationOutline.getMethod("childNeedsClipping",View.class);
         customChildClipPath = notificationOutline.getMethod("getCustomClipPath",View.class);
@@ -51,6 +58,7 @@ final class ColorOsMaterialHooks {
 
     void install(ClassLoader loader, SignalHooks.Installer installer) throws ReflectiveOperationException {
         if (Build.VERSION.SDK_INT < 33) return;
+        mediaSwipeCorners.install(installer);
         String stack = "com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout";
         for (String method : new String[]{"setDismissView", "setFilterDismissView"}) {
             loader.loadClass(stack).getDeclaredMethod(method, ImageView.class);
@@ -175,9 +183,57 @@ final class ColorOsMaterialHooks {
         installer.hook("com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout", "setBackground", chain -> {
             Object result = chain.proceed(); track((View) chain.getThisObject()); return result;
         });
+        installer.hook("com.android.systemui.util.animation.TransitionLayout", "applyCurrentState", chain -> {
+            Object result = chain.proceed();
+            View view = (View) chain.getThisObject();
+            if (isMedia(view)) apply(view, false); // updateBounds bypasses ordinary layout listeners.
+            return result;
+        });
+        String mediaHandler = "com.android.systemui.media.controls.ui.view.MediaCarouselScrollHandler";
+        for (String method : new String[]{"setContentTranslation", "onMediaScrollingChanged",
+                "setCarouselBounds", "updateClipToOutline"}) {
+            for (Method target : loader.loadClass(mediaHandler).getDeclaredMethods()) {
+                if (!target.getName().equals(method)) continue;
+                installer.hook(mediaHandler, method, chain -> {
+                    Object result = chain.proceed();
+                    invalidateMediaWithin((View) field(chain.getThisObject(), "scrollView"));
+                    return result;
+                }, target.getParameterTypes());
+            }
+        }
+        String mediaContainer = "com.android.systemui.statusbar.notification.stack.MediaContainerView";
+        installer.hook(mediaContainer, "updateClipping", chain -> {
+            View view = (View) chain.getThisObject();
+            int previous = ((Number) field(view, "clipHeight")).intValue();
+            Object result = chain.proceed();
+            if (previous != ((Number) field(view, "clipHeight")).intValue()) invalidateMediaWithin(view);
+            return result;
+        });
+        for (String method : new String[]{"setCustomScaleX", "setCustomScaleY", "setCustomTranslationY", "setTranslationY"}) {
+            installer.hook(mediaContainer, method, chain -> {
+                View view = (View) chain.getThisObject();
+                float oldX = view.getScaleX(), oldY = view.getScaleY(), oldTranslation = view.getTranslationY();
+                Object result = chain.proceed();
+                if (oldX != view.getScaleX() || oldY != view.getScaleY() || oldTranslation != view.getTranslationY())
+                    invalidateMediaWithin(view);
+                return result;
+            }, float.class);
+        }
+        installer.hook("com.android.systemui.statusbar.notification.row.ExpandableView", "onLayout", chain -> {
+            Object result = chain.proceed();
+            View view = (View) chain.getThisObject();
+            if (view.getClass().getName().equals(mediaContainer)) invalidateMediaWithin(view);
+            return result;
+        }, boolean.class, int.class, int.class, int.class, int.class);
+        for (String method : new String[]{"updateRoundedClipPath", "updateUseRoundedRectClipping"}) {
+            installer.hook(stack, method, chain -> {
+                Object result = chain.proceed(); invalidateMediaWithin((View) chain.getThisObject()); return result;
+            });
+        }
     }
 
     void refresh() {
+        mediaSwipeCorners.refresh();
         for (View view : new ArrayList<>(hosts.keySet())) if (view != null) apply(view);
         for (View view : new ArrayList<>(notificationContours.keySet())) if (view != null) view.invalidate();
         for (ButtonStyle button : new ArrayList<>(notificationButtons.values())) button.update();
@@ -194,7 +250,24 @@ final class ColorOsMaterialHooks {
         style.update();
     }
 
+    private static boolean isMedia(View view) {
+        return view.getClass().getName().equals("com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout");
+    }
+    private void invalidateMediaWithin(View ancestor) {
+        if (!notificationEnabled.getAsBoolean()) return;
+        for (View media : new ArrayList<>(mediaViews)) {
+            for (android.view.ViewParent parent = media.getParent(); parent instanceof View view; parent = view.getParent()) {
+                if (view == ancestor) {
+                    Host host = hosts.get(media);
+                    if (host != null && host.outline != null) host.outline.invalidateSelf();
+                    media.invalidate(); break;
+                }
+            }
+        }
+    }
+
     private void invalidateNotificationContours(View row) throws ReflectiveOperationException {
+        invalidateMediaWithin(row);
         // Flyme's content-only swipe changes child RenderNodes without rebuilding
         // their display lists. Redraw the affected backgrounds, not the whole stack.
         for (String name : new String[]{"mBackgroundNormal", "mBackgroundFlyme"})
@@ -301,10 +374,11 @@ final class ColorOsMaterialHooks {
     private void track(View view) { track(view, 0); }
     private void track(View view, int networkRole) {
         settings.accept(view.getContext());
+        if (isMedia(view)) mediaViews.add(view);
         if (corners != null && !view.getClass().getName().endsWith(".MediaCarouseTransitionLayout")) corners.observe(view, networkRole);
         if (!hosts.containsKey(view)) {
             hosts.put(view, new Host());
-            view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> apply(v));
+            view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> apply(v, false));
             view.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
                 public void onViewAttachedToWindow(View v) { apply(v); }
                 public void onViewDetachedFromWindow(View v) { remove(v); }
@@ -315,13 +389,17 @@ final class ColorOsMaterialHooks {
     }
 
     private void apply(View view) {
+        apply(view, true);
+    }
+    private void apply(View view, boolean invalidateMask) {
         if (Build.VERSION.SDK_INT < 33) return;
         Host host = hosts.get(view);
         if (host == null) return;
         try {
             boolean split = splitNetworkEnabled.getAsBoolean();
             boolean visible = host.networkRole == 1 ? !split : host.networkRole != 2 || split;
-            if (!contourEnabled.getAsBoolean() || !visible) {
+            boolean enabled = isMedia(view) ? notificationEnabled.getAsBoolean() : contourEnabled.getAsBoolean();
+            if (!enabled || !visible) {
                 remove(view);
             } else {
                 if (host.outline == null) host.outline = new Contour(view);
@@ -333,7 +411,9 @@ final class ColorOsMaterialHooks {
                 // Native transitions may clear the overlay. An attached drawable
                 // already has a callback and must not be detached on every refresh.
                 if (host.outline.getCallback() == null) view.getOverlay().add(host.outline);
-                host.outline.maskWidth = 0; // Layout/settings refresh may replace the native outline without resizing.
+                // Ordinary layout reuses the mask when its size, radius, provider and
+                // path generation match. Settings refresh still forces regeneration.
+                if (invalidateMask) host.outline.maskWidth = 0;
                 host.outline.setBounds(0, 0, view.getWidth(), view.getHeight());
                 host.outline.invalidateSelf();
             }
@@ -365,7 +445,28 @@ final class ColorOsMaterialHooks {
             String value = new String(input.readAllBytes(), StandardCharsets.UTF_8); sources.put(name, value); return value;
         }
     }
-    private static Object field(Object owner, String name) throws ReflectiveOperationException { return owner.getClass().getField(name).get(owner); }
+    private static Field cachedField(Class<?> type, String name) {
+        return FIELD_CACHE.computeIfAbsent(type, key -> new java.util.concurrent.ConcurrentHashMap<>())
+                .computeIfAbsent(name, key -> {
+            try { return Optional.of(type.getField(key)); }
+            catch (NoSuchFieldException missing) { return Optional.empty(); }
+        }).orElse(null);
+    }
+    private static Object field(Object owner, String name) throws ReflectiveOperationException {
+        Field field = cachedField(owner.getClass(), name);
+        if (field == null) throw new NoSuchFieldException(name);
+        return field.get(owner);
+    }
+    private static Object optionalField(Object owner, String name) throws IllegalAccessException {
+        Field field = cachedField(owner.getClass(), name);
+        return field == null ? null : field.get(owner);
+    }
+    private int resourceId(View view, String name, String type) {
+        android.content.res.Resources resources = view.getResources();
+        return resourceIds.computeIfAbsent(resources, key -> new HashMap<>())
+                .computeIfAbsent(type + '/' + name,
+                        key -> resources.getIdentifier(name, type, "com.android.systemui"));
+    }
     private static boolean night(View view) { return (view.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES; }
     private static Drawable nativeFill(View view, Drawable fallback) {
         // NotificationBackgroundView draws mBackground itself; it does not
@@ -374,14 +475,14 @@ final class ColorOsMaterialHooks {
             try { if (field(view, "mBackground") instanceof Drawable drawable) return drawable; }
             catch (ReflectiveOperationException ignored) { }
         }
-        try { if (field(view, "backgroundDrawable") instanceof Drawable drawable) return drawable; }
+        try { if (optionalField(view, "backgroundDrawable") instanceof Drawable drawable) return drawable; }
         catch (ReflectiveOperationException ignored) { }
         return fallback;
     }
-    private static Drawable surface(View view, Drawable drawable) {
+    private Drawable surface(View view, Drawable drawable) {
         drawable = nativeFill(view, drawable);
         if (drawable instanceof LayerDrawable layers) {
-            int id = view.getResources().getIdentifier("background", "id", "com.android.systemui");
+            int id = resourceId(view, "background", "id");
             Drawable surface = layers.findDrawableByLayerId(id);
             if (surface != null) drawable = surface;
         }
@@ -398,15 +499,16 @@ final class ColorOsMaterialHooks {
             return corners.radius(view, view.getWidth(), view.getHeight());
         // Both slider cards use the root's native outline rather than the progress Drawable's rectangle.
         if (view.getClass().getName().equals("com.android.systemui.settings.brightness.BrightnessSliderView")) {
-            int id = view.getResources().getIdentifier("qs_corner_radius", "dimen", "com.android.systemui");
+            int id = resourceId(view, "qs_corner_radius", "dimen");
             if (id != 0) return view.getResources().getDimension(id);
         }
-        drawable = surface(view, drawable);
         if (drawable instanceof GradientDrawable gradient && gradient.getCornerRadius() > 0) return gradient.getCornerRadius();
         if (drawable != null) {
-            try { return ((Number) field(drawable, "radius")).floatValue(); } catch (ReflectiveOperationException ignored) { }
+            try { if (optionalField(drawable, "radius") instanceof Number value) return value.floatValue(); }
+            catch (ReflectiveOperationException ignored) { }
         }
-        try { return ((Number) field(view, "mClipCornerRadius")).floatValue(); } catch (ReflectiveOperationException ignored) { }
+        try { if (optionalField(view, "mClipCornerRadius") instanceof Number value) return value.floatValue(); }
+        catch (ReflectiveOperationException ignored) { }
         return 14f * view.getResources().getDisplayMetrics().density;
     }
     private static final class Host { Contour outline; int networkRole; boolean errorLogged; }
@@ -421,6 +523,7 @@ final class ColorOsMaterialHooks {
         final Outline ancestorOutline = new Outline();
         final Method generatePath;
         final Field outlinePath;
+        final MediaContourGeometry mediaGeometry;
         ViewOutlineProvider maskProvider;
         int maskWidth, maskHeight;
         float maskRadius = -1, maskStroke;
@@ -429,14 +532,21 @@ final class ColorOsMaterialHooks {
         int maskGeneration;
         float maskSmoothness;
         final Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final ContourMaskCache renderedMask = new ContourMaskCache();
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         int alpha = 255;
+        RuntimeShader configuredShader;
+        int configuredWidth, configuredHeight;
+        float configuredRadius, configuredStroke;
+        boolean configuredNight;
+        final float[] configuredCorners = {Float.NaN, Float.NaN, Float.NaN, Float.NaN};
         final float[] nearParams = new float[]{0, .4f, .2f, .2f, 0, 0};
         final float[] farParams = new float[]{0, .2f, .2f, .2f, 0, 0};
         Contour(View view) throws Exception { this(view, false); }
         Contour(View view, boolean circularButton) throws Exception {
             owner = new WeakReference<>(view);
             this.circularButton = circularButton;
+            mediaGeometry = isMedia(view) ? new MediaContourGeometry(loader) : null;
             round = new RuntimeShader(source(view, "contour_round"));
             notificationRound = new RuntimeShader(source(view,"contour_round")
                     .replace("uniform float2 u_size;", "uniform float4 u_notificationCorners; uniform float2 u_size;")
@@ -459,11 +569,18 @@ final class ColorOsMaterialHooks {
             // the current tile owner may draw; notification contours are direct draws.
             if (!circularButton && !view.getClass().getName().endsWith(".NotificationBackgroundView")
                     && view.getTag(TILE_CONTOUR_TAG) != this) return;
+            int mediaSave = mediaGeometry == null ? -1 : canvas.save();
             try {
-                float radius = circularButton ? Math.min(bounds.width(),bounds.height()) / 2f
-                        : Math.min(radius(view, view.getBackground()), Math.min(bounds.width(), bounds.height()) / 2f);
-                RuntimeShader shader;
+                if (mediaGeometry != null) {
+                    if (!notificationEnabled.getAsBoolean() || !mediaGeometry.update(view, canvas,
+                            ((Number) field(view, "mClipCornerRadius")).floatValue())) return;
+                    canvas.translate(mediaGeometry.visible.left, mediaGeometry.visible.top);
+                    bounds = mediaGeometry.local;
+                }
                 Drawable surface = surface(view, view.getBackground());
+                float radius = circularButton ? Math.min(bounds.width(),bounds.height()) / 2f
+                        : Math.min(radius(view, surface), Math.min(bounds.width(), bounds.height()) / 2f);
+                RuntimeShader shader;
                 boolean slider = view.getClass().getName().equals("com.android.systemui.settings.brightness.BrightnessSliderView");
                 boolean naturalCard = surface != null && surface.getClass().getName()
                         .equals("com.android.systemui.qs.CustomSmoothCornerDrawable");
@@ -485,28 +602,49 @@ final class ColorOsMaterialHooks {
                         // Different group corner radii remain dynamic when swipe clipping changes width.
                         // Rebuilding the old bitmap mask here would allocate and rasterize every frame.
                         shader = notificationRound;
-                        shader.setFloatUniform("u_notificationCorners",radii[0],radii[2],radii[4],radii[6]);
+                        if (configuredCorners[0] != radii[0] || configuredCorners[1] != radii[2]
+                                || configuredCorners[2] != radii[4] || configuredCorners[3] != radii[6]) {
+                            shader.setFloatUniform("u_notificationCorners",radii[0],radii[2],radii[4],radii[6]);
+                            for (int i = 0; i < 4; i++) configuredCorners[i] = radii[i * 2];
+                        }
                     }
+                } else if (mediaGeometry != null) {
+                    // The inward edge distance follows the exact native clip
+                    // intersection, so neither an old full-width glow nor a
+                    // guessed round-rect is cut by the carousel's round corners.
+                    setNativeMask(mediaGeometry.path, bounds, 2f * view.getResources().getDisplayMetrics().density);
+                    shader = nativeCurve;
                 } else if (slider || naturalCard) {
                     shader = updateNativeMask(view, bounds, radius, surface, slider) ? nativeCurve : round;
                 } else shader = round; // Native GradientDrawable/round-rect backgrounds retain their actual circular arcs.
-                shader.setFloatUniform("u_size", bounds.width(), bounds.height());
-                shader.setFloatUniform("u_fadeDistance", ContourLightGeometry.fadeDistance(
-                        bounds.width(), bounds.height(), radius, circularButton));
-                shader.setFloatUniform("uRatio", .5f + bounds.width()/(4f*(bounds.width()+bounds.height())));
-                shader.setFloatUniform("u_corner", radius); shader.setFloatUniform("u_weight", .2f);
-                shader.setColorUniform("uColor", Color.WHITE);
                 // GradientStrokeLineAdapter QS light/night templates, scaled from ColorOS's 6px stroke.
                 float width = 2f * view.getResources().getDisplayMetrics().density;
-                nearParams[0] = farParams[0] = width; nearParams[1] = night(view) ? .2f : .4f;
-                shader.setFloatUniform("uNearLineParams", nearParams);
-                shader.setFloatUniform("uFarLineParams", farParams);
+                boolean dark = night(view);
+                // RuntimeShader uniform writes discard its cached native shader even
+                // when values match. Keep stable contour draws on the cached shader.
+                if (configuredShader != shader || configuredWidth != bounds.width()
+                        || configuredHeight != bounds.height() || configuredRadius != radius
+                        || configuredStroke != width || configuredNight != dark) {
+                    shader.setFloatUniform("u_size", bounds.width(), bounds.height());
+                    shader.setFloatUniform("u_fadeDistance", ContourLightGeometry.fadeDistance(
+                            bounds.width(), bounds.height(), radius, circularButton));
+                    shader.setFloatUniform("uRatio", .5f + bounds.width()/(4f*(bounds.width()+bounds.height())));
+                    shader.setFloatUniform("u_corner", radius); shader.setFloatUniform("u_weight", .2f);
+                    shader.setColorUniform("uColor", Color.WHITE);
+                    nearParams[0] = farParams[0] = width; nearParams[1] = dark ? .2f : .4f;
+                    shader.setFloatUniform("uNearLineParams", nearParams);
+                    shader.setFloatUniform("uFarLineParams", farParams);
+                    configuredShader = shader; configuredWidth = bounds.width(); configuredHeight = bounds.height();
+                    configuredRadius = radius; configuredStroke = width; configuredNight = dark;
+                }
                 paint.setShader(shader); paint.setAlpha(alpha);
                 canvas.drawRect(bounds, paint);
             } catch (Exception | LinkageError error) {
                 if (view.getClass().getName().endsWith(".NotificationBackgroundView")) {
                     if (notificationErrors.add(view)) log.accept("Cannot render ColorOS notification contour", error);
                 } else fail(view, error);
+            } finally {
+                if (mediaSave >= 0) canvas.restoreToCount(mediaSave);
             }
         }
         private Rect notificationBounds(View view,Canvas canvas,Rect background) throws ReflectiveOperationException {
@@ -606,6 +744,10 @@ final class ColorOsMaterialHooks {
             return true;
         }
         private void setNativeMask(Path path, Rect bounds, float stroke) {
+            // invalidateOutline and native Path rebuilds can change generation IDs
+            // without changing geometry. Keep the existing bitmap and GPU input in
+            // that case; compare exact verbs/points, not an approximate bounding box.
+            if (renderedMask.matches(path, bounds.width(), bounds.height(), stroke)) return;
             Bitmap bitmap = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888);
             Canvas mask = new Canvas(bitmap);
             mask.clipPath(path);
@@ -619,8 +761,9 @@ final class ColorOsMaterialHooks {
                 mask.drawPath(path, maskPaint);
             }
             nativeCurve.setInputBuffer("uMask", new BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+            renderedMask.remember(path, bounds.width(), bounds.height(), stroke);
         }
-        public void setAlpha(int value) { alpha = value; invalidateSelf(); }
+        public void setAlpha(int value) { if (alpha != value) { alpha = value; invalidateSelf(); } }
         public void setColorFilter(ColorFilter filter) { paint.setColorFilter(filter); invalidateSelf(); }
         public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }

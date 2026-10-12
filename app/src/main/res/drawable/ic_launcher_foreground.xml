@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 固定 108dp 方形自适应前景；约 42×48dp 气球居中，四周保持透明。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.42"
+        android:scaleY="0.44444444"
+        android:translateX="33"
+        android:translateY="30">
+        <path
+            android:fillColor="#167DF2"
+            android:pathData="M50,0C77.614,0 100,22.7 100,50.8C100,78 83.8,91.7 50,108C16.2,91.7 0,78 0,50.8C0,22.7 22.386,0 50,0Z" />
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:pathData="M41.4,17C29.4,20.2 21.3,28.1 18.5,38.5" />
+    </group>
+</vector>

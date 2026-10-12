@@ -42,6 +42,8 @@ final class NightModeAppHooks {
         Class<?> appInfo = loader.loadClass("com.meizu.flyme.sdkstage.data.model.AppInfo");
         Method packageName = appInfo.getDeclaredMethod("getPackageName");
         appInfo.getDeclaredMethod("setTitle", CharSequence.class);
+        NightModeSpecialEntries specialEntries = new NightModeSpecialEntries(manager, appInfo);
+        NightModeWhitelistHooks.install(loader, preferences, installer);
         read();
         preferences.registerOnSharedPreferenceChangeListener(changes);
 
@@ -49,7 +51,9 @@ final class NightModeAppHooks {
             if (!enabled) return chain.proceed();
             ApplicationInfo info = (ApplicationInfo) chain.getArg(0);
             String pkg = info.packageName;
-            if ("com.android.shell".equals(pkg) || "com.android.documentsui".equals(pkg)) return false;
+            if ("com.android.shell".equals(pkg) || "com.android.documentsui".equals(pkg)
+                    || "com.google.android.gms".equals(pkg)) return false;
+            if (NightModeSpecialPackagePolicy.nativeDark(pkg)) return true;
             boolean system = (info.flags & (ApplicationInfo.FLAG_SYSTEM
                     | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0;
             boolean firstParty = pkg.startsWith("com.meizu.") || pkg.startsWith("com.flyme.");
@@ -74,18 +78,27 @@ final class NightModeAppHooks {
                 Boolean previous = listModes.put(instance, current);
                 // Clear only the manager's display cache. Do not reset the native
                 // blacklist or any per-app dark-mode choice when the option changes.
-                if (previous != null && previous != current) ((List<?>) apps.get(instance)).clear();
+                if (previous == null || previous != current) ((List<?>) apps.get(instance)).clear();
                 Object result = chain.proceed();
+                if (current && result instanceof List<?> loaded) {
+                    try {
+                        if (specialEntries.ensure((Context) context.get(instance), instance, loaded))
+                            log.accept("Explicit packages reconciled with cached dark app list", null);
+                    } catch (ReflectiveOperationException | RuntimeException error) {
+                        log.accept("Cannot reconcile explicit dark app entries", error);
+                    }
+                }
                 if ((previous == null || previous != current) && result instanceof List<?> loaded) {
-                    boolean shell = false, documents = false, wear = false;
+                    boolean shell = false, documents = false, wear = false, google = false;
                     for (Object item : loaded) {
                         String pkg = (String) packageName.invoke(item);
                         shell |= "com.android.shell".equals(pkg);
                         documents |= "com.android.documentsui".equals(pkg);
+                        google |= "com.google.android.gms".equals(pkg);
                         wear |= "com.meizu.wear".equals(pkg);
                     }
                     log.accept("Dark app list: enabled=" + current + ", count=" + loaded.size()
-                            + ", shell=" + shell + ", documents=" + documents + ", wear=" + wear, null);
+                            + ", shell=" + shell + ", documents=" + documents + ", wear=" + wear + ", google=" + google, null);
                 }
                 return result;
             }

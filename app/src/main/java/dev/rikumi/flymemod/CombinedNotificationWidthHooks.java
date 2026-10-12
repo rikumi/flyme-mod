@@ -61,9 +61,13 @@ final class CombinedNotificationWidthHooks {
 
     boolean applyWidth(View stack,int available) throws ReflectiveOperationException {
         if(!active(stack)||available<=0) return false;
-        int content=HeadsUpWidthHooks.contentWidth(available,stack.getResources().getDisplayMetrics().density);
+        int content=contentWidth(available,stack.getResources().getDisplayMetrics().density);
         side.setInt(stack,Math.max(0,(available-content)/2));
         return true;
+    }
+    static int contentWidth(int available,float density) {
+        // Independent merged-center rule; floating/keyguard 8dp must not alter it.
+        return Math.max(0,available-2*Math.round(16f*density));
     }
     private boolean active(View stack) throws ReflectiveOperationException {
         return enabled.getAsBoolean()&&expanded.getBoolean(stack)&&!(Boolean)onKeyguard.invoke(stack)

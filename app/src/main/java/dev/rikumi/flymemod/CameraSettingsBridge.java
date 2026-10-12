@@ -19,10 +19,17 @@ public final class CameraSettingsBridge extends Application {
     private void notifyServicesChanged() { serviceObservers.forEach(Runnable::run); }
     private SharedPreferences local;
     private final SharedPreferences.OnSharedPreferenceChangeListener changes = (prefs, key) -> {
-        if (ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND.equals(key)
-                || ModuleSettings.SYSTEM_THEME_COLOR_ENABLED.equals(key)
-                || ModuleSettings.SYSTEM_THEME_COLOR.equals(key)
+        if (ModuleSettings.STATUS_BAR_LYRIC_AVOID.equals(key)
+                || ModuleSettings.SYSTEM_ICON_PACK.equals(key)
+                || ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND.equals(key)
+                || ModuleSettings.WIRELESS_DEBUG_THEME_FIX.equals(key)
+                || ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK.equals(key)
+                || ModuleSettings.REMOVE_FINGERPRINT_ANIMATION.equals(key)
+                || ModuleSettings.LOCK_CLOCK_FONT.equals(key)
+                || ModuleSettings.CLOCK_FONT_WEIGHT.equals(key)
+                || ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE.equals(key)
                 || ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION.equals(key)
+                || ModuleSettings.BACK_GESTURE_REMOVE_SMART.equals(key)
                 || ModuleSettings.BACK_GESTURE_WIDTH_ENABLED.equals(key)
                 || ModuleSettings.BACK_GESTURE_WIDTH_DP.equals(key)
                 || ModuleSettings.CAMERA_DISABLE_AUTO_NIGHT.equals(key)
@@ -34,9 +41,11 @@ public final class CameraSettingsBridge extends Application {
                 || ModuleSettings.APP_IMMERSIVE_NAVIGATION.equals(key)
                 || ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES.equals(key)
                 || ModuleSettings.LANDSCAPE_GAME_PACKAGES.equals(key)
+                || ModuleSettings.LANDSCAPE_GAME_ENABLED.equals(key)
                 || (key != null && key.startsWith(ModuleSettings.LANDSCAPE_GAME_MODE_PREFIX))
                 || ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED.equals(key)
                 || ModuleSettings.SMALL_WINDOW_LIMIT.equals(key)
+                || ModuleSettings.DARK_APP_WHITELIST_MODE.equals(key)
                 || ModuleSettings.DARK_APP_SPECIAL_PACKAGES.equals(key)) publish();
     };
 
@@ -44,6 +53,7 @@ public final class CameraSettingsBridge extends Application {
         super.onCreate();
         local = ModuleSettings.preferences(this);
         local.registerOnSharedPreferenceChangeListener(changes);
+        SystemIconPackStore.get(this);
         XposedServiceHelper.registerListener(new XposedServiceHelper.OnServiceListener() {
             @Override public void onServiceBind(XposedService service) {
                 services.add(service);
@@ -57,20 +67,37 @@ public final class CameraSettingsBridge extends Application {
         });
     }
 
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        SystemIconPackStore.get(this).rebuild();
+    }
+
     private void publish() {
         Set<String> gamePackages = new java.util.HashSet<>(local.getStringSet(
                 ModuleSettings.LANDSCAPE_GAME_PACKAGES, java.util.Collections.emptySet()));
+        if (!local.getBoolean(ModuleSettings.LANDSCAPE_GAME_ENABLED, true)) gamePackages.clear();
         String gameModes = gamePackages.stream().sorted().map(pkg -> pkg + "=" + local.getInt(
                 ModuleSettings.LANDSCAPE_GAME_MODE_PREFIX + pkg, 0)).collect(java.util.stream.Collectors.joining("\n"));
         for (XposedService service : services) {
             try {
                 service.getRemotePreferences(REMOTE_FILE).edit()
+                        .putBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID,
+                                local.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT))
+                        .putBoolean(ModuleSettings.SYSTEM_ICON_PACK,local.getBoolean(ModuleSettings.SYSTEM_ICON_PACK,false))
                         .putBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND,
                                 local.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false))
-                        .putBoolean(ModuleSettings.SYSTEM_THEME_COLOR_ENABLED,
-                                local.getBoolean(ModuleSettings.SYSTEM_THEME_COLOR_ENABLED, false))
-                        .putInt(ModuleSettings.SYSTEM_THEME_COLOR,
-                                local.getInt(ModuleSettings.SYSTEM_THEME_COLOR, ModuleSettings.SYSTEM_THEME_COLOR_DEFAULT))
+                        .putBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX,
+                                local.getBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, true))
+                        .putBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK,
+                                local.getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, false))
+                        .putBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION,
+                                local.getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, false))
+                        .putInt(ModuleSettings.LOCK_CLOCK_FONT,local.getInt(ModuleSettings.LOCK_CLOCK_FONT,0))
+                        .putInt(ModuleSettings.CLOCK_FONT_WEIGHT,local.getInt(ModuleSettings.CLOCK_FONT_WEIGHT,0))
+                        .putBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE,
+                                local.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, true))
+                        .putBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART,
+                                local.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, false))
                         .putBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED,
                                 local.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false))
                         .putInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,
@@ -99,6 +126,7 @@ public final class CameraSettingsBridge extends Application {
                                 local.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false))
                         .putInt(ModuleSettings.SMALL_WINDOW_LIMIT,
                                 local.getInt(ModuleSettings.SMALL_WINDOW_LIMIT, ModuleSettings.SMALL_WINDOW_LIMIT_DEFAULT))
+                        .putBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, local.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, true))
                         .putBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES,
                                 local.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, false))
                         .commit();

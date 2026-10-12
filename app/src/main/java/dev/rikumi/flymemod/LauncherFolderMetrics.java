@@ -46,6 +46,10 @@ final class LauncherFolderMetrics {
                 .getMethod("calcFolderAppPaddingTop", Context.class).invoke(null, launcher);
         metrics.putFloat("top", top / density);
         metrics.putFloat("side", type.getField("edgeMarginPx").getInt(profile) / density / 2f);
+        android.graphics.Point cell=(android.graphics.Point)type.getMethod("getCellSize").invoke(profile);
+        Object flymeProfile=type.getMethod("getFlymeDp").invoke(profile);
+        int horizontalPadding=(Integer)flymeProfile.getClass().getMethod("getMzGridCellPaddingLeftRight").invoke(flymeProfile);
+        metrics.putFloat("textWidth",Math.max(1,cell.x-2*horizontalPadding)/density);
         return metrics;
     }
 

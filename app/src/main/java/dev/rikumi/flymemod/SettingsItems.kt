@@ -54,6 +54,7 @@ internal data class SwitchItem(
     val subtitle: String? = null,
     val slider: SliderSpec? = null,
     val notifyChange: Boolean = true,
+    val defaultEnabled: Boolean = false,
     val children: List<SettingsItem> = emptyList(),
 ) : SettingsItem
 
@@ -62,6 +63,7 @@ internal data class SelectItem(
     val title: String,
     val options: List<String>,
     val values: List<Int> = options.indices.toList(),
+    val defaultValue: Int = values.first(),
 ) : SettingsItem
 
 internal data class ColorItem(
@@ -141,7 +143,7 @@ private fun SwitchSettingRow(
 ) {
     val context = LocalContext.current
     val preferences = remember(context) { ModuleSettings.preferences(context) }
-    var checked by remember(preferences, item.key) { mutableStateOf(preferences.getBoolean(item.key, false)) }
+    var checked by remember(preferences, item.key) { mutableStateOf(preferences.getBoolean(item.key, item.defaultEnabled)) }
     var expanded by remember(item.key) { mutableStateOf(false) }
     val slider = item.slider
     var value by remember(preferences, slider?.key) {
@@ -200,7 +202,7 @@ private fun SelectSettingRow(item: SelectItem) {
     val context = LocalContext.current
     val preferences = remember(context) { ModuleSettings.preferences(context) }
     var selected by remember(preferences, item.key) {
-        val value = preferences.getInt(item.key, item.values.first())
+        val value = preferences.getInt(item.key, item.defaultValue)
         // 顺序型选项沿用原来的边界截断；字重等非连续取值回退到首项。
         mutableStateOf(if (item.values == item.options.indices.toList()) value.coerceIn(item.options.indices)
             else item.values.indexOf(value).coerceAtLeast(0))
