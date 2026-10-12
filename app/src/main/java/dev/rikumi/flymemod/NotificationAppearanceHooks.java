@@ -186,17 +186,18 @@ final class NotificationAppearanceHooks {
         void prepare() throws ReflectiveOperationException {
             View view=owner.get(); if(view==null)return;
             if(corners.getAsBoolean()) {
+                float targetRadius=radius(view);
                 if(!saved) {
                     originalRadius=media?mediaRadius.getFloat(view):clipRadius.getInt(view);
                     if(!media && roundable.get(view)!=null) originalMax=maxRadius.getFloat(roundable.get(view));
                     originalOutline=view.getOutlineProvider(); originalClip=view.getClipToOutline(); saved=true;
                 }
                 if(media) {
-                    mediaRadius.setFloat(view,radius(view));
+                    mediaRadius.setFloat(view,targetRadius);
                     view.setOutlineProvider(outline); view.setClipToOutline(true);
                 } else {
-                    clipRadius.setInt(view,Math.round(radius(view)));
-                    Object state=roundable.get(view); if(state!=null)maxRadius.setFloat(state,radius(view));
+                    clipRadius.setInt(view,Math.round(targetRadius));
+                    Object state=roundable.get(view); if(state!=null)maxRadius.setFloat(state,targetRadius);
                 }
             } else if(saved) {
                 if(media) {
@@ -227,7 +228,8 @@ final class NotificationAppearanceHooks {
                             && !drawable.getClass().getName().endsWith("WallpaperBlurDrawable")) tintNoBlur.invoke(background,color());
                 }
             }
-            lastColor=color(); lastRadius=radius(view); lastLight=light.getAsBoolean(); lastCorners=corners.getAsBoolean();
+            lastColor=color(); lastLight=light.getAsBoolean(); lastCorners=corners.getAsBoolean();
+            lastRadius=lastCorners?radius(view):-1f;
         }
         void update() {
             View view=owner.get(); if(view==null || running || failed || !view.isAttachedToWindow())return;

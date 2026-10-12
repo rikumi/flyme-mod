@@ -1,6 +1,8 @@
 package dev.rikumi.flymemod;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.graphics.Outline;
 import android.graphics.Path;
 import android.graphics.Rect;
@@ -29,6 +31,8 @@ final class TileCornerHooks {
     private final Class<?> tileClass, squareClass, customClass, smoothClass;
     private final Field tileBackground, customBackground, smoothRadius, smoothness, smoothPath, press, cellWidth, albumArt;
     private final Method updateSmooth, updateBitmap, generatePath;
+    private final int qsIconSize;
+    private Resources systemUiResources;
     private final Map<View, WeakReference<State>> states = new WeakHashMap<>();
     private final Map<View, WeakReference<View>> windowGrids = new WeakHashMap<>();
     private final Map<Drawable, Shape> originals = new WeakHashMap<>();
@@ -38,6 +42,7 @@ final class TileCornerHooks {
                     BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
         this.settings = settings; this.enabled = enabled; this.percentage = percentage; this.networkStyle = networkStyle; this.log = log;
         this.circleSmallTiles = circleSmallTiles;
+        qsIconSize = loader.loadClass("com.android.systemui.res.R$dimen").getField("qs_icon_size").getInt(null);
         tileClass = loader.loadClass("com.android.systemui.qs.tileimpl.QSTileViewImpl");
         squareClass = loader.loadClass("com.flyme.systemui.qs.tileimpl.SquareQSTileViewImpl");
         customClass = loader.loadClass("com.flyme.systemui.qs.tileimpl.FlymeCustomQSTileView");
@@ -87,9 +92,18 @@ final class TileCornerHooks {
             catch (ReflectiveOperationException error) { log.accept("Cannot read QS grid cell size", error); }
         }
         if (side <= 0) {
-            int id = view.getResources().getIdentifier("qs_icon_size", "dimen", "com.android.systemui");
+            // RemoteViews headers can carry the posting app's Resources, even while
+            // hosted in SystemUI. Resolve the native dimension in its owning package.
+            if (systemUiResources == null) {
+                try {
+                    systemUiResources = view.getContext().getPackageManager()
+                            .getResourcesForApplication("com.android.systemui");
+                } catch (PackageManager.NameNotFoundException error) {
+                    throw new IllegalStateException("SystemUI resources unavailable", error);
+                }
+            }
             // Native SquareQSTileViewImpl's initial 1x1 size, before the grid is measured.
-            side = view.getResources().getDimensionPixelSize(id) * 3f;
+            side = systemUiResources.getDimensionPixelSize(qsIconSize) * 3f;
         }
         return side;
     }
@@ -237,7 +251,9 @@ final class TileCornerHooks {
                     natural = true;
                 }
                 float s = natural ? smoothing(r, view.getWidth(), view.getHeight()) : 0f;
-                shape(view.getBackground(), r, s, active); shape(fill, r, s, active);
+                Drawable background = view.getBackground();
+                shape(background, r, s, active);
+                if (fill != background) shape(fill, r, s, active);
                 // QS press-state drawables are separate from the normal fill.
                 if (tileClass.isInstance(view))
                     shape((Drawable) press.get(view), r, s, active);
