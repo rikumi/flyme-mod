@@ -37,6 +37,7 @@ private val MODULE_SWITCHES = listOf(
     ModuleSettings.WEATHER_DARK_BACKGROUND,
     ModuleSettings.HIDE_LUNAR, ModuleSettings.SCALE, ModuleSettings.LIGHT, ModuleSettings.DARKEN, ModuleSettings.WHITE_ACTIVE,
     ModuleSettings.HEADS_UP_WIDTH, ModuleSettings.NOTIFICATION_CORNERS, ModuleSettings.ORIGINAL_NOTIFICATION_ICONS,
+    ModuleSettings.NOTIFICATION_READ_LAYER_FIX,
     ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS, ModuleSettings.MERGE_DUAL_SIGNAL,
     ModuleSettings.SEPARATE_NETWORK_TYPE, ModuleSettings.BLUR_ENABLED, ModuleSettings.WALLPAPER_STARTUP_FIX,
     ModuleSettings.STACKED_RECENTS, ModuleSettings.RECENTS_SWIPE_UP_KILL, ModuleSettings.RECENTS_HIDE_NOT_RUNNING,

@@ -112,6 +112,7 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.NOTIFICATION_LIGHT_OPACITY);
         columns.add(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS);
         columns.add(ModuleSettings.NOTIFICATION_CORNER_PERCENT);
+        columns.add(ModuleSettings.NOTIFICATION_READ_LAYER_FIX);
         columns.add(ModuleSettings.TILE_CORNERS);
         columns.add(ModuleSettings.TILE_CORNER_PERCENT);
         columns.add(ModuleSettings.TILE_BACKGROUND_COLOR);
@@ -238,6 +239,7 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS, false) ? 1 : 0);
         values.add(Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN, Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX,
                 prefs.getInt(ModuleSettings.NOTIFICATION_CORNER_PERCENT, ModuleSettings.TILE_CORNER_PERCENT_DEFAULT))));
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_READ_LAYER_FIX, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.TILE_CORNERS, false) ? 1 : 0);
         values.add(Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN, Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX,
                 prefs.getInt(ModuleSettings.TILE_CORNER_PERCENT, ModuleSettings.TILE_CORNER_PERCENT_DEFAULT))));

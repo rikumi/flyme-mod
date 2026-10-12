@@ -109,6 +109,7 @@ public final class ModuleSettings {
     public static final String NOTIFICATION_CUSTOM_CORNERS = "notification_custom_corners";
     public static final String NOTIFICATION_CORNER_PERCENT = "notification_corner_percent";
     public static final String NOTIFICATION_CORNERS = "larger_notification_corners";
+    public static final String NOTIFICATION_READ_LAYER_FIX = "notification_read_animation_layer_fix";
     public static final String ORIGINAL_NOTIFICATION_ICONS = "original_third_party_notification_icons";
     public static final String NATIVE_NOTIFICATION_EXPANSION = "native_notification_pull_expansion";
     public static final String MONOCHROME_NOTIFICATION_ACTIONS = "monochrome_notification_actions";

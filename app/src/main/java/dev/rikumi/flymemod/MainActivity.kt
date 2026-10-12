@@ -602,6 +602,7 @@ private fun NotificationPreferences() {
         PreferenceCard(
             listOf(
                 ModuleSettings.HEADS_UP_WIDTH to "增加浮动通知宽度",
+                ModuleSettings.NOTIFICATION_READ_LAYER_FIX to "修复已读通知动画层级",
                 ModuleSettings.NATIVE_NOTIFICATION_EXPANSION to "恢复原生通知下滑展开",
                 ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS to "通知操作按钮改为黑白色",
                 ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS to "禁用 Google 通知建议操作",

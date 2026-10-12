@@ -90,6 +90,8 @@ public final class XposedInit extends XposedModule {
     private int notificationLightOpacity = ModuleSettings.LIGHT_OPACITY_DEFAULT;
     private int notificationCornerPercent = ModuleSettings.TILE_CORNER_PERCENT_DEFAULT;
     private NotificationAppearanceHooks activeNotificationAppearanceHooks;
+    private NotificationRemovalLayerHooks activeNotificationRemovalLayerHooks;
+    private boolean notificationReadLayerFixEnabled;
     private boolean nativeNotificationExpansionEnabled;
     private boolean headsUpWidthEnabled;
     private boolean originalNotificationIconsEnabled;
@@ -474,6 +476,15 @@ public final class XposedInit extends XposedModule {
         }
         installWallpaperStartupFix(loader);
         installNotificationAppearanceLayout(loader);
+        try {
+            activeNotificationRemovalLayerHooks = new NotificationRemovalLayerHooks(loader, this::loadSettings,
+                    () -> notificationReadLayerFixEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeNotificationRemovalLayerHooks.install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve notification removal layers", error);
+        }
         try {
             new NotificationSuggestionHooks(loader, this::loadSettings,
                     () -> disableGoogleNotificationSuggestionsEnabled).install(
@@ -1907,6 +1918,7 @@ public final class XposedInit extends XposedModule {
                     if (activeCircleTileHooks != null) activeCircleTileHooks.refresh();
                     if (activeTileCornerHooks != null && !circleSmallTilesEnabled) activeTileCornerHooks.refresh();
                     if (activeNotificationAppearanceHooks != null) activeNotificationAppearanceHooks.refresh();
+                    if (activeNotificationRemovalLayerHooks != null) activeNotificationRemovalLayerHooks.refresh();
                     for (View content : new ArrayList<>(notificationContentInsets.keySet()))
                         if (content != null) content.requestLayout();
                     if (activeColorOsMaterialHooks != null) activeColorOsMaterialHooks.refresh();
@@ -1978,6 +1990,8 @@ public final class XposedInit extends XposedModule {
                 notificationLightOpacity = notificationLightOpacityColumn < 0 ? ModuleSettings.LIGHT_OPACITY_DEFAULT
                         : Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, cursor.getInt(notificationLightOpacityColumn)));
                 int notificationCustomCornersColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS);
+                int notificationReadLayerFixColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_READ_LAYER_FIX);
+                notificationReadLayerFixEnabled = notificationReadLayerFixColumn >= 0 && cursor.getInt(notificationReadLayerFixColumn) != 0;
                 notificationCustomCornersEnabled = notificationCustomCornersColumn >= 0 && cursor.getInt(notificationCustomCornersColumn) != 0;
                 int notificationCornerPercentColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CORNER_PERCENT);
                 notificationCornerPercent = notificationCornerPercentColumn < 0 ? ModuleSettings.TILE_CORNER_PERCENT_DEFAULT
