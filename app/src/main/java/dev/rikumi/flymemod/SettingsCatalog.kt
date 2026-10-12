@@ -85,7 +85,6 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
                     ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE,
                     ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE_DEFAULT, 0, 40,
                     unit = "dp",
-                    notifyOnRelease = true,
                 ),
             ),
             SwitchItem(ModuleSettings.HIDE_LUNAR, "隐藏农历日期"),
@@ -105,7 +104,6 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
                 slider = SliderSpec(
                     ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE, 8, 0, 40,
                     unit = "dp",
-                    notifyOnRelease = true,
                 ),
             ),
         )),
@@ -177,7 +175,6 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.STATUS_BAR_CLOCK_SPACING_ENABLED, "状态栏字间距",
                 slider = SliderSpec(
                     ModuleSettings.STATUS_BAR_CLOCK_SPACING, 0, -10, 10,
-                    notifyOnRelease = true,
                     format = { String.format(java.util.Locale.US, "%.2fem", it / 100f) },
                 ),
             ),
@@ -197,7 +194,6 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.LOCK_CLOCK_SPACING_ENABLED, "锁屏和息屏时钟字间距",
                 slider = SliderSpec(
                     ModuleSettings.LOCK_CLOCK_SPACING, 0, -10, 10,
-                    notifyOnRelease = true,
                     format = { String.format(java.util.Locale.US, "%.2fem", it / 100f) },
                 ),
             ),
@@ -210,9 +206,9 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             CustomItem("back_gesture_width") { BackGestureWidthPreference() },
             SwitchItem(ModuleSettings.BACK_GESTURE_REMOVE_SMART, "放宽侧滑返回判定", defaultEnabled = true),
             SwitchItem(ModuleSettings.BACK_GESTURE_ARROW, "侧滑返回区域增加箭头"),
-            SwitchItem(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, "侧边返回暗色背景", defaultEnabled = true,
+            SwitchItem(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, "侧滑返回暗色背景", defaultEnabled = true,
                 slider = SliderSpec(ModuleSettings.BACK_GESTURE_DARK_OPACITY,
-                    ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT, 0, 100, unit = "%", step = 5)),
+                    ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT, 50, 100, unit = "%", step = 5)),
         )),
         SettingsGroup("长按操作", listOf(
             SystemItem(SystemSetting.LONG_PRESS),

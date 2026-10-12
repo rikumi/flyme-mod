@@ -38,7 +38,6 @@ internal data class SliderSpec(
     val max: Int,
     val unit: String = "dp",
     // 所有普通滑条即时保存；部分设置仅在松手时通知 hook。
-    val notifyOnRelease: Boolean = false,
     val dividerOnlyWhenExpanded: Boolean = false,
     val format: (Int) -> String = { "$it$unit" },
     val step: Int = 1,
@@ -177,11 +176,10 @@ private fun SwitchSettingRow(
                 value = (value - slider.min).toFloat() / (slider.max - slider.min),
                 onValueChange = {
                     value = slider.snap((slider.min + it * (slider.max - slider.min)).roundToInt())
-                    preferences.edit().putInt(slider.key, value).apply()
-                    if (!slider.notifyOnRelease) context.contentResolver.notifyChange(ModuleSettings.URI, null)
                 },
                 onValueChangeFinished = {
-                    if (slider.notifyOnRelease) context.contentResolver.notifyChange(ModuleSettings.URI, null)
+                    preferences.edit().putInt(slider.key, value).apply()
+                    context.contentResolver.notifyChange(ModuleSettings.URI, null)
                 },
                 modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),
             )

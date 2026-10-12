@@ -67,9 +67,11 @@ internal fun BackGestureWidthPreference() {
                     .coerceIn(0, maximum)
                 if (next != amount) {
                     amount = next
-                    preferences.edit().putInt(ModuleSettings.BACK_GESTURE_WIDTH_DP, amount).apply()
-                    context.contentResolver.notifyChange(ModuleSettings.URI, null)
                 }
+            },
+            onValueChangeFinished = {
+                preferences.edit().putInt(ModuleSettings.BACK_GESTURE_WIDTH_DP, amount).apply()
+                context.contentResolver.notifyChange(ModuleSettings.URI, null)
             },
             modifier = Modifier.padding(horizontal = 26.dp, vertical = 18.dp),
         )

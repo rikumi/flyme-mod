@@ -135,7 +135,7 @@ internal object OneClickPreset {
         ModuleSettings.STATUS_BAR_CHARGING_INFO to ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT,
         ModuleSettings.AOD_CLOCK_FONT to 2,
         ModuleSettings.AOD_CLOCK_SPACING to 0,
-        ModuleSettings.BACK_GESTURE_DARK_OPACITY to 50,
+        ModuleSettings.BACK_GESTURE_DARK_OPACITY to ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT,
         ModuleSettings.BACK_GESTURE_WIDTH_DP to 32,
         ModuleSettings.CAMERA_NIGHT_EXPOSURE_MS to 1000,
         ModuleSettings.CAMERA_LIVE_PREROLL_MS to ModuleSettings.CAMERA_LIVE_PREROLL_DEFAULT,

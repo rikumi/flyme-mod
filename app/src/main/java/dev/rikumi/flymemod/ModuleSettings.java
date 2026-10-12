@@ -57,9 +57,9 @@ public final class ModuleSettings {
     public static final String BACK_GESTURE_ARROW = "back_gesture_arrow";
     public static final String BACK_GESTURE_DARK_BACKGROUND = "back_gesture_dark_background";
     public static final String BACK_GESTURE_DARK_OPACITY = "back_gesture_dark_opacity";
-    public static final int BACK_GESTURE_DARK_OPACITY_DEFAULT = 50;
+    public static final int BACK_GESTURE_DARK_OPACITY_DEFAULT = 75;
     public static int backGestureDarkOpacity(int value) {
-        return Math.round(Math.max(0, Math.min(100, value)) / 5f) * 5;
+        return Math.round(Math.max(50, Math.min(100, value)) / 5f) * 5;
     }
     public static final String BACK_GESTURE_REMOVE_SMART = "back_gesture_remove_smart";
     public static final String BACK_GESTURE_WIDTH_ENABLED = "back_gesture_width_enabled";
