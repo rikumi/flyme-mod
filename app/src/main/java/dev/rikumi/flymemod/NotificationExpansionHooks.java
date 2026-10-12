@@ -6,6 +6,7 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
@@ -30,7 +31,7 @@ final class NotificationExpansionHooks {
     private final Method expandedChild, lockedChild, expansionChanged, expansionCancelled, flingTiming;
     private final Method nativeCancel, monitorGet, monitorEnd;
     private final Field qsStack;
-    private final Method stackView, childAtRaw, rowExpandable, guts;
+    private final Method stackView, childAtRaw, rowExpandable, guts, expandHelper, fullyExpanded;
 
     NotificationExpansionHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled,
                                BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
@@ -46,6 +47,9 @@ final class NotificationExpansionHooks {
         stackView = qsStack.getType().getMethod("getView");
         childAtRaw = loader.loadClass("com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout")
                 .getMethod("getChildAtRawPosition", float.class, float.class);
+        expandHelper = childAtRaw.getDeclaringClass().getMethod("getExpandHelper");
+        fullyExpanded = helper.getMethod("isFullyExpanded",
+                loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableView"));
         for (String name : new String[]{"mContext", "mExpanding", "mEnabled", "mOldHeight", "mSmallSize",
                 "mNaturalHeight", "mScaler", "mCallback", "mResizedView", "mScaleAnimation", "mFlingAnimationUtils", "mExpansionStyle"}) {
             fields.put(name, helper.getField(name));
@@ -69,9 +73,19 @@ final class NotificationExpansionHooks {
     void install(SignalHooks.Installer installer) {
         String qs = "com.android.systemui.shade.QuickSettingsControllerImpl";
         // Flyme's collapsed-QS interception treats any downward drag at the top of the
-        // notification list as a second QS pull. Give notification-origin gestures priority.
-        installer.hook(qs, "onIntercept", chain -> notificationPull(chain.getThisObject(), (MotionEvent) chain.getArg(0))
-                ? false : chain.proceed(), MotionEvent.class);
+        // notification list as a second QS pull. Reserve only a collapsed row's downward pull.
+        installer.hook(qs, "onIntercept", chain -> {
+            MotionEvent event = (MotionEvent) chain.getArg(0);
+            boolean reserved = notificationPull(chain.getThisObject(), event);
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                // Keep native coordinates and velocity tracking ready for scrolling/closing.
+                Object result = chain.proceed();
+                Pull pull = pulls.get(chain.getThisObject());
+                if (pull != null && Boolean.TRUE.equals(result)) pull.direction = -1;
+                return result;
+            }
+            return reserved ? false : chain.proceed();
+        }, MotionEvent.class);
         installer.hook(qs, "handleTouch", chain -> notificationPull(chain.getThisObject(), (MotionEvent) chain.getArg(0))
                 ? false : chain.proceed(), MotionEvent.class, boolean.class, boolean.class);
         installer.hook(ROW, "isExpandable", chain -> {
@@ -95,6 +109,13 @@ final class NotificationExpansionHooks {
             }, MotionEvent.class);
         }
         installer.hook(HELPER, "startExpanding", chain -> {
+            Object helper = chain.getThisObject();
+            settings.accept((Context) field(helper, "mContext"));
+            // Flyme's onTouchEvent can call this without canChildBeExpanded, unlike
+            // onInterceptTouchEvent. Do not lock an unexpandable or fully expanded row.
+            if (enabled.getAsBoolean() && (Integer) chain.getArg(1) == 1
+                    && !fields.get("mExpanding").getBoolean(helper)
+                    && !canPull(helper, chain.getArg(0))) return false;
             ValueAnimator old = settling.remove(chain.getThisObject());
             if (old != null) old.cancel();
             return chain.proceed();
@@ -118,24 +139,47 @@ final class NotificationExpansionHooks {
     private Class<?> loaderViewClass() { return setView.getParameterTypes()[0]; }
     private Object field(Object helper, String name) throws IllegalAccessException { return fields.get(name).get(helper); }
 
+    private boolean canPull(Object helper, Object row) throws ReflectiveOperationException {
+        return row != null && rowExpandable.getDeclaringClass().isInstance(row)
+                && (Boolean) rowExpandable.invoke(row) && !(Boolean) guts.invoke(row)
+                && !(Boolean) fullyExpanded.invoke(helper, row);
+    }
+
     private boolean notificationPull(Object qs, MotionEvent event) throws ReflectiveOperationException {
         Pull pull = pulls.get(qs);
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN && (pull == null || pull.downTime != event.getDownTime())) {
             View stack = (View) stackView.invoke(qsStack.get(qs));
             settings.accept(stack.getContext());
             Object row = childAtRaw.invoke(stack, event.getRawX(), event.getRawY());
-            pull = new Pull(event.getDownTime(), enabled.getAsBoolean() && row != null
-                    && rowExpandable.getDeclaringClass().isInstance(row)
-                    && (Boolean) rowExpandable.invoke(row) && !(Boolean) guts.invoke(row));
+            pull = new Pull(event.getDownTime(), enabled.getAsBoolean()
+                    && canPull(expandHelper.invoke(stack), row), event.getRawX(), event.getRawY(),
+                    ViewConfiguration.get(stack.getContext()).getScaledTouchSlop());
             pulls.put(qs, pull);
         }
-        return enabled.getAsBoolean() && pull != null && pull.notification && pull.downTime == event.getDownTime();
+        if (!enabled.getAsBoolean() || pull == null || !pull.notification
+                || pull.downTime != event.getDownTime()) return false;
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) return false;
+        if (action == MotionEvent.ACTION_POINTER_DOWN) pull.direction = -1;
+        if (action == MotionEvent.ACTION_MOVE) pull.move(event.getRawX(), event.getRawY());
+        return pull.direction >= 0;
     }
 
-    private static final class Pull {
+    static final class Pull {
         final long downTime;
         final boolean notification;
-        Pull(long downTime, boolean notification) { this.downTime = downTime; this.notification = notification; }
+        final float x, y, slop;
+        int direction; // Undecided, notification expansion, or native scrolling/QS.
+        Pull(long downTime, boolean notification, float x, float y, float slop) {
+            this.downTime = downTime; this.notification = notification;
+            this.x = x; this.y = y; this.slop = slop;
+        }
+        void move(float currentX, float currentY) {
+            if (direction != 0) return;
+            float dx = Math.abs(currentX - x), dy = currentY - y;
+            if (dy > slop && dy > dx) direction = 1;
+            else if (dy < -slop || dx > slop) direction = -1;
+        }
     }
 
     private void finish(Object helper, boolean abort, float velocity, boolean animate) throws ReflectiveOperationException {
