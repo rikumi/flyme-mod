@@ -52,8 +52,9 @@ final class BackGestureServiceHooks {
                 else if(action==MotionEvent.ACTION_MOVE && !firstMoveAxes.containsKey(owner)) {
                     float dx=event.getRawX()-startX.getFloat(owner);
                     float dy=event.getRawY()-startY.getFloat(owner);
-                    firstMoveAxes.put(owner, BackGestureDirectionPolicy.isHorizontalFirstMove(dx,dy)
-                            ? FIRST_MOVE_HORIZONTAL : FIRST_MOVE_VERTICAL);
+                    if(dx!=0f || dy!=0f)
+                        firstMoveAxes.put(owner, BackGestureDirectionPolicy.isHorizontalFirstMove(dx,dy)
+                                ? FIRST_MOVE_HORIZONTAL : FIRST_MOVE_VERTICAL);
                 }
                 boolean overrideWidth=preferences.contains(ModuleSettings.BACK_GESTURE_WIDTH_DP)
                         && preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false);
@@ -77,20 +78,25 @@ final class BackGestureServiceHooks {
             if(!side.isInstance(owner) || !preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART,true))
                 return chain.proceed();
             Integer firstAxis=firstMoveAxes.get(owner);
-            if(firstAxis==null || firstAxis==FIRST_MOVE_VERTICAL) {
-                // Keep the native direction rejection when the initial movement is vertical.
+            if(System.currentTimeMillis()-downTime.getLong(owner)>300) {
+                state.set(owner,canceledState);
+                return null;
+            }
+            if(firstAxis==null)return null; // Ignore zero-delta MOVE events until the first real displacement.
+            if(firstAxis==FIRST_MOVE_VERTICAL) {
                 state.set(owner,canceledState);
                 return null;
             }
             String dir=((Enum<?>)direction.get(owner)).name();
             if(!dir.endsWith("LEFT") && !dir.endsWith("RIGHT"))return chain.proceed();
-            // Keep native timeout and minimum movement; remove angle and direction checks.
-            if(System.currentTimeMillis()-downTime.getLong(owner)>300)state.set(owner,canceledState);
-            else {
-                MotionEvent event=(MotionEvent)chain.getArg(0);
-                int threshold=dir.startsWith("HORIZONTAL")?slop.getInt(owner):landscapeSlop.getInt(owner);
-                if(Math.hypot(event.getRawX()-startX.getFloat(owner),event.getRawY()-startY.getFloat(owner))>threshold)
-                    state.set(owner,triggeredState);
+            // Keep the native timeout and minimum movement; the first non-zero move owns direction.
+            MotionEvent event=(MotionEvent)chain.getArg(0);
+            int threshold=dir.startsWith("HORIZONTAL")?slop.getInt(owner):landscapeSlop.getInt(owner);
+            float dx=event.getRawX()-startX.getFloat(owner);
+            float dy=event.getRawY()-startY.getFloat(owner);
+            if(Math.hypot(dx,dy)>threshold) {
+                boolean towardBack=dir.endsWith("LEFT")?dx>0f:dx<0f;
+                state.set(owner,towardBack?triggeredState:canceledState);
             }
             return null;
         },MotionEvent.class);

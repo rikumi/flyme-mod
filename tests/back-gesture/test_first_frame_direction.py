@@ -17,8 +17,17 @@ def test_first_move_axis_policy():
     assert system_hook.count("BackGestureDirectionPolicy.isHorizontalFirstMove(") == 1
     assert "Boolean.TRUE.equals(handlerFirstMoveHorizontal.get(owner))" in hook
     assert "Boolean.FALSE.equals(viewFirstMoveHorizontal.get(owner))" in hook
-    assert "return false;" in hook
+    assert 'triggerBack.getReturnType()!=void.class' in hook
+    assert 'handler.getMethod("cancelGesture",MotionEvent.class)' in hook
+    assert 'installer.hook(view.getName(),"onMotionEvent"' in hook
+    assert 'triggerBackFlag.setBoolean(owner,false)' in hook
+    assert 'if(dx!=0f || dy!=0f)' in hook
     assert "firstAxis==FIRST_MOVE_VERTICAL" in system_hook
+    assert "if(firstAxis==null)return null" in system_hook
+    assert "dir.endsWith(\"LEFT\")?dx>0f:dx<0f" in system_hook
+    assert "mMLEnableWidth.get(owner)" not in hook
+    width_hook = (ROOT / "app/src/main/java/dev/rikumi/flymemod/BackGestureWidthHooks.java").read_text()
+    assert "removeSmart.getAsBoolean() ? Math.max(left.getInt(owner),right.getInt(owner))" in width_hook
     with tempfile.TemporaryDirectory() as output:
         subprocess.run(
             ["javac", "-d", output, str(MAIN), str(TEST)],
@@ -31,3 +40,7 @@ def test_first_move_axis_policy():
             capture_output=True,
         )
         assert "PASS: first-frame direction policy" in result.stdout
+
+
+if __name__ == "__main__":
+    test_first_move_axis_policy()

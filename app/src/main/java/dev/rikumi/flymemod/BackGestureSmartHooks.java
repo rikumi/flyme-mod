@@ -20,7 +20,8 @@ final class BackGestureSmartHooks {
     private final Method pilfer;
     private final Method viewContext;
     private final Method triggerBack;
-    private final Field startX, startY;
+    private final Field startX, startY, triggerBackFlag;
+    private final Method cancelGesture;
     private final Map<Object, Boolean> handlerFirstMoveHorizontal = Collections.synchronizedMap(new WeakHashMap<>());
     private final Map<Object, Boolean> viewFirstMoveHorizontal = Collections.synchronizedMap(new WeakHashMap<>());
 
@@ -35,9 +36,11 @@ final class BackGestureSmartHooks {
         view=loader.loadClass("com.flyme.systemui.navigationbar.gestural.EdgeBackView");
         viewContext=view.getMethod("getContext");
         triggerBack=view.getMethod("whetherTriggerBack",MotionEvent.class);
-        if(triggerBack.getReturnType()!=boolean.class && triggerBack.getReturnType()!=Boolean.class)
-            throw new NoSuchMethodException("whetherTriggerBack must return boolean");
+        if(triggerBack.getReturnType()!=void.class)
+            throw new NoSuchMethodException("whetherTriggerBack must return void");
         startX=view.getField("mStartX"); startY=view.getField("mStartY");
+        triggerBackFlag=view.getField("mTriggerBack");
+        cancelGesture=handler.getMethod("cancelGesture",MotionEvent.class);
     }
 
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
@@ -48,10 +51,15 @@ final class BackGestureSmartHooks {
             MotionEvent event=(MotionEvent)chain.getArg(0);
             int action=event.getActionMasked();
             if(action==MotionEvent.ACTION_DOWN) handlerFirstMoveHorizontal.remove(owner);
-            else if(action==MotionEvent.ACTION_MOVE && !handlerFirstMoveHorizontal.containsKey(owner)) {
+            else if(enabled.getAsBoolean() && action==MotionEvent.ACTION_MOVE
+                    && !handlerFirstMoveHorizontal.containsKey(owner)) {
                 PointF origin=(PointF)down.get(owner);
-                handlerFirstMoveHorizontal.put(owner, BackGestureDirectionPolicy.isHorizontalFirstMove(
-                        event.getX()-origin.x,event.getY()-origin.y));
+                float dx=event.getX()-origin.x, dy=event.getY()-origin.y;
+                if(dx!=0f || dy!=0f) {
+                    boolean horizontal=BackGestureDirectionPolicy.isHorizontalFirstMove(dx,dy);
+                    handlerFirstMoveHorizontal.put(owner,horizontal);
+                    if(!horizontal && allowed.getBoolean(owner)) cancelGesture.invoke(owner,event);
+                }
             }
             if(enabled.getAsBoolean() && event.getActionMasked()==MotionEvent.ACTION_MOVE
                     && Boolean.TRUE.equals(handlerFirstMoveHorizontal.get(owner))
@@ -70,22 +78,36 @@ final class BackGestureSmartHooks {
                     handlerFirstMoveHorizontal.remove(owner);
             }
         },MotionEvent.class);
+        installer.hook(view.getName(),"onMotionEvent",chain -> {
+            Object owner=chain.getThisObject();
+            MotionEvent event=(MotionEvent)chain.getArg(0);
+            int action=event.getActionMasked();
+            synchronized(owner) {
+                if(action==MotionEvent.ACTION_DOWN) viewFirstMoveHorizontal.remove(owner);
+                else if(enabled.getAsBoolean() && action==MotionEvent.ACTION_MOVE
+                        && !viewFirstMoveHorizontal.containsKey(owner)) {
+                    float dx=event.getX()-startX.getFloat(owner);
+                    float dy=event.getY()-startY.getFloat(owner);
+                    if(dx!=0f || dy!=0f)
+                        viewFirstMoveHorizontal.put(owner,BackGestureDirectionPolicy.isHorizontalFirstMove(dx,dy));
+                }
+                try { return chain.proceed(); }
+                finally {
+                    if(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_CANCEL)
+                        viewFirstMoveHorizontal.remove(owner);
+                }
+            }
+        },MotionEvent.class);
         installer.hook(view.getName(),"whetherTriggerBack",chain -> {
             Object owner=chain.getThisObject(); settings.accept((Context)viewContext.invoke(owner));
             if(!enabled.getAsBoolean())return chain.proceed();
             MotionEvent event=(MotionEvent)chain.getArg(0);
             synchronized(owner) {
-                int action=event.getActionMasked();
-                if(action==MotionEvent.ACTION_DOWN) viewFirstMoveHorizontal.remove(owner);
-                else if(action==MotionEvent.ACTION_MOVE && !viewFirstMoveHorizontal.containsKey(owner)) {
-                    viewFirstMoveHorizontal.put(owner, BackGestureDirectionPolicy.isHorizontalFirstMove(
-                            event.getX()-startX.getFloat(owner),event.getY()-startY.getFloat(owner)));
-                }
                 if(Boolean.FALSE.equals(viewFirstMoveHorizontal.get(owner))) {
-                    if(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_CANCEL)
-                        viewFirstMoveHorizontal.remove(owner);
-                    return false;
+                    triggerBackFlag.setBoolean(owner,false);
+                    return null;
                 }
+                if(!Boolean.TRUE.equals(viewFirstMoveHorizontal.get(owner)))return chain.proceed();
                 float originX=startX.getFloat(owner);
                 float displacement=(float)distance(event.getX(),event.getY(),originX,startY.getFloat(owner));
                 // Feed radial displacement into the native confirmation method.
@@ -94,8 +116,6 @@ final class BackGestureSmartHooks {
                 try { return chain.proceed(); }
                 finally {
                     startX.setFloat(owner,originX);
-                    if(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_CANCEL)
-                        viewFirstMoveHorizontal.remove(owner);
                 }
             }
         },MotionEvent.class);
