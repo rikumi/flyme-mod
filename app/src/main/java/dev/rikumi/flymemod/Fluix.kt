@@ -607,11 +607,12 @@ fun FluixTopAppBar(
 @Composable
 internal fun FluixCard(
     modifier: Modifier = Modifier,
+    backgroundColor: Color? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val baseCard = CardDefaults.defaultColors()
     val groupColor = if (isSystemInDarkTheme()) FLUIX_GROUP_DARK else FLUIX_GROUP_LIGHT
-    val cardColors: CardColors = baseCard.copy(color = groupColor)
+    val cardColors: CardColors = baseCard.copy(color = backgroundColor ?: groupColor)
     Card(
         modifier = modifier.padding(
             start = FLUIX_GROUP_HMARGIN,
@@ -623,6 +624,31 @@ internal fun FluixCard(
         colors = cardColors,
         content = content,
     )
+}
+
+@Composable
+internal fun FluixScopeWarningCard(onClick: () -> Unit) {
+    val summary = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    FluixCard(backgroundColor = Color(0xFFFFBE0A).copy(alpha = 0.18f)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = FLUIX_ROW_MIN_HEIGHT)
+                .clickable(onClick = onClick)
+                .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicText(
+                text = "有作用域未勾选，请前往勾选",
+                style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = MiuixIcons.ChevronForward,
+                contentDescription = null,
+                tint = summary.copy(alpha = summary.alpha * FLUIX_CATEGORY_CHEVRON_ALPHA),
+                modifier = Modifier.padding(start = 12.dp).size(FLUIX_CATEGORY_CHEVRON),
+            )
+        }
+    }
 }
 
 // 超长列表用的单行卡片容器: 与 FluixCard 同款外观(圆角/底色/边距), 但每行各占一个独立容器。
@@ -1317,9 +1343,11 @@ fun FluixSlider(
     onValueChange: (Float) -> Unit,
     onValueChangeFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
+    onInteractionChange: (Boolean) -> Unit = {},
 ) {
     val updateValue by rememberUpdatedState(onValueChange)
     val finishChange by rememberUpdatedState(onValueChangeFinished)
+    val interactionChange by rememberUpdatedState(onInteractionChange)
     val primary = MiuixTheme.colorScheme.primary
     val onSurface = MiuixTheme.colorScheme.onSurface
     val trackOff = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.2f)
@@ -1330,16 +1358,18 @@ fun FluixSlider(
             .height(FLUIX_SLIDER_TRACK_H)
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
+                    interactionChange(true)
                     val range = size.width.coerceAtLeast(1)
                     updateValue((offset.x / range).coerceIn(0f, 1f))
                     finishChange()
+                    interactionChange(false)
                 }
             }
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
-                    onDragStart = { },
-                    onDragEnd = { finishChange() },
-                    onDragCancel = { },
+                    onDragStart = { interactionChange(true) },
+                    onDragEnd = { finishChange(); interactionChange(false) },
+                    onDragCancel = { interactionChange(false) },
                 ) { change, _ ->
                     change.consume()
                     val range = size.width.coerceAtLeast(1)

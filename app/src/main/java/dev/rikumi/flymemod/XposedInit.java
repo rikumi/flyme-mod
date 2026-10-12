@@ -64,6 +64,8 @@ public final class XposedInit extends XposedModule {
     private boolean scaleEnabled;
     private boolean lightEnabled;
     private boolean tileBackgroundColorEnabled;
+    private boolean notificationBackgroundColorEnabled;
+    private int notificationBackgroundSaturation = ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT;
     private int tileBackgroundSaturation = ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT;
     private TileCornerHooks activeTileCornerHooks;
     private boolean tileCornersEnabled;
@@ -96,6 +98,8 @@ public final class XposedInit extends XposedModule {
     private boolean headsUpWidthEnabled;
     private boolean originalNotificationIconsEnabled;
     private boolean monochromeNotificationActionsEnabled;
+    private boolean removeNotificationActionBackgroundEnabled;
+    private NotificationActionBackgroundHooks activeNotificationActionBackgroundHooks;
     private volatile boolean disableGoogleNotificationSuggestionsEnabled;
     private volatile boolean limitAodMovementEnabled;
     private int lockClockFont, aodClockFont, statusBarClockFont, controlCenterClockFont;
@@ -115,6 +119,8 @@ public final class XposedInit extends XposedModule {
     private boolean secondaryExpansionEnabled;
     private boolean combinedEmptyShadeKeepOpenEnabled;
     private boolean combinedFilterSettingsEnabled;
+    private boolean combinedNotificationWidthEnabled;
+    private CombinedNotificationWidthHooks activeCombinedNotificationWidthHooks;
     private boolean homeIconMinimumSizeEnabled;
     private CombinedSettingsButtonHooks activeCombinedSettingsButtonHooks;
     private boolean restoreCollapsedCardHeightEnabled;
@@ -151,6 +157,8 @@ public final class XposedInit extends XposedModule {
     private volatile boolean lockWidgetStartupFixEnabled;
     private volatile boolean blockLockscreenLongPressEditEnabled;
     private volatile boolean folderRestoreColorEnabled;
+    private volatile boolean folderContourEnabled, widgetContourEnabled, menuContourEnabled;
+    private volatile boolean iconContourEnabled, folderMenuAlignmentEnabled;
     private volatile boolean folderRadiusEnabled;
     private volatile int folderRadiusDp = ModuleSettings.FOLDER_RADIUS_DEFAULT;
     private volatile Context launcherContext;
@@ -169,6 +177,9 @@ public final class XposedInit extends XposedModule {
     private boolean colorOsContourEnabled;
     private ColorOsMaterialHooks activeColorOsMaterialHooks;
     private boolean notificationContourEnabled, mbackSystemTimeoutEnabled, mbackMissingAssistantHomeEnabled;
+    private boolean backGestureWidthEnabled;
+    private int backGestureWidthDp = ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT;
+    private BackGestureWidthHooks activeBackGestureWidthHooks;
     private int blurRadius = ModuleSettings.BLUR_DEFAULT;
     private boolean settingsErrorLogged;
     private final Map<View, Drawable> originalCenterBackgrounds = new WeakHashMap<>();
@@ -176,12 +187,30 @@ public final class XposedInit extends XposedModule {
     private final Set<ImageView> volumeSliderIcons = Collections.newSetFromMap(new WeakHashMap<>());
     private final Map<View, int[]> notificationContentInsets = new WeakHashMap<>();
 
+    private ThemeColorHooks themeColorHooks;
+
     @Override public void onPackageReady(PackageReadyParam param) {
+        // Theme targets are generated from the device's first-party application inventory.
+        if (themeColorHooks == null && ThemeColorTargets.contains(param.getPackageName())) {
+            try {
+                themeColorHooks = new ThemeColorHooks(param.getPackageName(), getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                        (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error));
+                themeColorHooks.install(param.getClassLoader(), (target, hooker) -> hook(target).intercept(hooker), this::deoptimize);
+            } catch (RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot initialize system theme color", error);
+            }
+        }
         installPackageHooks(param.getPackageName(), param.getClassLoader());
     }
 
     @Override public void onSystemServerStarting(SystemServerStartingParam param) {
         ClassLoader loader = param.getClassLoader();
+        try {
+            BackGestureServiceHooks.install(loader, getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme side gesture width", error);
+        }
         try {
             new SmallWindowLimitHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
                     (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
@@ -349,6 +378,14 @@ public final class XposedInit extends XposedModule {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme folder classes", e);
             }
             try {
+                new LauncherContourHooks(loader, this::loadSettings, () -> folderContourEnabled,
+                        () -> widgetContourEnabled, () -> menuContourEnabled, () -> folderRadiusEnabled,
+                        () -> iconContourEnabled, () -> folderMenuAlignmentEnabled, () -> folderRadiusDp, (message, error) -> log(Log.ERROR, "FlymeMod", message, error))
+                        .install(loader, (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve launcher background contours", error);
+            }
+            try {
                 new FolderAppearanceHooks(loader, this::loadSettings,
                         () -> folderRestoreColorEnabled, () -> folderRadiusEnabled, () -> folderRadiusDp,
                         (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(
@@ -478,6 +515,15 @@ public final class XposedInit extends XposedModule {
         installWallpaperStartupFix(loader);
         installNotificationAppearanceLayout(loader);
         try {
+            activeCombinedNotificationWidthHooks = new CombinedNotificationWidthHooks(loader,this::loadSettings,
+                    () -> combinedNotificationWidthEnabled,
+                    (message,error) -> log(Log.ERROR,"FlymeMod",message,error));
+            activeCombinedNotificationWidthHooks.install(
+                    (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters));
+        } catch (ReflectiveOperationException|RuntimeException error) {
+            log(Log.ERROR,"FlymeMod","Cannot resolve merged notification width",error);
+        }
+        try {
             activeNotificationRemovalLayerHooks = new NotificationRemovalLayerHooks(loader, this::loadSettings,
                     () -> notificationReadLayerFixEnabled,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
@@ -494,10 +540,25 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve notification assistant suggestion hooks", error);
         }
         try {
+            activeBackGestureWidthHooks = new BackGestureWidthHooks(loader, this::loadSettings,
+                    () -> backGestureWidthEnabled, () -> backGestureWidthDp,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeBackGestureWidthHooks.install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve back gesture width", error);
+        }
+        try {
             new MBackAssistantHooks(loader, this::loadSettings, () -> mbackMissingAssistantHomeEnabled).install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
         } catch (ReflectiveOperationException error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve mBack assistant fallback", error);
+        }
+        try {
+            new MBackRippleHooks(loader).install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve mBack pressed ripple bounds", error);
         }
         try {
             new MBackTimeoutHooks(loader, this::loadSettings, () -> mbackSystemTimeoutEnabled,
@@ -540,7 +601,8 @@ public final class XposedInit extends XposedModule {
         }
         try {
             activeColorOsMaterialHooks = new ColorOsMaterialHooks(loader, this::loadSettings,
-                    () -> colorOsContourEnabled, () -> networkSplitStyle != 0, () -> notificationContourEnabled, activeTileCornerHooks,
+                    () -> colorOsContourEnabled, () -> networkSplitStyle != 0, () -> notificationContourEnabled,
+                    () -> notificationLightOpacity, activeTileCornerHooks,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
             activeColorOsMaterialHooks.install(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
@@ -549,6 +611,20 @@ public final class XposedInit extends XposedModule {
         }
         installOriginalNotificationIcons(loader);
         installMonochromeNotificationActions(loader);
+        try {
+            new NotificationBackgroundFadeHooks(loader).install(
+                    (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters));
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR,"FlymeMod","Cannot resolve merged notification background fade",error);
+        }
+        try {
+            activeNotificationActionBackgroundHooks=new NotificationActionBackgroundHooks(loader,this::loadSettings,
+                    () -> removeNotificationActionBackgroundEnabled);
+            activeNotificationActionBackgroundHooks.install(
+                    (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters));
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR,"FlymeMod","Cannot resolve notification action bar background",error);
+        }
         try {
             new SignalHooks(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
@@ -728,6 +804,9 @@ public final class XposedInit extends XposedModule {
                     Object result = chain.proceed();
                     View stack = (View) chain.getThisObject();
                     loadSettings(stack.getContext());
+                    notificationWidthStacks.add(stack);
+                    if (activeCombinedNotificationWidthHooks != null
+                            && activeCombinedNotificationWidthHooks.applyWidth(stack,(Integer)chain.getArg(0))) return result;
                     if (!scaleEnabled) return result;
                     Object interactor = stack.getClass().getField("mShadeInteractor").get(stack);
                     Object mode = interactor.getClass().getMethod("isClassicsMode").invoke(interactor);
@@ -753,13 +832,16 @@ public final class XposedInit extends XposedModule {
                 "calculateNotificationsTopPadding", chain -> {
                     float original = (Float) chain.proceed();
                     Object controller = chain.getThisObject();
+                    // Clear the previous mode's spacer before any early return (split shade,
+                    // landscape or an unbound QS), so later setting changes cannot subtract it.
+                    if (activeCombinedNotificationWidthHooks != null) activeCombinedNotificationWidthHooks.reset(controller);
                     Object qs = controller.getClass().getField("mQs").get(controller);
                     if (qs == null) return original;
                     View container = (View) qs.getClass().getMethod("getContainer").invoke(qs);
                     if (container == null || !container.getClass().getName()
                             .equals(PHONE + "MzQSContainerImpl")) return original;
                     loadSettings(container.getContext());
-                    if (!scaleEnabled || container.getResources().getConfiguration().orientation
+                    if (container.getResources().getConfiguration().orientation
                             != Configuration.ORIENTATION_PORTRAIT) return original;
                     Object interactor = controller.getClass().getField("mShadeInteractor").get(controller);
                     Object mode = interactor.getClass().getMethod("isClassicsMode").invoke(interactor);
@@ -768,12 +850,15 @@ public final class XposedInit extends XposedModule {
                     // Recalculate from the original QS height on each frame, without accumulation.
                     float operatingHeight = Math.max(0f,
                             original - container.getY() - container.getPaddingTop());
-                    return original + operatingHeight * (operationScale(container) - 1f);
+                    float adjusted = scaleEnabled ? original + operatingHeight * (operationScale(container) - 1f) : original;
+                    return activeCombinedNotificationWidthHooks == null ? adjusted
+                            : activeCombinedNotificationWidthHooks.padding(controller,container,adjusted);
                 }, boolean.class, int.class, float.class);
 
         try {
             activeTileBackdropHooks = new TileBackdropHooks(loader, () -> tileBackgroundColorEnabled,
-                    () -> tileBackgroundSaturation / 100.0, () -> networkSplitStyle, activeTileCornerHooks,
+                    () -> tileBackgroundSaturation / 100.0, () -> notificationBackgroundColorEnabled,
+                    () -> notificationBackgroundSaturation / 100.0, () -> networkSplitStyle, activeTileCornerHooks,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error),
                     message -> log(Log.INFO, "FlymeMod", message));
             activeTileBackdropHooks.install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
@@ -884,20 +969,7 @@ public final class XposedInit extends XposedModule {
             loadSettings(content.getContext());
             int requestedPadding = notificationCustomCornersEnabled && activeNotificationAppearanceHooks != null
                     ? Math.round(activeNotificationAppearanceHooks.radius(content) * .25f) : 0;
-            int[] last = notificationContentInsets.get(content);
-            if (requestedPadding > 0 || last != null) {
-                int[] padding = {content.getPaddingStart(), content.getPaddingTop(), content.getPaddingEnd(), content.getPaddingBottom()};
-                for (int index=0; index<4; index++) {
-                    // Remove our previous addition only while native code has retained it.
-                    if (last != null && padding[index] == last[index]) padding[index] -= last[4];
-                    padding[index] += requestedPadding;
-                }
-                if (padding[0] != content.getPaddingStart() || padding[1] != content.getPaddingTop()
-                        || padding[2] != content.getPaddingEnd() || padding[3] != content.getPaddingBottom())
-                    content.setPaddingRelative(padding[0], padding[1], padding[2], padding[3]);
-                if (requestedPadding == 0) notificationContentInsets.remove(content);
-                else notificationContentInsets.put(content, new int[]{padding[0],padding[1],padding[2],padding[3],requestedPadding});
-            }
+            applyNotificationContentPadding(content, requestedPadding);
             // measureChildWithMargins subtracts outer padding from both expanded and
             // heads-up caps. Contracted measurement already adds it before measuring.
             java.lang.reflect.Field maxHeight = content.getClass().getField("mNotificationMaxHeight");
@@ -931,6 +1003,20 @@ public final class XposedInit extends XposedModule {
                         if (fixedParams[index] != null) fixedParams[index].height = fixedHeights[index];
                 }
             }
+        }, int.class, int.class);
+        // Flyme folds grouped notifications into a separate summary card. Its
+        // FrameLayout content root measures padding into getContentHeight(), while
+        // the sibling background continues to cover the full card.
+        install(loader, "com.flyme.notification.view.NotificationGroupCollapseContainer", "onMeasure", chain -> {
+            View group = (View) chain.getThisObject();
+            loadSettings(group.getContext());
+            View content = (View) group.getClass().getField("mRootContainer").get(group);
+            if (content != null) {
+                int requestedPadding = notificationCustomCornersEnabled && activeNotificationAppearanceHooks != null
+                        ? Math.round(activeNotificationAppearanceHooks.radius(group) * .25f) : 0;
+                applyNotificationContentPadding(content, requestedPadding);
+            }
+            return chain.proceed();
         }, int.class, int.class);
         install(loader, row + "wrapper.NotificationTemplateViewWrapper", "updateActionOffset", chain -> {
             Object result = chain.proceed();
@@ -1549,7 +1635,7 @@ public final class XposedInit extends XposedModule {
         container.setScaleY(scale);
         int target = notificationTargetWidth(container);
         Integer previous = scaledNotificationWidths.put(container, target);
-        if (previous == null || previous != target) {
+        if ((previous == null || previous != target) && !combinedNotificationWidthEnabled) {
             // The stack may have measured before QS; refresh once after QS dimensions settle.
             for (View stack : new ArrayList<>(notificationWidthStacks)) {
                 if (stack != null && stack.getRootView() == container.getRootView()) stack.requestLayout();
@@ -1716,6 +1802,23 @@ public final class XposedInit extends XposedModule {
             }
             return actual;
         });
+    }
+
+    private void applyNotificationContentPadding(View content, int requestedPadding) {
+        int[] last = notificationContentInsets.get(content);
+        if (requestedPadding > 0 || last != null) {
+            int[] padding = {content.getPaddingStart(), content.getPaddingTop(), content.getPaddingEnd(), content.getPaddingBottom()};
+            for (int index=0; index<4; index++) {
+                // Remove our previous addition only while native code has retained it.
+                if (last != null && padding[index] == last[index]) padding[index] -= last[4];
+                padding[index] += requestedPadding;
+            }
+            if (padding[0] != content.getPaddingStart() || padding[1] != content.getPaddingTop()
+                    || padding[2] != content.getPaddingEnd() || padding[3] != content.getPaddingBottom())
+                content.setPaddingRelative(padding[0], padding[1], padding[2], padding[3]);
+            if (requestedPadding == 0) notificationContentInsets.remove(content);
+            else notificationContentInsets.put(content, new int[]{padding[0],padding[1],padding[2],padding[3],requestedPadding});
+        }
     }
 
     private int notificationAddedVerticalPadding(View content) {
@@ -1898,6 +2001,8 @@ public final class XposedInit extends XposedModule {
             Context appContext = context.getApplicationContext();
             moduleSettingsObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
                 @Override public void onChange(boolean selfChange) {
+                    boolean previousBackWidth = backGestureWidthEnabled;
+                    int previousBackDp = backGestureWidthDp;
                     boolean previousWhiteActive = whiteActiveEnabled;
                     int previousOpacity = whiteActiveOpacity;
                     int previousStyle = controlCenterStyle;
@@ -1905,11 +2010,15 @@ public final class XposedInit extends XposedModule {
                     int previousLightOpacity = lightBackgroundOpacity;
                     synchronized (XposedInit.this) { settingsLoaded = false; }
                     loadSettings(appContext);
+                    if (activeBackGestureWidthHooks != null && (previousBackWidth != backGestureWidthEnabled
+                            || previousBackDp != backGestureWidthDp)) activeBackGestureWidthHooks.refresh();
                     reapplyStatusIconVisibility();
                     if (activeClockFontHooks != null) activeClockFontHooks.refresh();
                     if (activeCarrierVisibilityHooks != null) activeCarrierVisibilityHooks.refresh();
                     if (activeSimpleQsTextHooks != null) activeSimpleQsTextHooks.refresh();
                     if (activeCombinedSettingsButtonHooks != null) activeCombinedSettingsButtonHooks.refresh();
+                    if (activeCombinedNotificationWidthHooks != null) activeCombinedNotificationWidthHooks.refresh();
+                    for (View stack : new ArrayList<>(notificationWidthStacks)) if (stack != null) stack.requestLayout();
                     if (activeSplitNetworkCardHooks != null) activeSplitNetworkCardHooks.refresh();
                     if (activeCardIconLayoutHooks != null) activeCardIconLayoutHooks.refresh();
                     if (activeMuteSlashHooks != null) activeMuteSlashHooks.refresh();
@@ -1919,6 +2028,7 @@ public final class XposedInit extends XposedModule {
                     if (activeCircleTileHooks != null) activeCircleTileHooks.refresh();
                     if (activeTileCornerHooks != null && !circleSmallTilesEnabled) activeTileCornerHooks.refresh();
                     if (activeNotificationAppearanceHooks != null) activeNotificationAppearanceHooks.refresh();
+                    if (activeNotificationActionBackgroundHooks != null) activeNotificationActionBackgroundHooks.refresh();
                     if (activeNotificationRemovalLayerHooks != null) activeNotificationRemovalLayerHooks.refresh();
                     for (View content : new ArrayList<>(notificationContentInsets.keySet()))
                         if (content != null) content.requestLayout();
@@ -1957,7 +2067,18 @@ public final class XposedInit extends XposedModule {
                         : Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
                                 Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX, cursor.getInt(tileSaturationColumn)));
                 int notificationContourColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CONTOUR);
+                int notificationColorColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR);
+                notificationBackgroundColorEnabled = notificationColorColumn >= 0 && cursor.getInt(notificationColorColumn) != 0;
+                int notificationSaturationColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_BACKGROUND_SATURATION);
+                notificationBackgroundSaturation = notificationSaturationColumn < 0 ? ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT
+                        : Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
+                                Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX, cursor.getInt(notificationSaturationColumn)));
                 notificationContourEnabled = notificationContourColumn >= 0 && cursor.getInt(notificationContourColumn) != 0;
+                int backWidthColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED);
+                backGestureWidthEnabled = backWidthColumn >= 0 && cursor.getInt(backWidthColumn) != 0;
+                int backDpColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_WIDTH_DP);
+                backGestureWidthDp = backDpColumn < 0 ? ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT
+                        : Math.max(0, cursor.getInt(backDpColumn));
                 int mbackColumn = cursor.getColumnIndex(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
                 mbackSystemTimeoutEnabled = mbackColumn >= 0 && cursor.getInt(mbackColumn) != 0;
                 int mbackAssistantColumn = cursor.getColumnIndex(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME);
@@ -1990,6 +2111,8 @@ public final class XposedInit extends XposedModule {
                 int recentsKillColumn = cursor.getColumnIndex(ModuleSettings.RECENTS_SWIPE_UP_KILL);
                 recentsSwipeUpKillEnabled = recentsKillColumn >= 0 && cursor.getInt(recentsKillColumn) != 0;
                 int headsUpWidthColumn = cursor.getColumnIndex(ModuleSettings.HEADS_UP_WIDTH);
+                int combinedWidthColumn = cursor.getColumnIndex(ModuleSettings.COMBINED_NOTIFICATION_WIDTH);
+                combinedNotificationWidthEnabled = combinedWidthColumn >= 0 && cursor.getInt(combinedWidthColumn) != 0;
                 headsUpWidthEnabled = headsUpWidthColumn >= 0 && cursor.getInt(headsUpWidthColumn) != 0;
                 int notificationLightColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_LIGHT);
                 notificationLightEnabled = notificationLightColumn >= 0 && cursor.getInt(notificationLightColumn) != 0;
@@ -2009,6 +2132,8 @@ public final class XposedInit extends XposedModule {
                 originalNotificationIconsEnabled = originalIconsColumn >= 0 && cursor.getInt(originalIconsColumn) != 0;
                 int actionColorsColumn = cursor.getColumnIndex(ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS);
                 monochromeNotificationActionsEnabled = actionColorsColumn >= 0 && cursor.getInt(actionColorsColumn) != 0;
+                int actionBackgroundColumn=cursor.getColumnIndex(ModuleSettings.REMOVE_NOTIFICATION_ACTION_BACKGROUND);
+                removeNotificationActionBackgroundEnabled=actionBackgroundColumn>=0 && cursor.getInt(actionBackgroundColumn)!=0;
                 int suggestionsColumn = cursor.getColumnIndex(ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS);
                 disableGoogleNotificationSuggestionsEnabled = suggestionsColumn >= 0 && cursor.getInt(suggestionsColumn) != 0;
                 int collapsedHeightColumn = cursor.getColumnIndex(ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT);
@@ -2129,6 +2254,16 @@ public final class XposedInit extends XposedModule {
                 lockWidgetStartupFixEnabled = lockWidgetColumn >= 0 && cursor.getInt(lockWidgetColumn) != 0;
                 int lockLongPressColumn = cursor.getColumnIndex(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT);
                 blockLockscreenLongPressEditEnabled = lockLongPressColumn >= 0 && cursor.getInt(lockLongPressColumn) != 0;
+                int iconContourColumn = cursor.getColumnIndex(ModuleSettings.ICON_CONTOUR);
+                iconContourEnabled = iconContourColumn >= 0 && cursor.getInt(iconContourColumn) != 0;
+                int folderMenuAlignmentColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_MENU_ALIGNMENT);
+                folderMenuAlignmentEnabled = folderMenuAlignmentColumn >= 0 && cursor.getInt(folderMenuAlignmentColumn) != 0;
+                int folderContourColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_CONTOUR);
+                folderContourEnabled = folderContourColumn >= 0 && cursor.getInt(folderContourColumn) != 0;
+                int widgetContourColumn = cursor.getColumnIndex(ModuleSettings.WIDGET_CONTOUR);
+                widgetContourEnabled = widgetContourColumn >= 0 && cursor.getInt(widgetContourColumn) != 0;
+                int menuContourColumn = cursor.getColumnIndex(ModuleSettings.MENU_CONTOUR);
+                menuContourEnabled = menuContourColumn >= 0 && cursor.getInt(menuContourColumn) != 0;
                 int folderColorColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RESTORE_COLOR);
                 folderRestoreColorEnabled = folderColorColumn >= 0 && cursor.getInt(folderColorColumn) != 0;
                 int folderRadiusEnabledColumn = cursor.getColumnIndex(ModuleSettings.FOLDER_RADIUS_ENABLED);

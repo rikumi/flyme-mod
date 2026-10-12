@@ -10,7 +10,7 @@ import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Flyme SystemUI 16260625: measure only floating notifications with 8dp side margins. */
+/** Flyme SystemUI 16260625: measure only floating notifications with 16dp side margins. */
 final class HeadsUpWidthHooks {
     private static final String ROW = "com.android.systemui.statusbar.notification.row.ExpandableNotificationRow";
     private static final String STACK = "com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout";
@@ -80,6 +80,6 @@ final class HeadsUpWidthHooks {
     }
 
     static int contentWidth(int available, float density) {
-        return Math.max(0, available - 2 * Math.round(8f * density));
+        return Math.max(0, available - 2 * Math.round(16f * density));
     }
 }

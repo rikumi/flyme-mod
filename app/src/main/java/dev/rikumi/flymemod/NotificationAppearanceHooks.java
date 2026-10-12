@@ -21,12 +21,17 @@ import java.util.function.IntSupplier;
 
 /** Native notification/blur parameters; retain grouping, clipping and animated roundness. */
 final class NotificationAppearanceHooks {
+    // Flyme's native night-mode blur tint and opaque heads-up fallback.
+    private static final int DARK_BLUR_COLOR = 0xB21A1A1A;
+    private static final int DARK_SOLID_COLOR = 0xFF1A1A1A;
     private final Consumer<Context> settings;
     private final BooleanSupplier light, corners;
     private final IntSupplier opacity, percent;
     private final TileCornerHooks tileCorners;
     private final BiConsumer<String, Throwable> log;
-    private final Class<?> rowClass, backgroundClass, mediaClass;
+    private final Class<?> rowClass, backgroundClass, mediaClass, landscapeClass, stackClass;
+    private final Field stackExpanded;
+    private final Method pinned, animatingAway;
     private final Field clipRadius, roundable, maxRadius, mediaRadius, pushBackground, flymeBackground, nativeBackground;
     private final Method rowBackground, mediaBackground, applyRoundness, tintNoBlur;
     private final Map<Object, Float> headerRadii = new WeakHashMap<>();
@@ -40,6 +45,10 @@ final class NotificationAppearanceHooks {
         this.settings=settings; this.light=light; this.opacity=opacity; this.corners=corners;
         this.percent=percent; this.tileCorners=tileCorners; this.log=log;
         rowClass=loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow");
+        landscapeClass=loader.loadClass("com.flyme.notification.view.LandscapeHeadsUpNotificationView");
+        stackClass=loader.loadClass("com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout");
+        stackExpanded=stackClass.getField("mIsExpanded");
+        pinned=rowClass.getMethod("isPinned"); animatingAway=rowClass.getMethod("isHeadsUpAnimatingAway");
         backgroundClass=loader.loadClass("com.android.systemui.statusbar.notification.row.NotificationBackgroundView");
         mediaClass=loader.loadClass("com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout");
         clipRadius=rowClass.getField("mClipCornerRadius"); roundable=rowClass.getField("mRoundableState");
@@ -58,7 +67,25 @@ final class NotificationAppearanceHooks {
         float side=tileCorners.cellSide(view);
         return side*Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN,Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX,percent.getAsInt()))/100f;
     }
-    private boolean target(View view) { return backgroundClass.isInstance(view) || mediaClass.isInstance(view); }
+    private boolean target(View view) {
+        return backgroundClass.isInstance(view) || mediaClass.isInstance(view) || landscapeClass.isInstance(view);
+    }
+    private boolean floating(View view) throws ReflectiveOperationException {
+        if(landscapeClass.isInstance(view))return true;
+        for(View current=view;current!=null;current=current.getParent() instanceof View parent?parent:null) {
+            if(!rowClass.isInstance(current))continue;
+            if(!((Boolean)pinned.invoke(current) || (Boolean)animatingAway.invoke(current)))return false;
+            for(View ancestor=current.getParent() instanceof View parent?parent:null;ancestor!=null;
+                    ancestor=ancestor.getParent() instanceof View parent?parent:null)
+                if(stackClass.isInstance(ancestor))return !stackExpanded.getBoolean(ancestor);
+            return true;
+        }
+        return false;
+    }
+    private int backgroundColor(View view,int nativeColor,boolean blur) throws ReflectiveOperationException {
+        if(floating(view))return blur?DARK_BLUR_COLOR:DARK_SOLID_COLOR;
+        return light.getAsBoolean()?color():nativeColor;
+    }
     void install(SignalHooks.Installer installer) {
         installer.hook("com.android.systemui.statusbar.notification.row.ActivatableNotificationView", "setBackground", chain -> {
             View view=(View)chain.getThisObject();
@@ -68,16 +95,23 @@ final class NotificationAppearanceHooks {
         });
         installer.hook(backgroundClass.getName(), "setBlurBackground", chain -> {
             View view=(View)chain.getThisObject(); settings.accept(view.getContext());
-            if (!light.getAsBoolean() && !corners.getAsBoolean()) return chain.proceed();
             Object[] args=chain.getArgs().toArray();
-            if (light.getAsBoolean()) args[1]=color();
+            args[1]=backgroundColor(view,(Integer)args[1],true);
             if (corners.getAsBoolean()) args[2]=Math.round(radius(view));
             return chain.proceed(args);
         },boolean.class,int.class,int.class);
         installer.hook(backgroundClass.getName(), "setTintForNoBlur", chain -> {
             View view=(View)chain.getThisObject(); settings.accept(view.getContext());
-            return light.getAsBoolean() ? chain.proceed(new Object[]{color()}) : chain.proceed();
+            return chain.proceed(new Object[]{backgroundColor(view,(Integer)chain.getArg(0),false)});
         },int.class);
+        installer.hook(landscapeClass.getName(), "setBackground", chain -> {
+            View view=(View)chain.getThisObject();
+            Object result=chain.proceed();
+            Drawable drawable=view.getBackground();
+            if(drawable!=null && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable"))
+                drawable.mutate().setTint(DARK_SOLID_COLOR);
+            return result;
+        });
         installer.hook(mediaClass.getName(), "setBackground", chain -> {
             View view=(View)chain.getThisObject(); settings.accept(view.getContext());
             State state=observe(view); state.prepare(); Object result=chain.proceed(); state.finish(); return result;
@@ -87,23 +121,23 @@ final class NotificationAppearanceHooks {
             View view=(View)chain.getArg(0);
             if (!target(view)) return chain.proceed();
             settings.accept(view.getContext()); Object[] args=chain.getArgs().toArray();
-            if (light.getAsBoolean()) args[4]=color();
-            if (corners.getAsBoolean()) args[3]=radius(view);
+            args[4]=backgroundColor(view,(Integer)args[4],true);
+            if (corners.getAsBoolean() && !landscapeClass.isInstance(view)) args[3]=radius(view);
             return chain.proceed(args);
         },View.class,int.class,float.class,float.class,int.class,boolean.class,int.class);
         installer.hook("com.flyme.systemui.wallpaper.WallpaperBlurDrawableManager", "addBlurDrawableTo", chain -> {
             View view=(View)chain.getArg(0);
             if (!target(view)) return chain.proceed();
             settings.accept(view.getContext()); Object[] args=chain.getArgs().toArray();
-            if (light.getAsBoolean()) args[1]=color();
-            if (corners.getAsBoolean()) args[2]=radius(view);
+            args[1]=backgroundColor(view,(Integer)args[1],true);
+            if (corners.getAsBoolean() && !landscapeClass.isInstance(view)) args[2]=radius(view);
             return chain.proceed(args);
         },View.class,int.class,float.class);
         installer.hook("com.flyme.systemui.wallpaper.WallpaperBlurDrawableManager", "setAllForegroundColor", chain -> {
             View view=(View)chain.getArg(0);
             if (!target(view)) return chain.proceed();
             settings.accept(view.getContext());
-            return light.getAsBoolean() ? chain.proceed(new Object[]{view,color()}) : chain.proceed();
+            return chain.proceed(new Object[]{view,backgroundColor(view,(Integer)chain.getArg(1),true)});
         },View.class,int.class);
     }
     private State observe(View view) {
@@ -165,7 +199,7 @@ final class NotificationAppearanceHooks {
         float originalRadius, originalMax;
         int lastColor=Integer.MIN_VALUE;
         float lastRadius=-1;
-        boolean lastLight, lastCorners;
+        boolean lastLight, lastCorners, lastFloating;
         ViewTreeObserver observer;
         ViewOutlineProvider originalOutline;
         boolean originalClip;
@@ -216,25 +250,33 @@ final class NotificationAppearanceHooks {
                 if(media) view.invalidateOutline();
                 else if(flymeBackground.get(view)!=null)applyRoundness.invoke(view);
             }
-            if(light.getAsBoolean()) {
+            boolean isFloating=floating(view);
+            if(light.getAsBoolean() || isFloating) {
                 if(media) {
                     Drawable drawable=view.getBackground();
                     if(drawable!=null && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable")
                             && !drawable.getClass().getName().endsWith("WallpaperBlurDrawable")) drawable.mutate().setTint(color());
-                } else if(pushBackground.get(view)==null) {
+                } else if(isFloating || pushBackground.get(view)==null) {
                     Object background=flymeBackground.get(view);
                     if(background!=null && nativeBackground.get(background) instanceof Drawable drawable
                             && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable")
-                            && !drawable.getClass().getName().endsWith("WallpaperBlurDrawable")) tintNoBlur.invoke(background,color());
+                            && !drawable.getClass().getName().endsWith("WallpaperBlurDrawable"))
+                        tintNoBlur.invoke(background,isFloating?DARK_SOLID_COLOR:color());
                 }
             }
             lastColor=color(); lastLight=light.getAsBoolean(); lastCorners=corners.getAsBoolean();
+            lastFloating=isFloating;
             lastRadius=lastCorners?radius(view):-1f;
         }
         void update() {
             View view=owner.get(); if(view==null || running || failed || !view.isAttachedToWindow())return;
             boolean currentCorners=corners.getAsBoolean(), currentLight=light.getAsBoolean();
-            boolean changed=currentCorners!=lastCorners || currentLight!=lastLight
+            boolean currentFloating;
+            try { currentFloating=floating(view); }
+            catch(ReflectiveOperationException error) {
+                failed=true; log.accept("Cannot resolve floating notification state",error); return;
+            }
+            boolean changed=currentFloating!=lastFloating || currentCorners!=lastCorners || currentLight!=lastLight
                     || (currentLight && color()!=lastColor) || (currentCorners && radius(view)!=lastRadius);
             if(!changed)return;
             running=true;

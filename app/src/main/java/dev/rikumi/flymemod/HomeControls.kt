@@ -1,7 +1,6 @@
 package dev.rikumi.flymemod
 
 import android.content.SharedPreferences
-import android.os.Build
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -16,12 +15,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val MODULE_SWITCHES = listOf(
+    ModuleSettings.SYSTEM_THEME_COLOR_ENABLED,
     ModuleSettings.EDIT_APP_ICON_NAME,
     ModuleSettings.LOCK_WIDGET_STARTUP_FIX,
     ModuleSettings.HIDE_CARRIER,
     ModuleSettings.LAUNCHER_HIDE_APP_MENU,
     ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS,
-    ModuleSettings.APP_IMMERSIVE_NAVIGATION,
+    ModuleSettings.APP_IMMERSIVE_NAVIGATION, ModuleSettings.BACK_GESTURE_WIDTH_ENABLED,
     ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED,
     ModuleSettings.DARK_APP_SPECIAL_PACKAGES,
     ModuleSettings.SECONDARY_EXPANSION_FIX, ModuleSettings.QS_TRANSLATION_ORIGIN,
@@ -32,6 +32,7 @@ private val MODULE_SWITCHES = listOf(
     ModuleSettings.SPLIT_NETWORK_CARD,
     ModuleSettings.FOLD_IDLE_MEDIA,
     ModuleSettings.CIRCLE_SMALL_TILES,
+    ModuleSettings.COMBINED_NOTIFICATION_WIDTH,
     ModuleSettings.COMBINED_COLLAPSE_FIX, ModuleSettings.COMBINED_PULL_ANIMATION, ModuleSettings.LIMIT_AOD_MOVEMENT,
     ModuleSettings.INSTALLER_SKIP_WARNINGS,
     ModuleSettings.WEATHER_DARK_BACKGROUND,
@@ -138,12 +139,7 @@ internal fun HomeModuleControls() {
                 rightTitle = "启动 LSPosed",
                 onRightClick = {
                     scope.launch {
-                        val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                            "android.telephony.action.SECRET_CODE" else "android.provider.Telephony.SECRET_CODE"
-                        val success = withContext(Dispatchers.IO) {
-                            runRoot("am broadcast -a $action -d android_secret_code://5776733 android") != null
-                        }
-                        if (!success) Toast.makeText(context, "启动失败，请检查 LSPosed 安装及 root 授权", Toast.LENGTH_SHORT).show()
+                        launchLsposed(context)
                     }
                 },
             )

@@ -29,7 +29,10 @@ final class StoreLayoutHooks {
             ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS, ModuleSettings.STORE_CLEAN_SEARCH,
             ModuleSettings.STORE_EMPTY_HOME, ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS,
             ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS,
-            ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS
+            ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS,
+            ModuleSettings.STORE_HIDE_MINE_SUBSCRIBE_WISH,
+            ModuleSettings.STORE_HIDE_MINE_CAMPAIGN_QUICK_APP,
+            ModuleSettings.STORE_HIDE_MINE_PHONE_CLEAR
     };
 
     StoreLayoutHooks(BiConsumer<String, Throwable> log) { this.log = log; }
@@ -110,6 +113,8 @@ final class StoreLayoutHooks {
             homePages = pages;
             return chain.proceed();
         }, List.class, Class.forName("com.alibaba.fastjson.JSONArray", false, loader), boolean.class);
+        try { StoreMineEntryHooks.install(loader, installer, () -> options); }
+        catch (ReflectiveOperationException e) { log.accept("Cannot resolve store Mine entries", e); }
         try { installDetail(loader, installer); }
         catch (ReflectiveOperationException e) { log.accept("Cannot resolve store detail recommendations", e); }
         if (installed == 0) throw new NoSuchMethodException("Store feed block assembly");

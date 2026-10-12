@@ -19,6 +19,34 @@
         <package android:name="com.meizu.media.camera" />
         <package android:name="com.meizu.media.gallery" />
         <package android:name="com.meizu.flyme.sdkstage" />
+        <!-- Recommended scope visibility -->
+        <package android:name="com.android.alarmclock" />
+        <package android:name="com.android.calendar" />
+        <package android:name="com.android.dialer" />
+        <package android:name="com.android.email" />
+        <package android:name="com.android.incallui" />
+        <package android:name="com.android.intentresolver" />
+        <package android:name="com.android.mms" />
+        <package android:name="com.android.permissioncontroller" />
+        <package android:name="com.android.phone" />
+        <package android:name="com.android.soundrecorder" />
+        <package android:name="com.flyme.meizu.store" />
+        <package android:name="com.flyme.sceneengine" />
+        <package android:name="com.meizu.account" />
+        <package android:name="com.meizu.callsetting" />
+        <package android:name="com.meizu.connectivitysettings" />
+        <package android:name="com.meizu.customizecenter" />
+        <package android:name="com.meizu.filemanager" />
+        <package android:name="com.meizu.flyme.calculator" />
+        <package android:name="com.meizu.flyme.find" />
+        <package android:name="com.meizu.flyme.toolbox" />
+        <package android:name="com.meizu.mznfcpay" />
+        <package android:name="com.meizu.net.pedometer" />
+        <package android:name="com.meizu.notepaper" />
+        <package android:name="com.meizu.picker" />
+        <package android:name="com.meizu.voiceassistant" />
+        <package android:name="com.meizu.wear" />
+        <!-- End recommended scope visibility -->
     </queries>
 
     <application

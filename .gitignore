@@ -11,3 +11,8 @@ reference-apks/**/*.jar
 /signing.properties
 /signing/*.keystore
 /signing/*.jks
+
+# Raw theme resource extraction; reviewed target report is tracked.
+reference-apks/theme-meizu22/*/*-resources.txt
+reference-apks/theme-meizu22/inventory.json
+__pycache__/

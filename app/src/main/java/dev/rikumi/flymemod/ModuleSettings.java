@@ -5,6 +5,10 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 
 public final class ModuleSettings {
+    public static final String DARK_SYSTEM_APP_BLACK_BACKGROUND = "dark_system_app_black_background";
+    public static final String SYSTEM_THEME_COLOR_ENABLED = "system_theme_color_enabled";
+    public static final String SYSTEM_THEME_COLOR = "system_theme_color";
+    public static final int SYSTEM_THEME_COLOR_DEFAULT = 0xFF206CFF;
     public static final String EDIT_APP_ICON_NAME = "edit_app_icon_name";
     public static final String LOCK_WIDGET_STARTUP_FIX = "lock_widget_startup_fix";
     public static final String HIDE_CARRIER = "hide_lockscreen_notification_carrier";
@@ -14,6 +18,22 @@ public final class ModuleSettings {
     public static final String LAUNCHER_ENTRY_EXTRA = "flymemod_launcher_entry";
     public static final String DARK_APP_SPECIAL_PACKAGES = "dark_app_special_packages";
     public static final String PHOTO_PREVIEW_SYSTEM_ROTATION = "photo_preview_system_rotation";
+    public static final String CAMERA_DISABLE_AUTO_NIGHT = "camera_disable_auto_night";
+    public static final String CAMERA_NIGHT_EXPOSURE_ENABLED = "camera_night_exposure_enabled";
+    public static final String CAMERA_NIGHT_EXPOSURE_MS = "camera_night_exposure_ms";
+    public static final int CAMERA_NIGHT_EXPOSURE_DEFAULT = 3000;
+    public static final int CAMERA_NIGHT_EXPOSURE_MIN = 500;
+    public static final int CAMERA_NIGHT_EXPOSURE_MAX = 10000;
+    public static int cameraNightExposureMs(int value) {
+        int clamped = Math.max(CAMERA_NIGHT_EXPOSURE_MIN, Math.min(CAMERA_NIGHT_EXPOSURE_MAX, value));
+        return Math.round(clamped / 100f) * 100;
+    }
+    public static final String CAMERA_LIVE_PREROLL_ENABLED = "camera_live_preroll_enabled";
+    public static final String CAMERA_LIVE_PREROLL_MS = "camera_live_preroll_ms";
+    public static final int CAMERA_LIVE_PREROLL_DEFAULT = 500;
+    public static int cameraLivePrerollMs(int value) {
+        return Math.round(Math.max(0, Math.min(1000, value)) / 100f) * 100;
+    }
     public static final String CAMERA_KEEP_FILTER = "camera_keep_filter";
     public static final String APP_IMMERSIVE_NAVIGATION = "wechat_immersive_navigation";
     public static final String APP_IMMERSIVE_NAVIGATION_PACKAGES = "app_immersive_navigation_packages";
@@ -29,12 +49,18 @@ public final class ModuleSettings {
     public static final int SMALL_WINDOW_LIMIT_DEFAULT = 3;
     public static final int SMALL_WINDOW_LIMIT_MAX = 6;
     public static final String MBACK_MISSING_ASSISTANT_HOME = "mback_missing_assistant_home";
+    public static final String BACK_GESTURE_WIDTH_ENABLED = "back_gesture_width_enabled";
+    public static final String BACK_GESTURE_WIDTH_DP = "back_gesture_width_dp";
+    // Fallback before settings arrive; the device-specific default is initialized by BackGestureWidthSettings.
+    public static final int BACK_GESTURE_WIDTH_DEFAULT = 0;
+    public static final String BACK_GESTURE_WIDTH_MAX_DP = "back_gesture_width_max_dp";
     public static final String MBACK_SYSTEM_TIMEOUT = "mback_system_long_press_timeout";
     public static final String NOTIFICATION_CONTOUR = "coloros_notification_contour";
     public static final String QS_TRANSLATION_ORIGIN = "control_center_translation_origin_fix";
     public static final String SECONDARY_EXPANSION_FIX = "combined_secondary_expansion_fix";
     public static final String COMBINED_EMPTY_SHADE_KEEP_OPEN = "combined_empty_shade_keep_open";
     public static final String COMBINED_FILTER_SETTINGS = "combined_filter_button_settings";
+    public static final String COMBINED_NOTIFICATION_WIDTH = "combined_notification_width";
     public static final String HOME_ICON_MINIMUM_SIZE = "home_icon_minimum_size";
     public static final String RESTORE_COLLAPSED_CARD_HEIGHT = "restore_combined_collapsed_card_height";
     public static final String[][] MEDIA_FOLDERS = {
@@ -106,6 +132,8 @@ public final class ModuleSettings {
     public static final String HEADS_UP_WIDTH = "wider_heads_up_notifications";
     public static final String NOTIFICATION_LIGHT = "notification_light_background";
     public static final String NOTIFICATION_LIGHT_OPACITY = "notification_light_background_opacity";
+    public static final String NOTIFICATION_BACKGROUND_COLOR = "notification_background_color";
+    public static final String NOTIFICATION_BACKGROUND_SATURATION = "notification_background_saturation";
     public static final String NOTIFICATION_CUSTOM_CORNERS = "notification_custom_corners";
     public static final String NOTIFICATION_CORNER_PERCENT = "notification_corner_percent";
     public static final String NOTIFICATION_CORNERS = "larger_notification_corners";
@@ -113,6 +141,7 @@ public final class ModuleSettings {
     public static final String ORIGINAL_NOTIFICATION_ICONS = "original_third_party_notification_icons";
     public static final String NATIVE_NOTIFICATION_EXPANSION = "native_notification_pull_expansion";
     public static final String MONOCHROME_NOTIFICATION_ACTIONS = "monochrome_notification_actions";
+    public static final String REMOVE_NOTIFICATION_ACTION_BACKGROUND = "remove_notification_action_background";
     public static final String DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS = "disable_google_notification_suggestions";
     public static final String MERGE_DUAL_SIGNAL = "merge_dual_sim_signal";
     public static final String SEPARATE_NETWORK_TYPE = "separate_network_type";
@@ -126,6 +155,11 @@ public final class ModuleSettings {
     public static final String STACKED_RECENTS = "stacked_recents_enabled";
     public static final String RECENTS_HIDE_NOT_RUNNING = "recents_hide_not_running_enabled";
     public static final String FOLDER_PAGING = "folder_horizontal_paging";
+    public static final String ICON_CONTOUR = "launcher_icon_contour";
+    public static final String FOLDER_MENU_ALIGNMENT = "launcher_folder_menu_alignment";
+    public static final String FOLDER_CONTOUR = "launcher_folder_contour";
+    public static final String WIDGET_CONTOUR = "launcher_widget_contour";
+    public static final String MENU_CONTOUR = "launcher_menu_contour";
     public static final String FOLDER_RESTORE_COLOR = "folder_restore_background_color";
     public static final String FOLDER_RADIUS_ENABLED = "folder_custom_radius_enabled";
     public static final String FOLDER_RADIUS = "folder_corner_radius_dp";
@@ -151,6 +185,9 @@ public final class ModuleSettings {
     public static final String BLOCK_WEATHER_RECOMMENDATIONS = "block_weather_recommendations";
     public static final String SLIDER_ACTIVE_CORNERS = "slider_active_top_corners";
     public static final String STORE_EMPTY_HOME = "store_empty_home";
+    public static final String STORE_HIDE_MINE_SUBSCRIBE_WISH = "store_hide_mine_subscribe_wish";
+    public static final String STORE_HIDE_MINE_CAMPAIGN_QUICK_APP = "store_hide_mine_campaign_quick_app";
+    public static final String STORE_HIDE_MINE_PHONE_CLEAR = "store_hide_mine_phone_clear";
     public static final String STORE_HIDE_MINE_RECOMMENDATIONS = "store_hide_mine_recommendations";
     public static final String STORE_HIDE_DETAIL_RECOMMENDATIONS = "store_hide_detail_recommendations";
     public static final String STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS = "store_hide_download_page_recommendations";
@@ -191,6 +228,7 @@ public final class ModuleSettings {
     public static SharedPreferences preferences(Context context) {
         SharedPreferences preferences = context.createDeviceProtectedStorageContext()
                 .getSharedPreferences(FILE, Context.MODE_PRIVATE);
+        BackGestureWidthSettings.initialize(context, preferences);
         if (!preferences.contains(APP_IMMERSIVE_NAVIGATION_PACKAGES)) {
             preferences.edit().putStringSet(APP_IMMERSIVE_NAVIGATION_PACKAGES,
                     java.util.Collections.singleton("com.tencent.mm")).commit();

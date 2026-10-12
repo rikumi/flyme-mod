@@ -73,7 +73,7 @@ public final class SettingsProvider extends ContentProvider {
                 ModuleSettings.DARKEN, ModuleSettings.WHITE_ACTIVE, ModuleSettings.NETWORK_DARK_SPINNER, ModuleSettings.HEADS_UP_WIDTH,
                 ModuleSettings.BLUR_ENABLED, ModuleSettings.BLUR_RADIUS, ModuleSettings.WALLPAPER_STARTUP_FIX,
                 ModuleSettings.HIDE_GBOARD, ModuleSettings.RECENTS_SWIPE_UP_KILL, ModuleSettings.RECENTS_HIDE_NOT_RUNNING, ModuleSettings.STACKED_RECENTS, ModuleSettings.FOLDER_PAGING, ModuleSettings.FOLDER_CENTER, ModuleSettings.FOLDER_RESTORE_COLOR, ModuleSettings.FOLDER_RADIUS_ENABLED, ModuleSettings.FOLDER_RADIUS,
-                ModuleSettings.ORIGINAL_NOTIFICATION_ICONS, ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS,
+                ModuleSettings.ORIGINAL_NOTIFICATION_ICONS, ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS, ModuleSettings.REMOVE_NOTIFICATION_ACTION_BACKGROUND,
                 ModuleSettings.MERGE_DUAL_SIGNAL, ModuleSettings.SEPARATE_NETWORK_TYPE, ModuleSettings.HIDE_DISABLED_APPS, ModuleSettings.HIDE_LUNAR, ModuleSettings.BLOCK_STORE_SPLASH, ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS, ModuleSettings.SLIDER_ACTIVE_CORNERS, ModuleSettings.STORE_HIDE_FEATURED, ModuleSettings.STORE_HIDE_GAMES, ModuleSettings.STORE_HIDE_POPULAR, ModuleSettings.STORE_HIDE_COMMUNITY, ModuleSettings.STORE_HIDE_DAILY, ModuleSettings.BLOCK_WEATHER_ADS, ModuleSettings.WEATHER_DARK_BACKGROUND, ModuleSettings.STORE_HIDE_SEARCH_HOT, ModuleSettings.STORE_EMPTY_APPLICATION_PAGE, ModuleSettings.INSTALLER_SKIP_WARNINGS, ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL, ModuleSettings.STORE_DETAIL_HIDE_TOPICS, ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS, ModuleSettings.STORE_DETAIL_HIDE_REVIEWS, ModuleSettings.COMBINED_PULL_ANIMATION, ModuleSettings.LIMIT_AOD_MOVEMENT, ModuleSettings.COMBINED_COLLAPSE_FIX, ModuleSettings.VOLUME_FIRST_FOUR, ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT, ModuleSettings.QS_TRANSLATION_ORIGIN, ModuleSettings.SECONDARY_EXPANSION_FIX, ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN, ModuleSettings.COMBINED_FILTER_SETTINGS, ModuleSettings.HOME_ICON_MINIMUM_SIZE}));
         for (String[] folder : ModuleSettings.MEDIA_FOLDERS) columns.add(folder[1]);
         columns.addAll(java.util.Arrays.asList(ModuleSettings.HIDE_STATUS_ICON_KEYS));
@@ -102,6 +102,7 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.SPLIT_NETWORK_CARD);
         columns.add(ModuleSettings.WHITE_ACTIVE_OPACITY);
         columns.add(ModuleSettings.CIRCLE_SMALL_TILES);
+        columns.add(ModuleSettings.COMBINED_NOTIFICATION_WIDTH);
         columns.add(ModuleSettings.FOLD_IDLE_MEDIA);
         columns.add(ModuleSettings.NETWORK_SPLIT_STYLE);
         columns.add(ModuleSettings.OPTIMIZE_2X1_TEXT);
@@ -110,6 +111,8 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.LIGHT_OPACITY);
         columns.add(ModuleSettings.NOTIFICATION_LIGHT);
         columns.add(ModuleSettings.NOTIFICATION_LIGHT_OPACITY);
+        columns.add(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR);
+        columns.add(ModuleSettings.NOTIFICATION_BACKGROUND_SATURATION);
         columns.add(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS);
         columns.add(ModuleSettings.NOTIFICATION_CORNER_PERCENT);
         columns.add(ModuleSettings.NOTIFICATION_READ_LAYER_FIX);
@@ -129,6 +132,8 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.LAUNCHER_HIDE_APP_MENU);
         columns.add(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS);
         columns.add(ModuleSettings.COLOROS_CONTOUR);
+        columns.add(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED);
+        columns.add(ModuleSettings.BACK_GESTURE_WIDTH_DP);
         columns.add(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
         columns.add(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME);
         columns.add(ModuleSettings.NOTIFICATION_CONTOUR);
@@ -136,6 +141,9 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR);
         columns.add(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION);
         columns.add(ModuleSettings.STORE_EMPTY_HOME);
+        columns.add(ModuleSettings.STORE_HIDE_MINE_SUBSCRIBE_WISH);
+        columns.add(ModuleSettings.STORE_HIDE_MINE_CAMPAIGN_QUICK_APP);
+        columns.add(ModuleSettings.STORE_HIDE_MINE_PHONE_CLEAR);
         columns.add(ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS);
         columns.add(ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS);
         columns.add(ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS);
@@ -146,6 +154,14 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.STORE_HIDE_STAR_APPS);
         columns.add(ModuleSettings.STORE_HIDE_HIGH_RATED);
         columns.add(ModuleSettings.STORE_HIDE_EVERYONE_WATCHING);
+        columns.add(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND);
+        columns.add(ModuleSettings.SYSTEM_THEME_COLOR_ENABLED);
+        columns.add(ModuleSettings.SYSTEM_THEME_COLOR);
+        columns.add(ModuleSettings.ICON_CONTOUR);
+        columns.add(ModuleSettings.FOLDER_MENU_ALIGNMENT);
+        columns.add(ModuleSettings.FOLDER_CONTOUR);
+        columns.add(ModuleSettings.WIDGET_CONTOUR);
+        columns.add(ModuleSettings.MENU_CONTOUR);
         MatrixCursor cursor = new MatrixCursor(columns.toArray(new String[0]));
         java.util.List<Object> values = new java.util.ArrayList<>(java.util.Arrays.asList(new Object[]{prefs.getBoolean(ModuleSettings.SCALE, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.LIGHT, false) ? 1 : 0,
@@ -167,6 +183,7 @@ public final class SettingsProvider extends ContentProvider {
                 prefs.getInt(ModuleSettings.FOLDER_RADIUS, ModuleSettings.FOLDER_RADIUS_DEFAULT),
                 prefs.getBoolean(ModuleSettings.ORIGINAL_NOTIFICATION_ICONS, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS, false) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.REMOVE_NOTIFICATION_ACTION_BACKGROUND, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.MERGE_DUAL_SIGNAL, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.SEPARATE_NETWORK_TYPE, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.HIDE_DISABLED_APPS, false) ? 1 : 0,
@@ -227,6 +244,7 @@ public final class SettingsProvider extends ContentProvider {
         // Retain the provider column for compatibility; radiant backgrounds use fixed 90% alpha.
         values.add(90);
         values.add(prefs.getBoolean(ModuleSettings.CIRCLE_SMALL_TILES, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.COMBINED_NOTIFICATION_WIDTH, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.FOLD_IDLE_MEDIA, false) ? 1 : 0);
         values.add(ModuleSettings.networkSplitStyle(prefs));
         values.add(prefs.getBoolean(ModuleSettings.OPTIMIZE_2X1_TEXT, false) ? 1 : 0);
@@ -236,6 +254,10 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_LIGHT, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX,
                 prefs.getInt(ModuleSettings.NOTIFICATION_LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT))));
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR, false) ? 1 : 0);
+        values.add(Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
+                Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX,
+                        prefs.getInt(ModuleSettings.NOTIFICATION_BACKGROUND_SATURATION, ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT))));
         values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS, false) ? 1 : 0);
         values.add(Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN, Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX,
                 prefs.getInt(ModuleSettings.NOTIFICATION_CORNER_PERCENT, ModuleSettings.TILE_CORNER_PERCENT_DEFAULT))));
@@ -259,6 +281,9 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.LAUNCHER_HIDE_APP_MENU, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.COLOROS_CONTOUR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false) ? 1 : 0);
+        values.add(Math.max(0, Math.min(prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_MAX_DP, 0),
+                prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP, ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT))));
         values.add(prefs.getBoolean(ModuleSettings.MBACK_SYSTEM_TIMEOUT, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CONTOUR, false) ? 1 : 0);
@@ -266,6 +291,9 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getInt(ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR, ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR_DEFAULT));
         values.add(prefs.getBoolean(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.STORE_EMPTY_HOME, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_SUBSCRIBE_WISH, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_CAMPAIGN_QUICK_APP, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_PHONE_CLEAR, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS, false) ? 1 : 0);
@@ -276,6 +304,14 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_STAR_APPS, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_HIGH_RATED, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_EVERYONE_WATCHING, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.SYSTEM_THEME_COLOR_ENABLED, false) ? 1 : 0);
+        values.add(prefs.getInt(ModuleSettings.SYSTEM_THEME_COLOR, ModuleSettings.SYSTEM_THEME_COLOR_DEFAULT));
+        values.add(prefs.getBoolean(ModuleSettings.ICON_CONTOUR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FOLDER_MENU_ALIGNMENT, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FOLDER_CONTOUR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.WIDGET_CONTOUR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.MENU_CONTOUR, false) ? 1 : 0);
         cursor.addRow(values);
         return cursor;
     }

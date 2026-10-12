@@ -371,11 +371,12 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
                     }
                 }
             } else {
-                item { FluixCard { DisabledAppsHintRow { if (!busy) picking = true } } }
                 item { FluixSmallTitle(text = "停用应用设置") }
                 item {
                     FluixCard {
-                        HideDisabledAppsRow(ctx)
+                        DisabledAppsHintRow { if (!busy) picking = true }
+                        FluixItemDivider()
+                        SettingsItemRow(HIDE_DISABLED_APPS_ITEM)
                     }
                 }
                 item { FluixSmallTitle(text = "已停用的应用") }
@@ -495,23 +496,6 @@ private fun DisabledAppsDropdown(items: List<String>, warningFirst: Boolean = fa
             }
         }
     }
-}
-
-/** 隐藏已停用应用开关: 开启后设置的应用管理页不再列出已停用的应用。 */
-@Composable
-private fun HideDisabledAppsRow(ctx: Context) {
-    var checked by remember {
-        mutableStateOf(ModuleSettings.preferences(ctx).getBoolean(ModuleSettings.HIDE_DISABLED_APPS, false))
-    }
-    FluixSwitchPreference(
-        checked = checked,
-        onCheckedChange = {
-            checked = it
-            ModuleSettings.preferences(ctx).edit().putBoolean(ModuleSettings.HIDE_DISABLED_APPS, it).apply()
-            ctx.contentResolver.notifyChange(ModuleSettings.URI, null)
-        },
-        title = "在应用管理中隐藏",
-    )
 }
 
 // 跳转到设置的应用详情页。标准 Intent 由 com.android.settings.applications

@@ -54,6 +54,8 @@ final class CameraHooks {
         } catch (ReflectiveOperationException | LinkageError error) {
             log.accept("Cannot resolve camera filter retention", error);
         }
+        new CameraNightHooks(preferences, log).install(loader, installer, deoptimize);
+        new CameraLivePhotoHooks(preferences, log).install(loader, installer, deoptimize);
         log.accept("Camera hook registration completed", null);
     }
 

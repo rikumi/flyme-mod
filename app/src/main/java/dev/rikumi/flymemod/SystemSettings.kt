@@ -11,7 +11,6 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,19 +74,7 @@ internal enum class SystemSetting(
 }
 
 @Composable
-internal fun SystemSettingsPreferences() {
-    FluixCard {
-        SystemSetting.entries.forEachIndexed { index, setting ->
-            key(setting) {
-                if (index > 0) FluixItemDivider()
-                SystemSettingRow(setting)
-            }
-        }
-    }
-}
-
-@Composable
-private fun SystemSettingRow(setting: SystemSetting) {
+internal fun SystemSettingRow(setting: SystemSetting) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var checked by remember(setting) { mutableStateOf(false) }

@@ -46,7 +46,7 @@ internal fun HomeDeviceBanner() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp)
+            .height(160.dp)
             .clip(RoundedCornerShape(topStart = FLUIX_CARD_CORNER, topEnd = FLUIX_CARD_CORNER)),
     ) {
         Image(
