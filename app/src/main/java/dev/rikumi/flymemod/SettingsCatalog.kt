@@ -185,6 +185,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
     ),
     "lockscreen" to listOf(
         SettingsGroup("锁屏操作", listOf(
+            SwitchItem(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC, "指纹识别成功振动反馈"),
             SwitchItem(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT, "屏蔽锁屏长按编辑"),
         )),
         SettingsGroup("锁屏视觉", listOf(
@@ -206,7 +207,9 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
     "navigation" to listOf(
         SettingsGroup("导航与返回", listOf(
             CustomItem("app_navigation") { actions -> AppNavigationPreference(actions.onSelectNavigationApplications) },
+            CustomItem("back_gesture_width") { BackGestureWidthPreference() },
             SwitchItem(ModuleSettings.BACK_GESTURE_REMOVE_SMART, "放宽侧滑返回判定", defaultEnabled = true),
+            SwitchItem(ModuleSettings.BACK_GESTURE_ARROW, "侧滑返回区域增加箭头"),
             SwitchItem(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, "侧边返回暗色背景", defaultEnabled = true,
                 slider = SliderSpec(ModuleSettings.BACK_GESTURE_DARK_OPACITY,
                     ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT, 0, 100, unit = "%", step = 5)),

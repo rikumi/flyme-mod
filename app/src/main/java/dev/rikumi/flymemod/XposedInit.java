@@ -188,11 +188,14 @@ public final class XposedInit extends XposedModule {
     private boolean notificationContourEnabled, mbackSystemTimeoutEnabled, mbackMissingAssistantHomeEnabled;
     private boolean gestureBarWidthEnabled = true;
     private int gestureBarWidthDp=ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT;
+    private boolean backGestureArrowEnabled;
     private boolean backGestureDarkBackgroundEnabled = true;
     private int backGestureDarkOpacity = ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT;
     private BackGestureBackgroundHooks activeBackGestureBackgroundHooks;
     private boolean backGestureWidthEnabled;
     private boolean backGestureRemoveSmart = true;
+    private BackGestureSmartHooks activeBackGestureSmartHooks;
+    private BackGestureWidthHooks activeBackGestureWidthHooks;
     private int backGestureWidthDp = ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT;
     private int blurRadius = ModuleSettings.BLUR_DEFAULT;
     private boolean settingsErrorLogged;
@@ -275,6 +278,13 @@ public final class XposedInit extends XposedModule {
                             install(loader, name, method, hooker, parameters), this::deoptimize);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve status-bar overlay lifecycle", error);
+        }
+        try {
+            FingerprintSuccessHapticHooks.install(loader, getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                    (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters), this::deoptimize,
+                    (message,error) -> log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR,"FlymeMod","Cannot resolve fingerprint success feedback",error);
         }
         try {
             BackGestureServiceHooks.install(loader, getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
@@ -686,15 +696,25 @@ public final class XposedInit extends XposedModule {
         }
         try {
             activeBackGestureBackgroundHooks = new BackGestureBackgroundHooks(loader, this::loadSettings,
-                    () -> backGestureDarkBackgroundEnabled, () -> backGestureDarkOpacity);
+                    () -> backGestureDarkBackgroundEnabled, () -> backGestureDarkOpacity, () -> backGestureArrowEnabled);
             activeBackGestureBackgroundHooks.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve back gesture background", error);
         }
         try {
-            new BackGestureSmartHooks(loader, this::loadSettings, () -> backGestureRemoveSmart,
-                    (message,error) -> log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error)).install(
+            activeBackGestureWidthHooks = new BackGestureWidthHooks(loader, this::loadSettings,
+                    () -> backGestureWidthEnabled, () -> backGestureWidthDp, () -> backGestureRemoveSmart,
+                    (message,error) -> log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error));
+            activeBackGestureWidthHooks.install(
+                    (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters), this::deoptimize);
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR,"FlymeMod","Cannot resolve back gesture width",error);
+        }
+        try {
+            activeBackGestureSmartHooks = new BackGestureSmartHooks(loader, this::loadSettings, () -> backGestureRemoveSmart,
+                    (message,error) -> log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error));
+            activeBackGestureSmartHooks.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
         } catch (ReflectiveOperationException error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve back gesture direction", error);
@@ -2198,6 +2218,7 @@ public final class XposedInit extends XposedModule {
             Context appContext = context.getApplicationContext();
             moduleSettingsObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
                 @Override public void onChange(boolean selfChange) {
+                    boolean previousBackSmart = backGestureRemoveSmart;
                     boolean previousWhiteActive = whiteActiveEnabled;
                     int previousOpacity = whiteActiveOpacity;
                     int previousStyle = controlCenterStyle;
@@ -2205,6 +2226,9 @@ public final class XposedInit extends XposedModule {
                     int previousLightOpacity = lightBackgroundOpacity;
                     synchronized (XposedInit.this) { settingsLoaded = false; }
                     loadSettings(appContext);
+                    if (activeBackGestureSmartHooks != null && previousBackSmart != backGestureRemoveSmart)
+                        activeBackGestureSmartHooks.refresh();
+                    if (activeBackGestureWidthHooks != null) activeBackGestureWidthHooks.refresh();
                     if (activeBackGestureBackgroundHooks != null) activeBackGestureBackgroundHooks.refresh();
                     reapplyStatusIconVisibility();
                     if (activeHeadsUpWidthHooks != null) activeHeadsUpWidthHooks.refresh();
@@ -2272,6 +2296,8 @@ public final class XposedInit extends XposedModule {
                         : Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
                                 Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX, cursor.getInt(notificationSaturationColumn)));
                 notificationContourEnabled = notificationContourColumn >= 0 && cursor.getInt(notificationContourColumn) != 0;
+                int backArrowColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_ARROW);
+                backGestureArrowEnabled = backArrowColumn >= 0 && cursor.getInt(backArrowColumn) != 0;
                 int backDarkColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND);
                 backGestureDarkBackgroundEnabled = backDarkColumn < 0 || cursor.getInt(backDarkColumn) != 0;
                 int backDarkOpacityColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_DARK_OPACITY);

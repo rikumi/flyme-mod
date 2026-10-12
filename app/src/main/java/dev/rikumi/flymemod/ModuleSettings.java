@@ -8,6 +8,7 @@ public final class ModuleSettings {
     public static final String DARK_SYSTEM_APP_BLACK_BACKGROUND = "dark_system_app_black_background";
     public static final String WIRELESS_DEBUG_THEME_FIX = "wireless_debug_theme_fix";
     public static final String FIX_ZYGOTE_RESTART_UNLOCK = "fix_zygote_restart_unlock";
+    public static final String FINGERPRINT_SUCCESS_HAPTIC = "fingerprint_success_haptic";
     public static final String REMOVE_FINGERPRINT_ANIMATION = "remove_fingerprint_animation";
     public static final String SETTINGS_HOME_FORCE_GOOGLE = "settings_home_force_google";
     public static final String SYSTEM_ICON_PACK = "system_application_icon_pack";
@@ -53,6 +54,7 @@ public final class ModuleSettings {
     public static final int SMALL_WINDOW_LIMIT_DEFAULT = 3;
     public static final int SMALL_WINDOW_LIMIT_MAX = 6;
     public static final String MBACK_MISSING_ASSISTANT_HOME = "mback_missing_assistant_home";
+    public static final String BACK_GESTURE_ARROW = "back_gesture_arrow";
     public static final String BACK_GESTURE_DARK_BACKGROUND = "back_gesture_dark_background";
     public static final String BACK_GESTURE_DARK_OPACITY = "back_gesture_dark_opacity";
     public static final int BACK_GESTURE_DARK_OPACITY_DEFAULT = 50;

@@ -192,6 +192,7 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND);
         columns.add(ModuleSettings.WIRELESS_DEBUG_THEME_FIX);
         columns.add(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK);
+        columns.add(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC);
         columns.add(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION);
         columns.add(ModuleSettings.DARK_APP_WHITELIST_MODE);
         columns.add(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE);
@@ -200,6 +201,7 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.FOLDER_MENU_ALIGNMENT);
         columns.add(ModuleSettings.WIDGET_CONTOUR);
         columns.add(ModuleSettings.MENU_CONTOUR);
+        columns.add(ModuleSettings.BACK_GESTURE_ARROW);
         columns.add(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND);
         columns.add(ModuleSettings.BACK_GESTURE_DARK_OPACITY);
         MatrixCursor cursor = new MatrixCursor(columns.toArray(new String[0]));
@@ -357,6 +359,7 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, true) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, true) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, true) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, true) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, true) ? 1 : 0);
@@ -365,6 +368,7 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.FOLDER_MENU_ALIGNMENT, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.WIDGET_CONTOUR, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.MENU_CONTOUR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_ARROW, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, true) ? 1 : 0);
         values.add(ModuleSettings.backGestureDarkOpacity(prefs.getInt(ModuleSettings.BACK_GESTURE_DARK_OPACITY,
                 ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT)));

@@ -24,6 +24,7 @@ public final class CameraSettingsBridge extends Application {
                 || ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND.equals(key)
                 || ModuleSettings.WIRELESS_DEBUG_THEME_FIX.equals(key)
                 || ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK.equals(key)
+                || ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC.equals(key)
                 || ModuleSettings.REMOVE_FINGERPRINT_ANIMATION.equals(key)
                 || ModuleSettings.LOCK_CLOCK_FONT.equals(key)
                 || ModuleSettings.CLOCK_FONT_WEIGHT.equals(key)
@@ -90,6 +91,8 @@ public final class CameraSettingsBridge extends Application {
                                 local.getBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, true))
                         .putBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK,
                                 local.getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, false))
+                        .putBoolean(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC,
+                                local.getBoolean(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC, false))
                         .putBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION,
                                 local.getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, false))
                         .putInt(ModuleSettings.LOCK_CLOCK_FONT,local.getInt(ModuleSettings.LOCK_CLOCK_FONT,0))

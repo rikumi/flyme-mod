@@ -1,6 +1,8 @@
 package dev.rikumi.flymemod;
 
 import android.content.SharedPreferences;
+import android.content.Context;
+import android.graphics.PointF;
 import android.view.MotionEvent;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -22,6 +24,8 @@ final class BackGestureServiceHooks {
         deoptimize.accept(recent.getDeclaredMethod("interceptMotionBeforeQueueing", MotionEvent.class, int.class));
         deoptimize.accept(loader.loadClass("com.android.server.policy.gesture.SystemGesture")
                 .getDeclaredMethod("interceptMotionBeforeQueueing",MotionEvent.class,int.class));
+        Field edgeWidth=recent.getDeclaredField("GESTURE_VALID_LEFT_OFFSET"); edgeWidth.setAccessible(true);
+        Field context=recent.getSuperclass().getDeclaredField("mContext"); context.setAccessible(true);
         Field direction=recent.getDeclaredField("mDir"); direction.setAccessible(true);
         Field startX=recent.getDeclaredField("mRecentPanelDownPosX"); startX.setAccessible(true);
         Field startY=recent.getDeclaredField("mRecentPanelDownPosY"); startY.setAccessible(true);
@@ -30,33 +34,53 @@ final class BackGestureServiceHooks {
         Field state=recent.getSuperclass().getDeclaredField("mGestureState"); state.setAccessible(true);
         Field downTime=recent.getSuperclass().getDeclaredField("mMotionDownTime"); downTime.setAccessible(true);
         Map<Object, Integer> firstMoveAxes = Collections.synchronizedMap(new WeakHashMap<>());
-        Object triggered=null, canceled=null;
+        Object pending=null, triggered=null, canceled=null;
         for(Object value:state.getType().getEnumConstants()) {
+            if(((Enum<?>)value).name().equals("PENDING_CHECK"))pending=value;
             if(((Enum<?>)value).name().equals("TRIGGERED"))triggered=value;
             if(((Enum<?>)value).name().equals("CANCELED"))canceled=value;
         }
-        if(triggered==null || canceled==null)throw new NoSuchFieldException("GestureState");
-        Object triggeredState=triggered, canceledState=canceled;
+        if(pending==null || triggered==null || canceled==null)throw new NoSuchFieldException("GestureState");
+        Object pendingState=pending, triggeredState=triggered, canceledState=canceled;
         installer.hook(recent.getName(), "interceptMotionBeforeQueueing", chain -> {
             Object owner=chain.getThisObject();
             if(!side.isInstance(owner)) return chain.proceed();
             MotionEvent event=(MotionEvent)chain.getArg(0);
             int action=event.getActionMasked();
             synchronized(owner) {
-                if(action==MotionEvent.ACTION_DOWN) firstMoveAxes.remove(owner);
-                else if(action==MotionEvent.ACTION_MOVE && !firstMoveAxes.containsKey(owner)) {
-                    float dx=event.getRawX()-startX.getFloat(owner);
-                    float dy=event.getRawY()-startY.getFloat(owner);
-                    if(dx!=0f || dy!=0f) {
-                        boolean horizontal=BackGestureDirectionPolicy.isHorizontalFirstMove(dx,dy);
+                int nativeWidth=edgeWidth.getInt(owner);
+                if(preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED,false)) {
+                    int dp=Math.max(0,Math.min(ModuleSettings.BACK_GESTURE_WIDTH_MAX_DEFAULT,
+                            preferences.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT)));
+                    edgeWidth.setInt(owner,Math.round(dp*((Context)context.get(owner)).getResources().getDisplayMetrics().density));
+                }
+                if(action==MotionEvent.ACTION_DOWN) {
+                    firstMoveAxes.remove(owner);
+
+                }
+                else if(action==MotionEvent.ACTION_MOVE && state.get(owner)==pendingState
+                        && !firstMoveAxes.containsKey(owner)) {
+                    String dir=((Enum<?>)direction.get(owner)).name();
+                    int threshold=dir.startsWith("HORIZONTAL")?slop.getInt(owner):landscapeSlop.getInt(owner);
+                    PointF first=BackGestureMotion.firstDisplacement(event,startX.getFloat(owner),startY.getFloat(owner),true,threshold);
+                    if(first!=null) {
+                        boolean horizontal=BackGestureDirectionPolicy.isInwardFirstMove(first.x,first.y,dir.endsWith("LEFT"));
                         firstMoveAxes.put(owner,horizontal?FIRST_MOVE_HORIZONTAL:FIRST_MOVE_VERTICAL);
                         if(preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART,true))
-                            log.accept("System side gesture first move: dx="+dx+" dy="+dy+" accepted="
-                                    +horizontal,null);
+                            log.accept("System side gesture first move: downX="+startX.getFloat(owner)
+                                    +" downY="+startY.getFloat(owner)+" dx="+first.x+" dy="+first.y
+                                    +" slop="+threshold+" accepted="+horizontal,null);
                     }
                 }
-                try { return chain.proceed(); }
-                finally { clearFirstMoveAxis(action, owner, firstMoveAxes); }
+                try {
+                    Object result=chain.proceed();
+                    if(action==MotionEvent.ACTION_DOWN && state.get(owner)==pendingState
+                            && preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART,true))
+                        log.accept("System side gesture admitted: x="+event.getRawX()+" y="+event.getRawY()
+                                +" direction="+direction.get(owner),null);
+                    return result;
+                }
+                finally { edgeWidth.setInt(owner,nativeWidth); clearFirstMoveAxis(action, owner, firstMoveAxes); }
             }
         }, MotionEvent.class,int.class);
         installer.hook(recent.getName(),"checkRecentsGesture",chain -> {
@@ -68,21 +92,20 @@ final class BackGestureServiceHooks {
                 state.set(owner,canceledState);
                 return null;
             }
-            if(firstAxis==null)return null; // Ignore zero-delta MOVE events until the first real displacement.
+            if(firstAxis==null)return null; // Wait for the first sample beyond native touch slop.
             if(firstAxis==FIRST_MOVE_VERTICAL) {
                 state.set(owner,canceledState);
                 return null;
             }
             String dir=((Enum<?>)direction.get(owner)).name();
             if(!dir.endsWith("LEFT") && !dir.endsWith("RIGHT"))return chain.proceed();
-            // Keep the native timeout and minimum movement; the first non-zero move owns direction.
+            // Keep the native timeout and minimum movement; the first move beyond touch slop owns direction.
             MotionEvent event=(MotionEvent)chain.getArg(0);
             int threshold=dir.startsWith("HORIZONTAL")?slop.getInt(owner):landscapeSlop.getInt(owner);
             float dx=event.getRawX()-startX.getFloat(owner);
             float dy=event.getRawY()-startY.getFloat(owner);
             if(Math.hypot(dx,dy)>threshold) {
-                boolean towardBack=dir.endsWith("LEFT")?dx>0f:dx<0f;
-                state.set(owner,towardBack?triggeredState:canceledState);
+                state.set(owner,triggeredState);
             }
             return null;
         },MotionEvent.class);
