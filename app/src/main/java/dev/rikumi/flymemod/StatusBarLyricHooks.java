@@ -16,7 +16,7 @@ import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Only the PhoneStatusBarViewController's clock is affected; icons remain native. */
+/** Hide the covered clock and release its layout space so following icons move left. */
 final class StatusBarLyricHooks {
     private final BooleanSupplier enabled;
     private final Consumer<Context> settings;
@@ -47,7 +47,7 @@ final class StatusBarLyricHooks {
             if (state == null || applying.get()) return chain.proceed();
             int requested = (Integer) chain.getArg(0);
             state.nativeVisibility = requested;
-            if (requested == View.VISIBLE && state.covered()) return chain.proceed(new Object[]{View.INVISIBLE});
+            if (requested == View.VISIBLE && state.covered()) return chain.proceed(new Object[]{View.GONE});
             return chain.proceed();
         }, int.class);
         Class<?> clock = loader.loadClass("com.android.systemui.statusbar.policy.Clock");
@@ -123,7 +123,7 @@ final class StatusBarLyricHooks {
         void apply() {
             View c = clock.get();
             if (c == null) return;
-            int target = nativeVisibility == View.VISIBLE && covered() ? View.INVISIBLE : nativeVisibility;
+            int target = nativeVisibility == View.VISIBLE && covered() ? View.GONE : nativeVisibility;
             if (c.getVisibility() == target) return;
             applying.set(true);
             try { c.setVisibility(target); } finally { applying.set(false); }

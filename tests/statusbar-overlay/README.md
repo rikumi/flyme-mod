@@ -1,6 +1,6 @@
 # 状态栏歌词避让验证
 
-默认开启；只隐藏 PhoneStatusBarViewController.clock，使用 INVISIBLE 保留图标布局，并保存原生时钟的可见性请求，关闭及移出后恢复原生请求状态。
+默认开启；覆盖时将 PhoneStatusBarViewController.clock 设为 GONE，释放时钟宽度，使紧随时钟的通知图标立即左移；保存原生时钟的可见性请求，关闭及移出后恢复原生请求状态。
 
 已对照 Flyme Android 16 framework 的 WindowState.setFrames(ClientWindowFrames,int,int)、setViewVisibility(int)、onSurfaceShownChanged(boolean)、show/hide(boolean,boolean)、onDisplayChanged(DisplayContent)、removeImmediately() 及 WindowManagerService.onInitReady()。Surface shown 字段在回调前更新，帧取 getFrame() 布局后屏幕坐标，不能使用 LayoutParams.y。初始与重新启用时在 mGlobalLock 下读取 mWindowMap；后续仅由窗口生命周期事件更新单个窗口。
 
