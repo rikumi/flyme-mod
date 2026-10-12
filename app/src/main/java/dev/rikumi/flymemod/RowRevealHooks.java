@@ -99,8 +99,10 @@ final class RowRevealHooks {
     }
 
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
-        panelAlpha.getDeclaringClass().getDeclaredMethod("instantCollapsePanel");
-        installer.hook(SHADE, "instantCollapsePanel", chain -> {
+        panelAlpha.getDeclaringClass().getDeclaredMethod("instantCollapse");
+        // Notification launches call instantCollapse directly through ShadeControllerImpl;
+        // instantCollapsePanel is only the dialog-aware wrapper around this shared entry.
+        installer.hook(SHADE, "instantCollapse", chain -> {
             Object owner = chain.getThisObject();
             if (active(owner, false)) {
                 closeImmediately(owner);
@@ -108,6 +110,15 @@ final class RowRevealHooks {
             }
             return chain.proceed();
         });
+        ClassLoader loader = panelAlpha.getDeclaringClass().getClassLoader();
+        for (String name : new String[]{SHADE, "com.android.systemui.shade.ShadeControllerImpl"}) {
+            for (Method method : loader.loadClass(name).getDeclaredMethods()) {
+                String methodName = method.getName();
+                if (methodName.equals("instantCollapsePanel") || methodName.equals("instantCollapseShade")
+                        || methodName.equals("collapsePanels") || methodName.equals("unlockAnimationStarted")
+                        || methodName.startsWith("lambda$unlockAnimationStarted$")) deoptimize.accept(method);
+            }
+        }
         deoptimize.accept(centerAlpha);
         deoptimize.accept(centerCollapseTranslation);
         deoptimize.accept(panelAlpha);

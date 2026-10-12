@@ -214,7 +214,7 @@ final class BlurRevealTimingHooks {
             }
             // Lifecycle resets bypass the minimum exit duration and monotonic-radius
             // guard; otherwise a delayed animator can recreate a dismissed backdrop.
-            String[] resets = panel ? new String[]{"instantCollapsePanel"}
+            String[] resets = panel ? new String[]{"instantCollapse"}
                     : new String[]{"resetViews", "instantCollapse"};
             for (String resetMethod : resets) {
                 type.getDeclaredMethod(resetMethod);
@@ -232,7 +232,7 @@ final class BlurRevealTimingHooks {
                     // Both controllers publish to the same blur interactor. An idle
                     // notification panel must not clear the separate control center.
                     if (rowOwned) {
-                        // instantCollapsePanel aborts height animation, but does not
+                        // instantCollapse aborts height animation, but does not
                         // stop the native radius spring. Retain the zero row owner
                         // so its remaining positive frames cannot recreate blur/dim.
                         state.active = state.rowDriven = state.visibilityKnown = true;
