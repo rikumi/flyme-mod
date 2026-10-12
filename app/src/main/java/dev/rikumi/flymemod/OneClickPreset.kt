@@ -11,7 +11,7 @@ internal object OneClickPreset {
         ModuleSettings.AOD_CLOCK_SPACING_ENABLED to false,
         ModuleSettings.BACK_GESTURE_DARK_BACKGROUND to true,
         ModuleSettings.BACK_GESTURE_WIDTH_ENABLED to false,
-        ModuleSettings.BACK_GESTURE_REMOVE_SMART to false,
+        ModuleSettings.BACK_GESTURE_REMOVE_SMART to true,
         ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT to true,
         ModuleSettings.BLOCK_STORE_SPLASH to true,
         ModuleSettings.BLOCK_WEATHER_ADS to true,

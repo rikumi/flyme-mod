@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /** Flyme's side gesture and visual confirmation use displacement without directional rejection. */
@@ -16,6 +17,7 @@ final class BackGestureSmartHooks {
     private final Class<?> handler, view;
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled;
+    private final BiConsumer<String,Throwable> log;
     private final Field context, allowed, crossed, down, slop, animation;
     private final Method pilfer;
     private final Method viewContext;
@@ -25,9 +27,10 @@ final class BackGestureSmartHooks {
     private final Map<Object, Boolean> handlerFirstMoveHorizontal = Collections.synchronizedMap(new WeakHashMap<>());
     private final Map<Object, Boolean> viewFirstMoveHorizontal = Collections.synchronizedMap(new WeakHashMap<>());
 
-    BackGestureSmartHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled)
+    BackGestureSmartHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled,
+                          BiConsumer<String,Throwable> log)
             throws ReflectiveOperationException {
-        this.settings=settings; this.enabled=enabled;
+        this.settings=settings; this.enabled=enabled; this.log=log;
         handler=loader.loadClass("com.android.systemui.navigationbar.gestural.EdgeBackGestureHandler");
         context=handler.getField("mContext"); allowed=handler.getField("mAllowGesture");
         crossed=handler.getField("mThresholdCrossed"); down=handler.getField("mDownPoint");
@@ -58,6 +61,7 @@ final class BackGestureSmartHooks {
                 if(dx!=0f || dy!=0f) {
                     boolean horizontal=BackGestureDirectionPolicy.isHorizontalFirstMove(dx,dy);
                     handlerFirstMoveHorizontal.put(owner,horizontal);
+                    log.accept("SystemUI side gesture first move: dx="+dx+" dy="+dy+" accepted="+horizontal,null);
                     if(!horizontal && allowed.getBoolean(owner)) cancelGesture.invoke(owner,event);
                 }
             }
@@ -119,6 +123,7 @@ final class BackGestureSmartHooks {
                 }
             }
         },MotionEvent.class);
+        log.accept("SystemUI side gesture hooks registered: enabled="+enabled.getAsBoolean(),null);
     }
 
     static double distance(float x,float y,float startX,float startY) {

@@ -699,7 +699,8 @@ public final class XposedInit extends XposedModule {
             activeBackGestureWidthHooks = new BackGestureWidthHooks(loader, this::loadSettings,
                     () -> backGestureWidthEnabled, () -> backGestureWidthDp, () -> backGestureRemoveSmart,
                     (message, error) -> log(error==null?Log.INFO:Log.ERROR, "FlymeMod", message, error));
-            new BackGestureSmartHooks(loader, this::loadSettings, () -> backGestureRemoveSmart).install(
+            new BackGestureSmartHooks(loader, this::loadSettings, () -> backGestureRemoveSmart,
+                    (message,error) -> log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error)).install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
             activeBackGestureWidthHooks.install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),this::deoptimize);

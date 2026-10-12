@@ -52,9 +52,13 @@ final class BackGestureServiceHooks {
                 else if(action==MotionEvent.ACTION_MOVE && !firstMoveAxes.containsKey(owner)) {
                     float dx=event.getRawX()-startX.getFloat(owner);
                     float dy=event.getRawY()-startY.getFloat(owner);
-                    if(dx!=0f || dy!=0f)
-                        firstMoveAxes.put(owner, BackGestureDirectionPolicy.isHorizontalFirstMove(dx,dy)
-                                ? FIRST_MOVE_HORIZONTAL : FIRST_MOVE_VERTICAL);
+                    if(dx!=0f || dy!=0f) {
+                        boolean horizontal=BackGestureDirectionPolicy.isHorizontalFirstMove(dx,dy);
+                        firstMoveAxes.put(owner,horizontal?FIRST_MOVE_HORIZONTAL:FIRST_MOVE_VERTICAL);
+                        if(preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART,true))
+                            log.accept("System side gesture first move: dx="+dx+" dy="+dy+" accepted="
+                                    +horizontal,null);
+                    }
                 }
                 boolean overrideWidth=preferences.contains(ModuleSettings.BACK_GESTURE_WIDTH_DP)
                         && preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false);
@@ -107,7 +111,8 @@ final class BackGestureServiceHooks {
                         +prefs.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED,false)
                         +" dp="+prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT),null);
         });
-        log.accept("System side gesture width hooks registered: enabled="
+        log.accept("System side gesture hooks registered: relaxed="
+                +preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART,true)+" widthEnabled="
                 +preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED,false)
                 +" dp="+preferences.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT),null);
     }

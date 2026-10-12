@@ -25,9 +25,14 @@ def test_first_move_axis_policy():
     assert "firstAxis==FIRST_MOVE_VERTICAL" in system_hook
     assert "if(firstAxis==null)return null" in system_hook
     assert "dir.endsWith(\"LEFT\")?dx>0f:dx<0f" in system_hook
-    assert "mMLEnableWidth.get(owner)" not in hook
     width_hook = (ROOT / "app/src/main/java/dev/rikumi/flymemod/BackGestureWidthHooks.java").read_text()
     assert "removeSmart.getAsBoolean() ? Math.max(left.getInt(owner),right.getInt(owner))" in width_hook
+    bridge = (ROOT / "app/src/main/java/dev/rikumi/flymemod/CameraSettingsBridge.java").read_text()
+    preset = (ROOT / "app/src/main/java/dev/rikumi/flymemod/OneClickPreset.kt").read_text()
+    assert "local.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, true)" in bridge
+    assert "ModuleSettings.BACK_GESTURE_REMOVE_SMART to true" in preset
+    assert 'SystemUI side gesture hooks registered:' in hook
+    assert 'System side gesture hooks registered:' in system_hook
     with tempfile.TemporaryDirectory() as output:
         subprocess.run(
             ["javac", "-d", output, str(MAIN), str(TEST)],

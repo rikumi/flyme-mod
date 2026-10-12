@@ -97,7 +97,7 @@ public final class CameraSettingsBridge extends Application {
                         .putBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE,
                                 local.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, true))
                         .putBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART,
-                                local.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, false))
+                                local.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, true))
                         .putBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED,
                                 local.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false))
                         .putInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,
