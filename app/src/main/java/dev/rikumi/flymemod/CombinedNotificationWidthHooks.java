@@ -145,6 +145,7 @@ final class CombinedNotificationWidthHooks {
             return (16f+4f)*view.getResources().getDisplayMetrics().density;
         }
         @Override public void onViewAttachedToWindow(View host) {
+            if(observer==host.getViewTreeObserver() && observer.isAlive())return;
             observer=host.getViewTreeObserver();observer.addOnPreDrawListener(this);
         }
         @Override public void onViewDetachedFromWindow(View host) {

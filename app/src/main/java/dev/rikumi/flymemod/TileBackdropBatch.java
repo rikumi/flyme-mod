@@ -92,6 +92,7 @@ final class TileBackdropBatch {
         }
         batch.bounds.setEmpty();
         int slot=0;
+        float maximumSaturation=0f;
         for(Object region:regions) {
             if(!tileIds.contains(id.getLong(region))) continue;
             Tile tile=tiles.get(region);
@@ -110,8 +111,10 @@ final class TileBackdropBatch {
             System.arraycopy(tile.notificationCorners,0,values[9],0,4);
             values[5][2]=alpha.getFloat(region);
             values[8][2]=tile.notification; values[8][3]=tile.saturation;
+            maximumSaturation=Math.max(maximumSaturation,tile.saturation);
         }
         batch.scalars.put("tileCount",(float)count);
+        batch.scalars.put("maximumSaturation",maximumSaturation);
         // Reuse the native Parcel buffer instead of creating uniform arrays and Parcels per frame.
         Parcel packet=(Parcel)uniforms.get(batch.region);
         packet.setDataSize(0); packet.setDataPosition(0);
@@ -206,13 +209,16 @@ final class TileBackdropBatch {
                 .replace("cornerRadius","shape.x").replace("smoothCorner","shape.y");
         StringBuilder shader=new StringBuilder("uniform shader sksl_layer; uniform shader sksl_background;\n")
                 .append("uniform float sksl_left, sksl_top, sksl_right, sksl_bottom, sksl_alpha;\n")
-                .append("uniform float tileCount;\n");
+                .append("uniform float tileCount, maximumSaturation;\n");
         for(int i=0;i<capacity;i++) for(int j=0;j<10;j++) shader.append("uniform float4 tile").append(i).append('_').append(j).append(";\n");
         shader.append(functions).append("bool inside(float2 p,float4 b) { return p.x>=b.x-1.0 && p.y>=b.y-1.0 && p.x<=b.z+1.0 && p.y<=b.w+1.0; }\n")
                 .append("half4 main(float2 p) { half4 layer=sksl_layer.eval(p); if(layer.a>=1.0) return layer; float coverage=0.0, amount=0.0;\n");
         for(int i=0;i<capacity;i++) {
             String t="tile"+i+"_";
-            shader.append("if(tileCount>").append(i).append(".0 && inside(p,").append(t).append("0)) { float c=clamp(mask(p,");
+            // No later tile can exceed full coverage or this batch's largest
+            // saturation. Avoid testing every other tile for each covered pixel.
+            shader.append("if((coverage<1.0 || amount<maximumSaturation) && tileCount>")
+                    .append(i).append(".0 && inside(p,").append(t).append("0)) { float c=clamp(mask(p,");
             for(int j=0;j<10;j++) shader.append(j==0?"":",").append(t).append(j);
             shader.append(")*").append(t).append("5.z,0.0,1.0); coverage=max(coverage,c); amount=max(amount,c*").append(t).append("8.w); }\n");
         }

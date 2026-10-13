@@ -79,6 +79,7 @@ public final class XposedInit extends XposedModule {
     private final ThreadLocal<Object> blurDimOwner = new ThreadLocal<>();
     private boolean surfaceDarkBackground;
     private RowRevealHooks activeRowRevealHooks;
+    private SeparateShadeSwipeHooks activeSeparateShadeSwipeHooks;
     private boolean whiteActiveEnabled;
     private int controlCenterStyle;
     private int customActiveColor = ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR_DEFAULT;
@@ -98,6 +99,8 @@ public final class XposedInit extends XposedModule {
     private boolean headsUpWidthEnabled;
     private HeadsUpWidthHooks activeHeadsUpWidthHooks;
     private boolean originalNotificationIconsEnabled;
+    private volatile boolean earphoneNoiseControlEnabled;
+    private EarphoneNoiseHooks activeEarphoneNoiseHooks;
     private boolean monochromeNotificationActionsEnabled;
     private boolean removeNotificationActionBackgroundEnabled;
     private NotificationActionBackgroundHooks activeNotificationActionBackgroundHooks;
@@ -117,6 +120,7 @@ public final class XposedInit extends XposedModule {
     private boolean combinedCollapseFixEnabled;
     private boolean combinedPullAnimationEnabled;
     private boolean qsTranslationOriginEnabled;
+    private boolean separateShadeSwipeEnabled;
     private boolean secondaryExpansionEnabled;
     private boolean combinedEmptyShadeKeepOpenEnabled;
     private boolean combinedFilterSettingsEnabled;
@@ -140,10 +144,16 @@ public final class XposedInit extends XposedModule {
     private MuteSlashHooks activeMuteSlashHooks;
     private CardIconLayoutHooks activeCardIconLayoutHooks;
     private boolean foldIdleMediaEnabled;
+    private boolean fixMediaSwipeEnabled;
+    private MediaSwipeHooks activeMediaSwipeHooks;
+    private boolean notificationSwipeSegmentsEnabled;
+    private NotificationSwipeHooks activeNotificationSwipeHooks;
     private FoldIdleMediaHooks activeFoldIdleMediaHooks;
     private boolean circleSmallTilesEnabled;
     private final Map<Notification, Icon> originalNotificationIcons = java.util.Collections.synchronizedMap(new WeakHashMap<>());
     private boolean blurRadiusEnabled;
+    private boolean backgroundScaleEnabled;
+    private int backgroundScale = ModuleSettings.BACKGROUND_SCALE_DEFAULT;
     private boolean wallpaperStartupFixEnabled;
     private boolean wallpaperStartupReadLogged;
     private volatile Set<String> hiddenLauncherPackages = Collections.emptySet();
@@ -420,6 +430,13 @@ public final class XposedInit extends XposedModule {
         if ("com.meizu.flyme.launcher".equals(packageName)) {
             installLauncherIconHiding(loader);
             try {
+                new RecentsGestureJankHooks(loader, () -> stackedRecentsEnabled).install(
+                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                        this::deoptimize);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot resolve stacked-recents data loading fix", error);
+            }
+            try {
                 new HomeIconMinimumSizeHooks(loader, this::loadSettings, () -> homeIconMinimumSizeEnabled).install(
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                         this::deoptimize);
@@ -461,7 +478,7 @@ public final class XposedInit extends XposedModule {
             try {
                 new RecentsHooks(
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
-                        () -> recentsHideNotRunningEnabled, () -> recentsSwipeUpKillEnabled,
+                        () -> recentsHideNotRunningEnabled, () -> recentsSwipeUpKillEnabled, () -> stackedRecentsEnabled,
                         (message, error) -> log(Log.ERROR, "FlymeMod", message, error)).install(loader, this::deoptimize);
             } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve Flyme recent-task classes", e);
@@ -531,6 +548,13 @@ public final class XposedInit extends XposedModule {
             }
         }
         if (!"com.android.systemui".equals(packageName)) return;
+        try {
+            new GoogleServiceTileHooks((message, error) -> log(Log.ERROR, "FlymeMod", message, error))
+                    .install(loader, (name, method, hooker, parameters) ->
+                            install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve Google services tile bridge", error);
+        }
         try {
             new SplashScreenBlackHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)).install(loader,
                     (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);
@@ -657,7 +681,8 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve Bluetooth device count labels", error);
         }
         try {
-            new AodMovementHooks(loader, this::loadSettings, () -> limitAodMovementEnabled).install(
+            new AodMovementHooks(loader, this::loadSettings, () -> limitAodMovementEnabled,
+                    message -> log(Log.INFO, "FlymeMod", message)).install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                     loader, this::deoptimize);
         } catch (ReflectiveOperationException e) {
@@ -914,6 +939,44 @@ public final class XposedInit extends XposedModule {
         }
         installDarkBackground(loader);
         installBlurRadius(loader);
+        installBackgroundScale(loader);
+        try {
+            SeparateShadeSwipeHooks swipe = new SeparateShadeSwipeHooks(loader, this::loadSettings, () -> separateShadeSwipeEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeSeparateShadeSwipeHooks = swipe;
+            swipe.setBlurRadiusOverride(() -> blurRadiusEnabled ? blurRadius * ModuleSettings.BLUR_SCALE : -1);
+            if (activeRowRevealHooks != null) swipe.setContentPose(activeRowRevealHooks::setHorizontalPose);
+            swipe.install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve separate shade swipe classes", error);
+        }
+        try {
+            activeMediaSwipeHooks = new MediaSwipeHooks(loader, this::loadSettings, () -> fixMediaSwipeEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            MediaSwipeHooks mediaSwipe = activeMediaSwipeHooks;
+            for (java.lang.reflect.Constructor<?> constructor : loader.loadClass(
+                    "com.android.systemui.media.controls.ui.view.MediaCarouselScrollHandler").getDeclaredConstructors()) {
+                hook(constructor).intercept(chain -> {
+                    Object result = chain.proceed();
+                    mediaSwipe.onCreated(chain.getThisObject());
+                    return result;
+                });
+            }
+            activeMediaSwipeHooks.install(loader,
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve media swipe behavior", error);
+        }
+        try {
+            activeNotificationSwipeHooks = new NotificationSwipeHooks(loader, this::loadSettings,
+                    () -> notificationSwipeSegmentsEnabled,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeNotificationSwipeHooks.install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve notification swipe segments", error);
+        }
         try {
             activeCircleTileHooks = new CircleTileHooks(loader, this::loadSettings, () -> circleSmallTilesEnabled,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
@@ -1069,6 +1132,15 @@ public final class XposedInit extends XposedModule {
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve live tile backdrop shader", error);
         }
+        try {
+            new TileDialogHooks(loader, () -> lightEnabled, this::lightBackgroundColor, this::loadSettings,
+                    view -> { if (activeColorOsMaterialHooks != null) activeColorOsMaterialHooks.observeDialog(view); },
+                    view -> { if (activeTileBackdropHooks != null) activeTileBackdropHooks.observeDialog(view); },
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error), () -> darkenEnabled)
+                    .install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve control center detail dialog surfaces", error);
+        }
         XposedInterface.Hooker background = chain -> {
             View tile = (View) chain.getThisObject();
             lightBackgroundTiles.add(tile);
@@ -1150,6 +1222,14 @@ public final class XposedInit extends XposedModule {
             return result;
         }, Drawable.class);
         installWhiteActive(loader);
+        try {
+            activeEarphoneNoiseHooks=new EarphoneNoiseHooks(loader,()->earphoneNoiseControlEnabled,
+                    (message,error)->log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error));
+            activeEarphoneNoiseHooks.install((className, methodName, interceptor, parameterTypes) ->
+                    install(loader, className, methodName, interceptor, parameterTypes),loader,this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR,"FlymeMod","Cannot hook earphone noise controls",error);
+        }
     }
 
     private void tintSliderDrawable(Drawable drawable) {
@@ -1679,6 +1759,46 @@ public final class XposedInit extends XposedModule {
         }, View.class, boolean.class, float.class);
     }
 
+    private void installBackgroundScale(ClassLoader loader) {
+        // Flyme sends its animated background shrink as a pixel inset, independent
+        // of the blur radius. Scope the framework builder hook to this shade call.
+        ThreadLocal<Float> shrinkRatio = new ThreadLocal<>();
+        try {
+            Class<?> viewRoot = Class.forName("android.view.ViewRootImpl", false, loader);
+            install(loader, "android.view.SyncRtSurfaceTransactionApplier$SurfaceParams$Builder",
+                    "withBackgroundBlur", chain -> {
+                        Float ratio = shrinkRatio.get();
+                        if (ratio == null || ratio == 1f) return chain.proceed();
+                        Object[] args = chain.getArgs().toArray();
+                        args[1] = Math.round((Integer) args[1] * ratio);
+                        return chain.proceed(args);
+                    }, int.class, int.class);
+            install(loader, "com.android.systemui.statusbar.BlurUtils", "applyBlurMZ", chain -> {
+                Object root = chain.getArg(0);
+                if (root == null) return chain.proceed();
+                View view = (View) root.getClass().getMethod("getView").invoke(root);
+                if (view == null || !view.getClass().getName().equals("com.android.systemui.shade.NotificationShadeWindowView"))
+                    return chain.proceed();
+                loadSettings(view.getContext());
+                if (!backgroundScaleEnabled) return chain.proceed();
+                Float previous = shrinkRatio.get();
+                shrinkRatio.set(backgroundScale / 100f);
+                try {
+                    // Scaling the final inset also handles 0%: passing a zero
+                    // progress to applyBlurMZ would fall back to the blur radius.
+                    return chain.proceed();
+                } finally {
+                    if (previous == null) shrinkRatio.remove();
+                    else shrinkRatio.set(previous);
+                }
+            }, viewRoot, int.class, boolean.class, float.class);
+            deoptimize(Class.forName("com.android.systemui.statusbar.BlurUtils", false, loader)
+                    .getDeclaredMethod("applyBlurMZ", viewRoot, int.class, boolean.class, float.class));
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve background scale methods", error);
+        }
+    }
+
     private boolean shouldUseLightTileSurface(Context context) {
         return shouldDarken(context) && (context.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK)!=Configuration.UI_MODE_NIGHT_YES;
@@ -1775,7 +1895,8 @@ public final class XposedInit extends XposedModule {
             // its draw here would flash the old dim layer on the final closing frame.
             // Theme/lockscreen changes release ownership in the dim-layer hook.
             if (surfaceDarkBackground && id != 0 && scrim.getId() == id
-                    && shouldDarken(scrim.getContext())) return null;
+                    && shouldDarken(scrim.getContext())
+                    && (activeSeparateShadeSwipeHooks == null || !activeSeparateShadeSwipeHooks.drawsCenterBackdrop(scrim))) return null;
             return chain.proceed();
         }, Canvas.class);
         // The reference ROM uses a separate vector scrim over its blurred surface.
@@ -2225,6 +2346,41 @@ public final class XposedInit extends XposedModule {
             return chain.proceed();
         }, StatusBarNotification.class);
         try {
+            Class<?> controller = loader.loadClass("com.flyme.aod.presenter.AODNotificationController");
+            Class<?> entry = loader.loadClass("com.android.systemui.statusbar.notification.collection.NotificationEntry");
+            controller.getDeclaredMethod("insertNotificationData", entry);
+            java.lang.reflect.Field contextField = controller.getField("mContext");
+            java.lang.reflect.Method getSbn = entry.getMethod("getSbn");
+            java.lang.reflect.Field iconField = loader.loadClass("com.flyme.aod.presenter.AODNotificationController$NotificationData")
+                    .getField("notificationDrawable");
+            java.lang.reflect.Field[] maps = new java.lang.reflect.Field[4];
+            String[] names = {"mNotificationData", "mThirdAppNotificationData", "mOngoingNotificationData", "mFilterNotificationData"};
+            for (int i = 0; i < names.length; i++) maps[i] = controller.getField(names[i]);
+            install(loader, controller.getName(), "insertNotificationData", chain -> {
+                Object result = chain.proceed();
+                Context context = (Context) contextField.get(chain.getThisObject());
+                loadSettings(context);
+                if (!originalNotificationIconsEnabled) return result;
+                StatusBarNotification sbn = (StatusBarNotification) getSbn.invoke(chain.getArg(0));
+                Icon original = originalNotificationIcons.get(sbn.getNotification());
+                if (original == null) return result;
+                try {
+                    Drawable drawable = original.loadDrawable(context);
+                    if (drawable == null) return result;
+                    String packageName = (String) sbn.getClass().getMethod("getOrigPackageName").invoke(sbn);
+                    for (java.lang.reflect.Field mapField : maps) {
+                        Object data = ((Map<?, ?>) mapField.get(chain.getThisObject())).get(packageName);
+                        if (data != null) iconField.set(data, drawable);
+                    }
+                } catch (ReflectiveOperationException | RuntimeException error) {
+                    log(Log.ERROR, "FlymeMod", "Cannot load original lockscreen notification icon " + sbn.getPackageName(), error);
+                }
+                return result;
+            }, entry);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot hook original lockscreen notification icons", error);
+        }
+        try {
             Class<?> ticker = loader.loadClass("com.flyme.systemui.statusbar.ticker.MarqueeTicker");
             Class<?> segment = loader.loadClass("com.flyme.systemui.statusbar.ticker.MarqueeTicker$Segment");
             java.lang.reflect.Field contextField = ticker.getField("mContext");
@@ -2334,10 +2490,13 @@ public final class XposedInit extends XposedModule {
                     if (activeCombinedSettingsButtonHooks != null) activeCombinedSettingsButtonHooks.refresh();
                     if (activeCombinedNotificationWidthHooks != null) activeCombinedNotificationWidthHooks.refresh();
                     for (View stack : new ArrayList<>(notificationWidthStacks)) if (stack != null) stack.requestLayout();
+                    if (activeEarphoneNoiseHooks != null) activeEarphoneNoiseHooks.refresh();
                     if (activeSplitNetworkCardHooks != null) activeSplitNetworkCardHooks.refresh();
                     if (activeCardIconLayoutHooks != null) activeCardIconLayoutHooks.refresh();
                     if (activeMuteSlashHooks != null) activeMuteSlashHooks.refresh();
                     if (activeFoldIdleMediaHooks != null) activeFoldIdleMediaHooks.refresh();
+                    if (activeMediaSwipeHooks != null) activeMediaSwipeHooks.refresh();
+                    if (activeNotificationSwipeHooks != null) activeNotificationSwipeHooks.refresh();
                     // Restore custom square corners before forcing circles; restore circles before applying custom corners.
                     if (activeTileCornerHooks != null && circleSmallTilesEnabled) activeTileCornerHooks.refresh();
                     if (activeCircleTileHooks != null) activeCircleTileHooks.refresh();
@@ -2472,6 +2631,8 @@ public final class XposedInit extends XposedModule {
                 disableGoogleNotificationSuggestionsEnabled = suggestionsColumn >= 0 && cursor.getInt(suggestionsColumn) != 0;
                 int collapsedHeightColumn = cursor.getColumnIndex(ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT);
                 restoreCollapsedCardHeightEnabled = collapsedHeightColumn >= 0 && cursor.getInt(collapsedHeightColumn) != 0;
+                int noiseColumn=cursor.getColumnIndex(ModuleSettings.EARPHONE_NOISE_CONTROL);
+                earphoneNoiseControlEnabled=noiseColumn>=0&&cursor.getInt(noiseColumn)!=0;
                 int volumeStepsColumn = cursor.getColumnIndex(ModuleSettings.VOLUME_FIRST_FOUR);
                 volumeFirstFourMode = volumeStepsColumn < 0 ? 0 : Math.max(0, Math.min(2, cursor.getInt(volumeStepsColumn)));
                 int aodMovementColumn = cursor.getColumnIndex(ModuleSettings.LIMIT_AOD_MOVEMENT);
@@ -2536,6 +2697,8 @@ public final class XposedInit extends XposedModule {
                 homeIconMinimumSizeEnabled = homeIconMinimumColumn >= 0 && cursor.getInt(homeIconMinimumColumn) != 0;
                 int translationOriginColumn = cursor.getColumnIndex(ModuleSettings.QS_TRANSLATION_ORIGIN);
                 qsTranslationOriginEnabled = translationOriginColumn >= 0 && cursor.getInt(translationOriginColumn) != 0;
+                int separateSwipeColumn = cursor.getColumnIndex(ModuleSettings.SEPARATE_SHADE_SWIPE);
+                separateShadeSwipeEnabled = separateSwipeColumn >= 0 && cursor.getInt(separateSwipeColumn) != 0;
                 int pullAnimationColumn = cursor.getColumnIndex(ModuleSettings.COMBINED_PULL_ANIMATION);
                 combinedPullAnimationEnabled = pullAnimationColumn >= 0 && cursor.getInt(pullAnimationColumn) != 0;
                 int mergeSignalColumn = cursor.getColumnIndex(ModuleSettings.MERGE_DUAL_SIGNAL);
@@ -2550,6 +2713,10 @@ public final class XposedInit extends XposedModule {
                 optimize2x1TextEnabled = optimizeTextColumn >= 0 && cursor.getInt(optimizeTextColumn) != 0;
                 int foldIdleMediaColumn = cursor.getColumnIndex(ModuleSettings.FOLD_IDLE_MEDIA);
                 foldIdleMediaEnabled = foldIdleMediaColumn >= 0 && cursor.getInt(foldIdleMediaColumn) != 0;
+                int fixMediaSwipeColumn = cursor.getColumnIndex(ModuleSettings.FIX_MEDIA_SWIPE);
+                fixMediaSwipeEnabled = fixMediaSwipeColumn >= 0 && cursor.getInt(fixMediaSwipeColumn) != 0;
+                int notificationSwipeColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS);
+                notificationSwipeSegmentsEnabled = notificationSwipeColumn >= 0 && cursor.getInt(notificationSwipeColumn) != 0;
                 int splitNetworkCardColumn = cursor.getColumnIndex(ModuleSettings.SPLIT_NETWORK_CARD);
                 int muteSlashColumn = cursor.getColumnIndex(ModuleSettings.ANIMATED_MUTE_SLASH);
                 animatedMuteSlashEnabled = muteSlashColumn >= 0 && cursor.getInt(muteSlashColumn) != 0;
@@ -2566,6 +2733,11 @@ public final class XposedInit extends XposedModule {
                 int blurColumn = cursor.getColumnIndex(ModuleSettings.BLUR_RADIUS);
                 blurRadius = Math.max(0, Math.min(ModuleSettings.BLUR_MAX,
                         blurColumn >= 0 ? cursor.getInt(blurColumn) : ModuleSettings.BLUR_DEFAULT));
+                int backgroundScaleEnabledColumn = cursor.getColumnIndex(ModuleSettings.BACKGROUND_SCALE_ENABLED);
+                backgroundScaleEnabled = backgroundScaleEnabledColumn >= 0 && cursor.getInt(backgroundScaleEnabledColumn) != 0;
+                int backgroundScaleColumn = cursor.getColumnIndex(ModuleSettings.BACKGROUND_SCALE);
+                backgroundScale = Math.max(0, Math.min(ModuleSettings.BACKGROUND_SCALE_MAX,
+                        backgroundScaleColumn >= 0 ? cursor.getInt(backgroundScaleColumn) : ModuleSettings.BACKGROUND_SCALE_DEFAULT));
                 int wallpaperFixColumn = cursor.getColumnIndex(ModuleSettings.WALLPAPER_STARTUP_FIX);
                 wallpaperStartupFixEnabled = wallpaperFixColumn >= 0 && cursor.getInt(wallpaperFixColumn) != 0;
                 int hiddenColumn = cursor.getColumnIndex(ModuleSettings.HIDDEN_LAUNCHER_APPS);
@@ -2627,6 +2799,7 @@ public final class XposedInit extends XposedModule {
                         + ", hideLunar=" + hideLunarEnabled
                         + ", mergeDualSignal=" + mergeDualSignalEnabled + ", separateNetworkType=" + separateNetworkTypeEnabled
                         + ", blurRadius=" + (blurRadiusEnabled ? blurRadius : "system")
+                        + ", backgroundScale=" + (backgroundScaleEnabled ? backgroundScale : "system")
                         + ", wallpaperStartupFix=" + wallpaperStartupFixEnabled
                         + ", hiddenLauncherApps=" + hiddenLauncherPackages.size()
                         + ", folderPaging=" + folderPagingEnabled + ", folderCenter=" + folderCenterEnabled);

@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Flyme's original circle and cross geometry, with independent opacity. -->
+    <path
+        android:fillColor="#FFF2F2F2"
+        android:fillAlpha="0.1"
+        android:pathData="M24,47C36.702,47 47,36.702 47,24C47,11.297 36.702,1 24,1C11.297,1 1,11.297 1,24C1,36.702 11.297,47 24,47Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M28.586,30.707C28.781,30.902 29.098,30.902 29.293,30.707L30.707,29.293C30.902,29.098 30.902,28.781 30.707,28.586L26.121,24L30.707,19.414C30.902,19.219 30.902,18.902 30.707,18.707L29.293,17.293C29.098,17.098 28.781,17.098 28.586,17.293L24,21.879L19.414,17.293C19.219,17.098 18.902,17.098 18.707,17.293L17.293,18.707C17.098,18.902 17.098,19.219 17.293,19.414L21.879,24L17.293,28.586C17.098,28.781 17.098,29.098 17.293,29.293L18.707,30.707C18.902,30.902 19.219,30.902 19.414,30.707L24,26.121L28.586,30.707Z" />
+</vector>

@@ -74,6 +74,7 @@ public final class ModuleSettings {
     public static int gestureBarWidth(int value) { return Math.max(80, Math.min(120, value)); }
     public static final String NOTIFICATION_CONTOUR = "coloros_notification_contour";
     public static final String QS_TRANSLATION_ORIGIN = "control_center_translation_origin_fix";
+    public static final String SEPARATE_SHADE_SWIPE = "separate_shade_bidirectional_swipe";
     public static final String SECONDARY_EXPANSION_FIX = "combined_secondary_expansion_fix";
     public static final String COMBINED_EMPTY_SHADE_KEEP_OPEN = "combined_empty_shade_keep_open";
     public static final String COMBINED_FILTER_SETTINGS = "combined_filter_button_settings";
@@ -90,6 +91,7 @@ public final class ModuleSettings {
             {"Ringtones", "media_folder_block_ringtones"},
     };
     public static final String FILE = "control_center";
+    public static final String EARPHONE_NOISE_CONTROL = "earphone_noise_control";
     public static final String VOLUME_FIRST_FOUR = "volume_first_four_steps";
     public static final String LIMIT_AOD_MOVEMENT = "limit_aod_movement";
     public static final String BLOCK_LOCKSCREEN_LONG_PRESS_EDIT = "block_lockscreen_long_press_edit";
@@ -169,6 +171,10 @@ public final class ModuleSettings {
     public static final String SEPARATE_NETWORK_TYPE = "separate_network_type";
     public static final String BLUR_ENABLED = "qs_blur_radius_enabled";
     public static final String BLUR_RADIUS = "qs_blur_radius";
+    public static final String BACKGROUND_SCALE_ENABLED = "qs_blur_scale_enabled";
+    public static final String BACKGROUND_SCALE = "qs_blur_scale";
+    public static final int BACKGROUND_SCALE_DEFAULT = 50;
+    public static final int BACKGROUND_SCALE_MAX = 100;
     public static final String WALLPAPER_STARTUP_FIX = "wallpaper_startup_dim_fix";
     public static final String HIDE_GBOARD = "hide_gboard_enabled";
     public static final String HIDDEN_LAUNCHER_APPS = "hidden_launcher_apps";
@@ -204,6 +210,8 @@ public final class ModuleSettings {
     public static final String NETWORK_SPLIT_STYLE = "network_split_style";
     public static final String SPLIT_NETWORK_CARD = "split_network_card";
     public static final String FOLD_IDLE_MEDIA = "fold_idle_media";
+    public static final String FIX_MEDIA_SWIPE = "fix_media_swipe";
+    public static final String NOTIFICATION_SWIPE_SEGMENTS = "notification_swipe_segments";
     public static final String CIRCLE_SMALL_TILES = "circle_small_tiles";
     public static final String HIDE_DISABLED_APPS = "hide_disabled_apps_enabled";
     public static final String BLOCK_STORE_SPLASH = "block_store_splash_ads";

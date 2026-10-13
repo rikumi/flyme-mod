@@ -25,6 +25,7 @@ final class NotificationForegroundHooks {
     private final Map<TextView,ColorStateList> textColors=new WeakHashMap<>();
     private final Map<ImageView,ColorStateList> iconColors=new WeakHashMap<>();
     private final Map<Drawable,ColorFilter> drawableColors=new WeakHashMap<>();
+    private final Map<TextView,Boolean> compoundStyled=new WeakHashMap<>();
     private static final ColorFilter WHITE_FILTER=new PorterDuffColorFilter(Color.WHITE,PorterDuff.Mode.SRC_IN);
     private static final ColorFilter BLACK_FILTER=new PorterDuffColorFilter(Color.BLACK,PorterDuff.Mode.SRC_IN);
     private static final ColorStateList BLACK=ColorStateList.valueOf(Color.BLACK);
@@ -65,7 +66,14 @@ final class NotificationForegroundHooks {
                 ColorStateList original=textColors.remove(text);
                 if(original!=null && (text.getTextColors()==WHITE || text.getTextColors()==BLACK))text.setTextColor(original);
             }
-            for(Drawable drawable:text.getCompoundDrawablesRelative())tintDrawable(drawable,target);
+            // TextView allocates a four-element array for this accessor. Most
+            // SystemUI text is outside notifications and never needs this work.
+            if(target!=null) {
+                for(Drawable drawable:text.getCompoundDrawablesRelative())tintDrawable(drawable,target);
+                compoundStyled.put(text,Boolean.TRUE);
+            } else if(compoundStyled.remove(text)!=null) {
+                for(Drawable drawable:text.getCompoundDrawablesRelative())tintDrawable(drawable,null);
+            }
             return chain.proceed();
         },Canvas.class);
         installer.hook("android.widget.ImageView","onDraw",chain -> {

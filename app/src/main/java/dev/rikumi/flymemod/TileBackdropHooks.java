@@ -151,6 +151,8 @@ final class TileBackdropHooks {
     private final Field fancyClipPath, fancyClipRadii;
     private final Class<?> notificationStack;
     private final Field stackClipping, stackClipLeft, stackClipTop, stackClipRight, stackClipBottom;
+    private final Class<?> notificationOutline;
+    private final Method rowNeedsClip, rowCustomClip, rowClip;
     private final Map<View, WeakReference<State>> states = new WeakHashMap<>();
     private boolean detailShowing;
     private final TileBackdropBatch batchCompositor;
@@ -190,6 +192,10 @@ final class TileBackdropHooks {
         stackClipTop=notificationStack.getField("mRoundedRectClippingTop");
         stackClipRight=notificationStack.getField("mRoundedRectClippingRight");
         stackClipBottom=notificationStack.getField("mRoundedRectClippingBottom");
+        notificationOutline=loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableOutlineView");
+        rowNeedsClip=notificationOutline.getMethod("childNeedsClipping",View.class);
+        rowCustomClip=notificationOutline.getMethod("getCustomClipPath",View.class);
+        rowClip=notificationOutline.getMethod("getClipPath",boolean.class);
         // Validate SkSL locally too, so syntax errors reach the module log before SF registration.
         new RuntimeShader(SHADER);
         getRoot = View.class.getDeclaredMethod("getViewRootImpl"); getRoot.setAccessible(true);
@@ -351,8 +357,10 @@ final class TileBackdropHooks {
         }
     }
 
+    void observeDialog(View view) { observe(view, 3); }
+
     private void observe(View view, int networkRole) {
-        if (corners != null && !notificationBackground.isInstance(view)) corners.observe(view, networkRole);
+        if (corners != null && networkRole != 3 && !notificationBackground.isInstance(view)) corners.observe(view, networkRole);
         if (view == null) return;
         WeakReference<State> reference=states.get(view);
         State existing=reference==null?null:reference.get();
@@ -452,7 +460,7 @@ final class TileBackdropHooks {
             View view = owner.get();
             if (view == null) return;
             if (!(notification ? notificationsEnabled : enabled).getAsBoolean() || !view.isAttachedToWindow()) { remove(view); return; }
-            if(!notification&&detailShowing) {
+            if(!notification&&networkRole != 3&&detailShowing) {
                 if(effect!=null)setEffectVisibility(false,0);
                 return;
             }
@@ -521,10 +529,14 @@ final class TileBackdropHooks {
                 }
                 if (bounds.isEmpty()) { remove(view); return; }
                 updateVisibleBounds(view);
+                if (bounds.isEmpty() || visibleBounds.isEmpty()) {
+                    if (effect != null) setEffectVisibility(false,0);
+                    return;
+                }
                 if (notification && !notificationExpanding.getBoolean(view))
                     intersectClip(bounds.left,notificationClipTop.getInt(view),bounds.right,
                             ((Number)notificationActualHeight.invoke(view)).intValue()-notificationClipBottom.getInt(view));
-                if (!notification && corners != null && corners.isEnabled()) {
+                if (!notification && networkRole != 3 && corners != null && corners.isEnabled()) {
                     radius = corners.radius(view, bounds.width(), bounds.height());
                     smoothing = smooth ? corners.smoothing(radius, bounds.width(), bounds.height()) : 0f;
                     smooth &= smoothing > 0f;
@@ -641,6 +653,21 @@ final class TileBackdropHooks {
                 toAncestor.postConcat(child.getMatrix());
                 toAncestor.postTranslate(child.getLeft()-ancestor.getScrollX(),child.getTop()-ancestor.getScrollY());
                 if (!toAncestor.invert(fromAncestor)) { visibleBounds.setEmpty(); return; }
+                if (notification && notificationOutline.isInstance(ancestor)
+                        && (Boolean)rowNeedsClip.invoke(ancestor,child)) {
+                    // Canvas.clipPath in ExpandableOutlineView.drawChild does not
+                    // clip SurfaceFlinger's effect regions. Match the native swipe
+                    // boundary in background-local coordinates and give the remaining
+                    // visible width its own rounded mask.
+                    Path path=(Path)rowCustomClip.invoke(ancestor,child);
+                    if (path==null) path=(Path)rowClip.invoke(ancestor,false);
+                    if (path.isEmpty()) {visibleBounds.setEmpty();return;}
+                    path.computeBounds(ancestorBounds,true);
+                    fromAncestor.mapRect(ancestorBounds);
+                    NotificationBackdropGeometry.clipSides(bounds,ancestorBounds.left,ancestorBounds.right);
+                    intersectClip(ancestorBounds.left,ancestorBounds.top,ancestorBounds.right,ancestorBounds.bottom);
+                    if (bounds.isEmpty()) {visibleBounds.setEmpty();return;}
+                }
                 if (notification && notificationStack.isInstance(ancestor) && stackClipping.getBoolean(ancestor))
                     mapClip(stackClipLeft.getInt(ancestor),stackClipTop.getInt(ancestor),
                             stackClipRight.getInt(ancestor),stackClipBottom.getInt(ancestor));
@@ -670,6 +697,7 @@ final class TileBackdropHooks {
                 if (ancestor.getClipBounds(clipRect)) mapClip(clipRect.left,clipRect.top,clipRect.right,clipRect.bottom);
                 if (visibleBounds.isEmpty()) return;
             }
+            intersectClip(bounds.left,bounds.top,bounds.right,bounds.bottom);
         }
         private void mapClip(float left,float top,float right,float bottom) {
             ancestorBounds.set(left,top,right,bottom);

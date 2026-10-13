@@ -9,6 +9,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -23,6 +25,8 @@ final class AodMovementHooks {
     private static final String SELF = "com.flyme.systemui.plugins.clocks.distinctive_self.ui.DistinctiveSelfClockViewModel";
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled;
+    private final Consumer<String> trace;
+    private final Set<String> reported = new HashSet<>();
     private final Class<?> authController;
     private final Field context, x, y, anchor, algorithm, legacyContent;
     private final Field colorfulContext, contentOffset;
@@ -38,10 +42,11 @@ final class AodMovementHooks {
     private final ThreadLocal<View> layout = new ThreadLocal<>();
     private final Map<View, Position> positions = new WeakHashMap<>();
 
-    AodMovementHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled)
+    AodMovementHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled, Consumer<String> trace)
             throws ReflectiveOperationException {
         this.settings = settings;
         this.enabled = enabled;
+        this.trace = trace;
         authController = loader.loadClass("com.android.systemui.biometrics.AuthController");
         Class<?> data = loader.loadClass(DATA);
         context = data.getField("context");
@@ -91,6 +96,7 @@ final class AodMovementHooks {
             settings.accept(ctx);
             if (!enabled.getAsBoolean()) return chain.proceed();
             int range = rangePx(ctx);
+            report("controller", "range=" + range + "px, input=" + chain.getArg(0) + "," + chain.getArg(1));
             return chain.proceed(new Object[]{Math.max(-range, Math.min(range, (Float) chain.getArg(0))),
                     Math.max(-range, Math.min(range, (Float) chain.getArg(1)))});
         }, float.class, float.class);
@@ -105,8 +111,24 @@ final class AodMovementHooks {
             // offsets. Style IDs outside the current 1..4 set must be bounded too.
             x.setInt(data, clamp(x.getInt(data), range));
             y.setInt(data, clamp(y.getInt(data), range));
+            report("binder", "style=" + chain.getArg(0) + ", offset=" + x.getInt(data) + "," + y.getInt(data));
             return result;
         }, int.class, int.class, authController, boolean.class);
+        // The native onLayout publishes notification and wallpaper positions before
+        // returning. Clamp the content's layout before those consumers read it.
+        installer.hook("android.view.View", "layout", chain -> {
+            View owner = layout.get();
+            if (owner == null || legacyContent.get(owner) != chain.getThisObject()) return chain.proceed();
+            int left = (Integer) chain.getArg(0), top = (Integer) chain.getArg(1);
+            int width = (Integer) chain.getArg(2) - left, height = (Integer) chain.getArg(3) - top;
+            int range = rangePx(owner.getContext());
+            int centerLeft = (owner.getWidth() - width) / 2;
+            int boundedLeft = centerLeft + clamp(left - centerLeft, range);
+            int boundedTop = anchor.getInt(owner) + clamp(top - anchor.getInt(owner), range);
+            report("legacy-layout", "range=" + range + "px, input=" + left + "," + top
+                    + ", output=" + boundedLeft + "," + boundedTop);
+            return chain.proceed(new Object[]{boundedLeft, boundedTop, boundedLeft + width, boundedTop + height});
+        }, int.class, int.class, int.class, int.class);
         installer.hook(DISPLAY, "onLayout", chain -> {
             View view = (View) chain.getThisObject();
             settings.accept(view.getContext());
@@ -154,6 +176,7 @@ final class AodMovementHooks {
                 // Stock rejects offsets when both axes are nonpositive and substitutes a large
                 // fingerprint-related shift. Accept signed movement and keep it inside the range.
                 ((PointF) contentOffset.get(state)).set(clamp(offset.x, range), clamp(offset.y, range));
+                report("colorful", "range=" + range + "px, offset=" + contentOffset.get(state));
                 // AOD also has per-digit offsets that move the layout toward screen center.
                 // Bounding only contentOffset leaves those large design offsets untouched.
                 Object lockState = colorfulLockscreenState.invoke(chain.getThisObject(),
@@ -181,6 +204,8 @@ final class AodMovementHooks {
                 photoOffset.set(state, new Point(clamp(offset.x, range), clamp(offset.y, range)));
                 // Enforce the produced state, rather than relying on an inlinable getter.
                 photoTop.setFloat(state, ((Number) lockscreenTop.invoke(model)).floatValue());
+                report("photo", "range=" + range + "px, top=" + photoTop.getFloat(state)
+                        + ", offset=" + photoOffset.get(state));
             }
             return state;
         }, photoData, hostState);
@@ -195,6 +220,7 @@ final class AodMovementHooks {
                         chain.getArg(0), chain.getArg(1), chain.getArg(2), null);
                 Point offset = (Point) burnInOffset.invoke(chain.getArg(1));
                 timeTop.setInt(state, timeTop.getInt(lockState) + clamp(offset.y, rangePx(ctx)));
+                report("self", "range=" + rangePx(ctx) + "px, top=" + timeTop.getInt(state));
             }
             return state;
         }, selfData, hostState, resourceState);
@@ -212,6 +238,13 @@ final class AodMovementHooks {
             deoptimizeCallers(loader.loadClass(producer), deoptimizer);
         }
         deoptimizer.accept(loader.loadClass(PHOTO).getDeclaredMethod("createAodState", photoData, hostState));
+        trace.accept("AOD movement hooks registered: legacy layout, binder, controller, colorful, photo, self");
+    }
+
+    private void report(String path, String detail) {
+        synchronized (reported) {
+            if (reported.add(path)) trace.accept("AOD movement active [" + path + "]: " + detail);
+        }
     }
 
     private static void deoptimizeCallers(Class<?> type, Consumer<Method> deoptimizer) {

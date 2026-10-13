@@ -49,6 +49,12 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
                     unit = "",
                 ),
             ),
+            SwitchItem(ModuleSettings.BACKGROUND_SCALE_ENABLED, "自定义背景缩小幅度",
+                slider = SliderSpec(
+                    ModuleSettings.BACKGROUND_SCALE, ModuleSettings.BACKGROUND_SCALE_DEFAULT, 0, ModuleSettings.BACKGROUND_SCALE_MAX,
+                    unit = "%",
+                ),
+            ),
         )),
         SettingsGroup("轮廓光", listOf(
             SwitchItem(ModuleSettings.COLOROS_CONTOUR, "磁贴轮廓光"),
@@ -108,6 +114,8 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             ),
         )),
         SettingsGroup("控制中心动画", listOf(
+            SwitchItem(ModuleSettings.SEPARATE_SHADE_SWIPE, "分离控制中心与通知中心双向滑动切换"),
+            SwitchItem(ModuleSettings.FIX_MEDIA_SWIPE, "播放控制侧滑删除分段动画"),
             SwitchItem(ModuleSettings.COMBINED_PULL_ANIMATION, "修复控制中心开启/关闭动画"),
             SwitchItem(ModuleSettings.QS_TRANSLATION_ORIGIN, "修复控制中心位移基准点"),
             SwitchItem(ModuleSettings.COMBINED_COLLAPSE_FIX, "修复合并控制中心上拉动画起始位置"),
@@ -115,6 +123,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN, "合并控制中心清空通知后保持开启"),
         )),
         SettingsGroup("音量调节设置", listOf(
+            SwitchItem(ModuleSettings.EARPHONE_NOISE_CONTROL, "音量条显示切换降噪模式图标"),
             SelectItem(ModuleSettings.VOLUME_FIRST_FOUR, "修改音量调节前四小格", listOf("不修改", "合并为两中格", "合并为一大格")),
         )),
     ),
@@ -143,6 +152,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             ),
         )),
         SettingsGroup("通知中心设置", listOf(
+            SwitchItem(ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS, "通知侧滑删除分段动画"),
             SwitchItem(ModuleSettings.HEADS_UP_WIDTH, "增加浮动通知宽度"),
             SwitchItem(ModuleSettings.NOTIFICATION_READ_LAYER_FIX, "修复已读通知动画层级"),
             SwitchItem(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION, "恢复原生通知下滑展开"),

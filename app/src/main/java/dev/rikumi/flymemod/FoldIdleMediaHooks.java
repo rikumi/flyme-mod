@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.Executors;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -41,8 +42,11 @@ final class FoldIdleMediaHooks {
     private final Map<View, Integer> hidden = new WeakHashMap<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean polling;
-    private long processCheck = -1000;
-    private Set<String> runningPackages;
+    private final RunningPackagesSnapshot processes = new RunningPackagesSnapshot(
+            Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread=new Thread(runnable,"FlymeMod-media-processes");
+                thread.setDaemon(true); return thread;
+            }), runnable -> handler.post(runnable), SystemClock::uptimeMillis, this::processesChanged);
 
     FoldIdleMediaHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled,
                       SplitNetworkCardHooks split, BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
@@ -106,7 +110,7 @@ final class FoldIdleMediaHooks {
     }
 
     void refresh() {
-        processCheck = -1000;
+        processes.invalidate();
         for (ViewGroup layout : new ArrayList<>(plans.keySet())) if (layout != null) layout.requestLayout();
         startPolling();
     }
@@ -216,18 +220,27 @@ final class FoldIdleMediaHooks {
     }
 
     private boolean isRunning(Context context, String pkg) {
-        long now = SystemClock.uptimeMillis();
-        if (now - processCheck >= 500) {
-            processCheck = now;
-            ActivityManager manager = context.getSystemService(ActivityManager.class);
-            List<ActivityManager.RunningAppProcessInfo> processes = manager == null ? null : manager.getRunningAppProcesses();
-            runningPackages = processes == null ? null : new HashSet<>();
-            if (processes != null) for (ActivityManager.RunningAppProcessInfo process : processes) {
-                if (process.pkgList != null) for (String name : process.pkgList) runningPackages.add(name);
-                if (process.processName != null) runningPackages.add(process.processName.split(":", 2)[0]);
+        Context app=context.getApplicationContext();
+        return processes.isRunning(pkg, () -> {
+            ActivityManager manager = app.getSystemService(ActivityManager.class);
+            List<ActivityManager.RunningAppProcessInfo> list = manager == null ? null : manager.getRunningAppProcesses();
+            if(list==null)return null;
+            Set<String> packages=new HashSet<>();
+            for (ActivityManager.RunningAppProcessInfo process : list) {
+                if (process.pkgList != null) for (String name : process.pkgList) packages.add(name);
+                if (process.processName != null) {
+                    int separator=process.processName.indexOf(':');
+                    packages.add(separator<0?process.processName:process.processName.substring(0,separator));
+                }
             }
-        }
-        return runningPackages == null || runningPackages.contains(pkg);
+            return packages;
+        });
+    }
+
+    private void processesChanged() {
+        if(!enabled.getAsBoolean())return;
+        for(ViewGroup layout : new ArrayList<>(plans.keySet()))
+            if(layout!=null && layout.isAttachedToWindow() && layout.isShown())layout.requestLayout();
     }
 
     private void compact(ViewGroup layout, View child) throws ReflectiveOperationException {

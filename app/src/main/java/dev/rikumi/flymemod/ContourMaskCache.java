@@ -7,6 +7,8 @@ import android.os.Build;
 /** Exact geometry key for the expensive software-rasterized contour mask. */
 final class ContourMaskCache {
     private Path renderedPath;
+    private Path checkedPath;
+    private int checkedGeneration;
     private int width, height;
     private float stroke;
     private final float[] before = new float[8], after = new float[8];
@@ -15,6 +17,7 @@ final class ContourMaskCache {
         if (Build.VERSION.SDK_INT < 34 || renderedPath == null
                 || this.width != width || this.height != height || this.stroke != stroke
                 || renderedPath.getFillType() != path.getFillType()) return false;
+        if(checkedPath==path && checkedGeneration==path.getGenerationId())return true;
         PathIterator oldShape = renderedPath.getPathIterator();
         PathIterator newShape = path.getPathIterator();
         while (true) {
@@ -22,7 +25,8 @@ final class ContourMaskCache {
             if (verb != newShape.next(after, 0)) return false;
             int count;
             switch (verb) {
-                case PathIterator.VERB_DONE: return true;
+                case PathIterator.VERB_DONE:
+                    checkedPath=path; checkedGeneration=path.getGenerationId(); return true;
                 case PathIterator.VERB_CLOSE: count = 0; break;
                 case PathIterator.VERB_MOVE: count = 2; break;
                 case PathIterator.VERB_LINE: count = 4; break;
@@ -41,5 +45,7 @@ final class ContourMaskCache {
         this.width = width;
         this.height = height;
         this.stroke = stroke;
+        checkedPath=path;
+        checkedGeneration=path.getGenerationId();
     }
 }

@@ -16,3 +16,6 @@ reference-apks/**/*.jar
 reference-apks/theme-meizu22/*/*-resources.txt
 reference-apks/theme-meizu22/inventory.json
 __pycache__/
+
+# Local device performance captures
+/.local/perf-traces/

@@ -470,6 +470,21 @@ final class RowRevealHooks {
         visibilityListeners.add(listener);
     }
 
+    /** A horizontal switch owns both full-open poses; stop independent vertical timers. */
+    void setHorizontalPose(Object owner, boolean visible) {
+        Reveal reveal = reveals.computeIfAbsent(owner, ignored -> new Reveal());
+        ValueAnimator animator = reveal.animator;
+        reveal.animator = null;
+        if (animator != null) animator.cancel();
+        reveal.initialized = true;
+        reveal.target = visible;
+        reveal.gesture = reveal.settling = reveal.hasApplied = reveal.pendingTranslationReset = false;
+        reveal.progress = visible ? 1f : 0f;
+        reveal.nativeInput = encodedProgress(reveal.progress);
+        for (BiConsumer<Object, Boolean> listener : visibilityListeners) listener.accept(owner, visible);
+        for (BiConsumer<Object, Float> listener : progressListeners) listener.accept(owner, reveal.progress);
+    }
+
     void addProgressListener(BiConsumer<Object, Float> listener) {
         progressListeners.add(listener);
     }

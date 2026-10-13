@@ -34,7 +34,7 @@ final class TileCornerHooks {
     private final int qsIconSize;
     private Resources systemUiResources;
     private final Map<View, WeakReference<State>> states = new WeakHashMap<>();
-    private final Map<View, WeakReference<View>> windowGrids = new WeakHashMap<>();
+    private final LayoutScopedViewLookup grids;
     private final Map<Drawable, Shape> originals = new WeakHashMap<>();
 
     TileCornerHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled,
@@ -48,6 +48,7 @@ final class TileCornerHooks {
         customClass = loader.loadClass("com.flyme.systemui.qs.tileimpl.FlymeCustomQSTileView");
         press = tileClass.getField("drawableForDisplayPressState");
         cellWidth = loader.loadClass("com.flyme.systemui.controlcenter.qs.UnifiedTileLayout").getField("mCellWidth");
+        grids = new LayoutScopedViewLookup(cellWidth.getDeclaringClass());
         albumArt = loader.loadClass("com.flyme.systemui.qs.media.QsMediaView").getField("mAlbumArt");
         tileBackground = tileClass.getField("backgroundDrawable");
         customBackground = customClass.getField("backgroundDrawable");
@@ -68,25 +69,7 @@ final class TileCornerHooks {
     }
     float cellSide(View view) {
         float side = 0;
-        State state = states.containsKey(view) ? states.get(view).get() : null;
-        View grid = state == null ? null : state.grid.get();
-        View root = view.getRootView();
-        if (grid == null && windowGrids.containsKey(root)) grid=windowGrids.get(root).get();
-        if (grid == null) {
-            for (View ancestor = view; ancestor != null; ancestor = ancestor.getParent() instanceof View parent ? parent : null) {
-                if (cellWidth.getDeclaringClass().isInstance(ancestor)) { grid=ancestor; break; }
-                if (ancestor.getClass().getName().endsWith(".MzQSPanel")
-                        || ancestor.getClass().getName().endsWith(".MzQQSPanel")
-                        || ancestor.getClass().getName().endsWith(".ControlCenterPanelView")) {
-                    grid=findGrid(ancestor); if (grid!=null) break;
-                }
-            }
-            if (grid == null) grid=findGrid(root);
-            if (grid != null) {
-                windowGrids.put(root,new WeakReference<>(grid));
-                if (state != null) state.grid=new WeakReference<>(grid);
-            }
-        }
+        View grid=grids.find(view);
         if (grid != null) {
             try { side = cellWidth.getInt(grid); }
             catch (ReflectiveOperationException error) { log.accept("Cannot read QS grid cell size", error); }
@@ -106,13 +89,6 @@ final class TileCornerHooks {
             side = systemUiResources.getDimensionPixelSize(qsIconSize) * 3f;
         }
         return side;
-    }
-    private View findGrid(View view) {
-        if (cellWidth.getDeclaringClass().isInstance(view)) return view;
-        if (view instanceof ViewGroup group) for (int i=0;i<group.getChildCount();i++) {
-            View grid=findGrid(group.getChildAt(i)); if (grid!=null) return grid;
-        }
-        return null;
     }
     float smoothing(float radius, float width, float height) {
         int percent = Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN, Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX, percentage.getAsInt()));
@@ -197,7 +173,6 @@ final class TileCornerHooks {
     }
     private final class State implements View.OnAttachStateChangeListener, ViewTreeObserver.OnPreDrawListener {
         final WeakReference<View> owner, mediaOwner;
-        WeakReference<View> grid = new WeakReference<>(null);
         int networkRole;
         final int backgroundId;
         final Path path = new Path();
@@ -217,6 +192,7 @@ final class TileCornerHooks {
             backgroundId = view.getResources().getIdentifier("background", "id", "com.android.systemui");
         }
         @Override public void onViewAttachedToWindow(View view) {
+            if(observer==view.getViewTreeObserver() && observer.isAlive())return;
             observer = view.getViewTreeObserver(); observer.addOnPreDrawListener(this); update();
         }
         @Override public void onViewDetachedFromWindow(View view) {

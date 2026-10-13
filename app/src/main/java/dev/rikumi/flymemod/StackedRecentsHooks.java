@@ -319,7 +319,10 @@ final class StackedRecentsHooks {
             card.blurNode.setPosition(left, top, right, bottom);
             card.blurNode.setClipToBounds(false);
             card.blurNode.setTranslationZ(child.getTranslationZ());
-            card.blurNode.setRenderEffect(card.effect);
+            if(card.appliedEffect!=card.effect) {
+                card.blurNode.setRenderEffect(card.effect);
+                card.appliedEffect=card.effect;
+            }
             RecordingCanvas recording = card.blurNode.beginRecording(right - left, bottom - top);
             Object result;
             try {
@@ -365,6 +368,7 @@ final class StackedRecentsHooks {
                 View task = index >= 0 && index < parent.getChildCount() ? parent.getChildAt(index) : null;
                 Card card = cards.get(task);
                 if (card == null || card.hidden) return chain.proceed();
+                synchronizeTransitionPose(parent, task, card);
                 incoming.getValues(surface.submitValues);
                 surface.submitMatrix.setValues(surface.submitValues);
                 surface.submitBounds.set((Rect) surfaceCrop.get(simulator));
@@ -387,6 +391,7 @@ final class StackedRecentsHooks {
             View task = index >= 0 && index < view.getChildCount() ? view.getChildAt(index) : null;
             Card card = cards.get(task);
             if (card == null || card.hidden) return chain.proceed();
+            synchronizeTransitionPose(view, task, card);
             surface.frames++;
             Matrix matrix = (Matrix) surfaceMatrix.get(chain.getThisObject());
             matrix.getValues(surface.savedMatrix);
@@ -518,12 +523,12 @@ final class StackedRecentsHooks {
                         || !(task.getParent() instanceof View parent) || !active(parent)) return chain.proceed();
                 float value = (Float) chain.getArg(0);
                 State state = states.get(parent);
-                boolean handoff = state != null && state.handoffProgress < 1f && state.handoffPoses.containsKey(task);
+                boolean controlled = controlsTranslation(state, task);
                 if (horizontal) {
-                    if (handoff) card.offsetX += card.translationX - value;
+                    if (controlled) card.offsetX += card.translationX - value;
                     card.translationX = value;
                 } else {
-                    if (handoff) card.offsetY += card.translationY - value;
+                    if (controlled) card.offsetY += card.translationY - value;
                     card.translationY = value;
                 }
                 card.translationRevision++;
@@ -561,13 +566,13 @@ final class StackedRecentsHooks {
                     } else {
                         if (card.translationRevision != revision) return result;
                         State state = states.get(view.getParent());
-                        boolean handoff = state != null && state.handoffProgress < 1f && state.handoffPoses.containsKey(view);
+                        boolean controlled = controlsTranslation(state, view);
                         if (horizontal) {
-                            if (handoff) card.offsetX += card.translationX - view.getTranslationX();
+                            if (controlled) card.offsetX += card.translationX - view.getTranslationX();
                             card.translationX = view.getTranslationX();
                             writeTranslation(view, card, true, card.translationX + card.offsetX);
                         } else {
-                            if (handoff) card.offsetY += card.translationY - view.getTranslationY();
+                            if (controlled) card.offsetY += card.translationY - view.getTranslationY();
                             card.translationY = view.getTranslationY();
                             writeTranslation(view, card, false, card.translationY + card.offsetY);
                         }
@@ -752,6 +757,56 @@ final class StackedRecentsHooks {
             if (horizontal) view.setTranslationX(value);
             else view.setTranslationY(value);
         } finally { card.writingTranslation = false; }
+    }
+
+    private static boolean controlsTranslation(State state, View task) {
+        return state != null && ((!state.entryFinished && state.entryPoses.containsKey(task))
+                || (state.handoffProgress < 1f && state.handoffPoses.containsKey(task)));
+    }
+
+    private void synchronizeTransitionPose(ViewGroup parent, View task, Card card) {
+        State state = states.get(parent);
+        if (state == null) return;
+        EntryPose entry = state.entryPoses.get(task);
+        if (entry != null && !state.entryFinished) {
+            writeEntryPose(parent, task, card, state, entry);
+        } else if (state.handoffProgress < 1f && state.handoffPoses.containsKey(task)
+                && card.hasRenderedCenter) {
+            writeCenteredPose(parent, task, card, card.renderCenterX, card.renderCenterY,
+                    card.renderScaleX, card.renderScaleY);
+        }
+    }
+
+    private void writeEntryPose(ViewGroup parent, View task, Card card, State state, EntryPose pose) {
+        float progress = state.entryProgress;
+        float targetX = state.horizontal ? pose.targetCenter : pose.targetCrossCenter;
+        float targetY = state.horizontal ? pose.targetCrossCenter : pose.targetCenter;
+        writeCenteredPose(parent, task, card,
+                pose.x + (targetX - pose.x) * progress,
+                pose.y + (targetY - pose.y) * progress,
+                pose.scaleX + (pose.targetScaleX - pose.scaleX) * progress,
+                pose.scaleY + (pose.targetScaleY - pose.scaleY) * progress);
+    }
+
+    private void writeCenteredPose(ViewGroup parent, View task, Card card,
+            float centerX, float centerY, float scaleX, float scaleY) {
+        // Native property writers and scroll listeners can run after our animator
+        // but before the live-window transaction. Recompute from this frame's
+        // absolute pose instead of adding the previous render's offset to a new baseline.
+        float x = StackedRecentsGeometry.translationForCenter(centerX, task.getLeft(), parent.getScrollX(),
+                task.getWidth(), task.getPivotX(), scaleX);
+        float y = StackedRecentsGeometry.translationForCenter(centerY, task.getTop(), parent.getScrollY(),
+                task.getHeight(), task.getPivotY(), scaleY);
+        card.offsetX = x - card.translationX;
+        card.offsetY = y - card.translationY;
+        card.factorX = card.scaleX == 0f ? 1f : scaleX / card.scaleX;
+        card.factorY = card.scaleY == 0f ? 1f : scaleY / card.scaleY;
+        writeTranslation(task, card, true, x);
+        writeTranslation(task, card, false, y);
+        writeScale(task, card, scaleX, scaleY);
+        card.renderCenterX = centerX;
+        card.renderCenterY = centerY;
+        card.hasRenderedCenter = true;
     }
 
     private FloatProperty<View> nativeTranslationProperty(boolean horizontal) {
@@ -1198,9 +1253,17 @@ final class StackedRecentsHooks {
                 card.factorX = card.scaleX == 0f ? 1f : scaleX / card.scaleX;
                 card.factorY = card.scaleY == 0f ? 1f : scaleY / card.scaleY;
             }
-            writeTranslation(child, card, true, card.translationX + card.offsetX);
-            writeTranslation(child, card, false, card.translationY + card.offsetY);
-            writeScale(child, card, card.scaleX * card.factorX, card.scaleY * card.factorY);
+            if (entering) writeEntryPose(view, child, card, state, pose);
+            else {
+                writeTranslation(child, card, true, card.translationX + card.offsetX);
+                writeTranslation(child, card, false, card.translationY + card.offsetY);
+                writeScale(child, card, card.scaleX * card.factorX, card.scaleY * card.factorY);
+                card.renderCenterX = child.getLeft() - view.getScrollX() + child.getTranslationX()
+                        + child.getPivotX() + (child.getWidth() * .5f - child.getPivotX()) * child.getScaleX();
+                card.renderCenterY = child.getTop() - view.getScrollY() + child.getTranslationY()
+                        + child.getPivotY() + (child.getHeight() * .5f - child.getPivotY()) * child.getScaleY();
+                card.hasRenderedCenter = true;
+            }
             child.setAlpha(card.alpha * card.opacity);
             if (title != null) {
                 float titleAlpha = card.titleAlpha * (1f + (StackedRecentsGeometry.titleVisibility(distance) - 1f) * strength);
@@ -1363,11 +1426,12 @@ final class StackedRecentsHooks {
         final float z;
         final boolean clipOutline;
         float translationX, translationY, scaleX, scaleY, renderScaleX, renderScaleY, alpha, projectedZ;
+        float renderCenterX, renderCenterY;
         float offsetX, offsetY, crossCenterShift, factorX = 1f, factorY = 1f, opacity = 1f;
         int blur;
-        boolean hidden, writingScale, writingZ, writingTranslation;
+        boolean hidden, writingScale, writingZ, writingTranslation, hasRenderedCenter;
         long translationRevision, scaleRevision;
-        RenderEffect effect;
+        RenderEffect effect, appliedEffect;
         RenderNode blurNode;
         final RectF bounds = new RectF();
         Card(View view, int scroll) {

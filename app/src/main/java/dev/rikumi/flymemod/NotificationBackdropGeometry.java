@@ -6,6 +6,14 @@ import android.graphics.Rect;
 final class NotificationBackdropGeometry {
     private NotificationBackdropGeometry() {}
 
+    static void clipSides(Rect bounds, float left, float right) {
+        // Round inward: no compositor pixel may extend beyond the native clip.
+        int clippedLeft = Math.max(bounds.left, (int)Math.ceil(left));
+        int clippedRight = Math.min(bounds.right, (int)Math.floor(right));
+        if (clippedLeft >= clippedRight) bounds.setEmpty();
+        else bounds.set(clippedLeft, bounds.top, clippedRight, bounds.bottom);
+    }
+
     static void setBounds(Rect result, int viewWidth, int actualWidth, int actualHeight,
             int clipBottom, boolean bottomRounded, boolean bottomClips, boolean expanding,
             boolean alignedRight) {

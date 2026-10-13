@@ -25,14 +25,16 @@ final class RecentsHooks {
     private final Installer installer;
     private final BooleanSupplier hideNotRunning;
     private final BooleanSupplier swipeUpKill;
+    private final BooleanSupplier stackedRecents;
     private final BiConsumer<String, Throwable> log;
     private final Map<Object, Boolean> filteredLists = new WeakHashMap<>();
 
     RecentsHooks(Installer installer, BooleanSupplier hideNotRunning, BooleanSupplier swipeUpKill,
-            BiConsumer<String, Throwable> log) {
+            BooleanSupplier stackedRecents, BiConsumer<String, Throwable> log) {
         this.installer = installer;
         this.hideNotRunning = hideNotRunning;
         this.swipeUpKill = swipeUpKill;
+        this.stackedRecents = stackedRecents;
         this.log = log;
     }
 
@@ -43,7 +45,12 @@ final class RecentsHooks {
         installer.hook(recentTasksList.getName(), "isTaskListValid", chain -> {
             boolean filter = hideNotRunning.getAsBoolean();
             synchronized (filteredLists) {
-                if (filter || Boolean.TRUE.equals(filteredLists.get(chain.getThisObject()))) return false;
+                Boolean previous = filteredLists.get(chain.getThisObject());
+                // A preference transition invalidates the old projection once.
+                // Once loaded, use the native generation check. Returning false
+                // throughout a gesture made every reloadIfNeeded rebuild all cards.
+                if ((filter && !stackedRecents.getAsBoolean())
+                        || filter != Boolean.TRUE.equals(previous)) return false;
             }
             return chain.proceed();
         }, int.class);

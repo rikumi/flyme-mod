@@ -36,6 +36,12 @@ final class StackedRecentsGeometry {
                 + (startScale - nativeScale) * (1f - progress);
     }
 
+    /** Absolute translation for a projected center, including native scroll/pivot changes. */
+    static float translationForCenter(float center, float origin, float scroll,
+            float size, float pivot, float scale) {
+        return center - (origin - scroll + pivot + (size * .5f - pivot) * scale);
+    }
+
     static float alpha(float distance) {
         return distance < -LEFT_EFFECT_START
                 ? Math.max(.25f, 1f - .28f * curve(distance + LEFT_EFFECT_START)) : 1f;

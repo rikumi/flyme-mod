@@ -133,6 +133,8 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.CIRCLE_SMALL_TILES);
         columns.add(ModuleSettings.COMBINED_NOTIFICATION_WIDTH);
         columns.add(ModuleSettings.FOLD_IDLE_MEDIA);
+        columns.add(ModuleSettings.FIX_MEDIA_SWIPE);
+        columns.add(ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS);
         columns.add(ModuleSettings.NETWORK_SPLIT_STYLE);
         columns.add(ModuleSettings.OPTIMIZE_2X1_TEXT);
         columns.add(ModuleSettings.ANIMATED_MUTE_SLASH);
@@ -204,6 +206,9 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.BACK_GESTURE_ARROW);
         columns.add(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND);
         columns.add(ModuleSettings.BACK_GESTURE_DARK_OPACITY);
+        columns.add(ModuleSettings.SEPARATE_SHADE_SWIPE);
+        columns.add(ModuleSettings.BACKGROUND_SCALE_ENABLED);
+        columns.add(ModuleSettings.BACKGROUND_SCALE);
         MatrixCursor cursor = new MatrixCursor(columns.toArray(new String[0]));
         java.util.List<Object> values = new java.util.ArrayList<>(java.util.Arrays.asList(new Object[]{prefs.getBoolean(ModuleSettings.SCALE, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.LIGHT, false) ? 1 : 0,
@@ -291,6 +296,8 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.CIRCLE_SMALL_TILES, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.COMBINED_NOTIFICATION_WIDTH, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.FOLD_IDLE_MEDIA, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FIX_MEDIA_SWIPE, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS, false) ? 1 : 0);
         values.add(ModuleSettings.networkSplitStyle(prefs));
         values.add(prefs.getBoolean(ModuleSettings.OPTIMIZE_2X1_TEXT, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.ANIMATED_MUTE_SLASH, false) ? 1 : 0);
@@ -372,6 +379,9 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, true) ? 1 : 0);
         values.add(ModuleSettings.backGestureDarkOpacity(prefs.getInt(ModuleSettings.BACK_GESTURE_DARK_OPACITY,
                 ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT)));
+        values.add(prefs.getBoolean(ModuleSettings.SEPARATE_SHADE_SWIPE, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACKGROUND_SCALE_ENABLED, false) ? 1 : 0);
+        values.add(prefs.getInt(ModuleSettings.BACKGROUND_SCALE, ModuleSettings.BACKGROUND_SCALE_DEFAULT));
         cursor.addRow(values);
         return cursor;
     }

@@ -125,7 +125,10 @@ final class RecentsCornerHooks {
         track(params,context);
         synchronized(states) {
             State state=states.get(params);
-            if(state!=null) { state.owner=new WeakReference<>(owner); state.simulator=simulator; }
+            if(state!=null) {
+                if(state.owner==null || state.owner.get()!=owner)state.owner=new WeakReference<>(owner);
+                state.simulator=simulator;
+            }
         }
     }
     private float cardPixels(State state) throws ReflectiveOperationException {

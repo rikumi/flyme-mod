@@ -25,6 +25,8 @@ final class ShadeRestPositionHooks {
         Class<?> panel = loader.loadClass("com.flyme.systemui.controlcenter.phone.ControlCenterPanelView");
         panel.getDeclaredMethod("onFinishInflate");
         panel.getDeclaredMethod("onLayout", boolean.class, int.class, int.class, int.class, int.class);
+        loader.loadClass("com.flyme.systemui.controlcenter.phone.MzQSPanel")
+                .getDeclaredMethod("setFooterEditModeTopMargin", int.class);
         loader.loadClass("com.android.systemui.statusbar.phone.PhoneStatusBarView")
                 .getDeclaredMethod("onFinishInflate");
         statusBar = panel.getField("mStatusBar");
@@ -36,6 +38,19 @@ final class ShadeRestPositionHooks {
     }
 
     void install(SignalHooks.Installer installer) {
+        installer.hook("com.flyme.systemui.controlcenter.phone.MzQSPanel", "setFooterEditModeTopMargin", chain -> {
+            View panel = (View) chain.getThisObject();
+            for (View parent = panel; parent != null;
+                 parent = parent.getParent() instanceof View view ? view : null) {
+                if (!parent.getClass().getName().equals("com.flyme.systemui.controlcenter.phone.ControlCenterPanelView")) continue;
+                int id = panel.getResources().getIdentifier("qs_tile_margin_vertical", "dimen", "com.android.systemui");
+                // Place the menu and add button one grid gap below the last tile row.
+                if (id != 0) return chain.proceed(new Object[]{Math.min((Integer) chain.getArg(0),
+                        panel.getResources().getDimensionPixelSize(id))});
+                break;
+            }
+            return chain.proceed();
+        }, int.class);
         installer.hook("com.android.systemui.statusbar.phone.PhoneStatusBarView", "onFinishInflate", chain -> {
             Object result = chain.proceed();
             View phone = (View) chain.getThisObject();
@@ -93,8 +108,7 @@ final class ShadeRestPositionHooks {
     private boolean eligible(View panel) {
         try {
             View bar = (View) statusBar.get(panel);
-            return enabled.getAsBoolean() && !editing.getBoolean(panel)
-                    && bar != null && bar.getVisibility() == View.VISIBLE;
+            return enabled.getAsBoolean() && bar != null;
         } catch (IllegalAccessException error) { throw new IllegalStateException(error); }
     }
 
@@ -110,6 +124,13 @@ final class ShadeRestPositionHooks {
                 set(content, pose.original);
                 return;
             }
+            // The native edit transition hides the status bar before animating the
+            // header and container padding. Keep the content's resting origin.
+            if (editing.getBoolean(panel) || bar.getVisibility() != View.VISIBLE) {
+                restoreStatusBar(bar, pose);
+                set(content, pose.offset);
+                return;
+            }
             for (View phone : phoneBars.keySet()) {
                 if (!phone.isAttachedToWindow() || phone.getDisplay() == null || panel.getDisplay() == null
                         || phone.getDisplay().getDisplayId() != panel.getDisplay().getDisplayId()) continue;
@@ -118,7 +139,8 @@ final class ShadeRestPositionHooks {
                     if (!measured(source) || !measured(target)) continue;
                     pose.source = new WeakReference<>(source);
                     pose.target = new WeakReference<>(target);
-                    set(content, layoutCenterOnScreen(target) - layoutCenterOnScreen(source));
+                    pose.offset = layoutCenterOnScreen(target) - layoutCenterOnScreen(source);
+                    set(content, pose.offset);
                     return;
                 }
             }
@@ -137,7 +159,7 @@ final class ShadeRestPositionHooks {
                 || source.getDisplay().getDisplayId() != target.getDisplay().getDisplayId()) return;
         try {
             View bar = (View) statusBar.get(panel);
-            if (bar == null) return;
+            if (bar == null || editing.getBoolean(panel) || bar.getVisibility() != View.VISIBLE) return;
             float parentScale = screenScaleY(bar.getParent() instanceof View parent ? parent : null);
             if (parentScale <= 0f) return;
             float current = bar.getTranslationY();
@@ -217,8 +239,8 @@ final class ShadeRestPositionHooks {
         final float original;
         final int[] location = new int[2];
         WeakReference<View> source = new WeakReference<>(null), target = new WeakReference<>(null);
-        float barCorrection, lastBarTranslation = Float.NaN;
+        float offset, barCorrection, lastBarTranslation = Float.NaN;
         boolean dirty = true, active;
-        Pose(View content) { this.content = new WeakReference<>(content); original = content.getTranslationY(); }
+        Pose(View content) { this.content = new WeakReference<>(content); original = offset = content.getTranslationY(); }
     }
 }

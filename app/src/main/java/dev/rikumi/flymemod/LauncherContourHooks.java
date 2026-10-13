@@ -1,6 +1,7 @@
 package dev.rikumi.flymemod;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.database.ContentObserver;
 import android.graphics.*;
 import android.graphics.drawable.Drawable;
@@ -21,6 +22,7 @@ final class LauncherContourHooks {
     private static final String WIDGET = "com.meizu.flyme.launcher.widget.BaseFlymeAppWidgetHostView";
     private static final String SPRING = "com.meizu.flyme.launcher.popup.PopupContainerSpringAnimationSet";
     private static final String POPUP = "com.android.launcher3.popup.ArrowPopup";
+    private static final String CLEAR_ALL = "com.android.quickstep.views.ClearAllButton";
     private final Consumer<Context> settings;
     private final BooleanSupplier folder, widget, menu, customRadius, icon, alignment;
     private final IntSupplier radiusDp;
@@ -40,6 +42,7 @@ final class LauncherContourHooks {
     private final Map<View, Long> nextMaskScan = new WeakHashMap<>();
     private final Map<View, Integer> arrowVisibility = new WeakHashMap<>();
     private final Map<View, MenuContour> menus = new WeakHashMap<>();
+    private final Map<View, ClearButtonStyle> clearButtons = new WeakHashMap<>();
     private final Set<View> hosts = Collections.newSetFromMap(new WeakHashMap<>());
     private final Set<View> errors = Collections.newSetFromMap(new WeakHashMap<>());
     private ContentObserver observer;
@@ -50,6 +53,7 @@ final class LauncherContourHooks {
         this.settings = settings; this.folder = folder; this.widget = widget; this.menu = menu;
         this.customRadius = customRadius; this.icon = icon; this.alignment = alignment;
         this.radiusDp = radiusDp; this.log = log;
+        loader.loadClass(CLEAR_ALL).getDeclaredMethod("draw", Canvas.class);
         Class<?> p = loader.loadClass(PREVIEW), w = loader.loadClass(WIDGET), a = loader.loadClass(POPUP);
         pressedWidget = loader.loadClass("com.meizu.flyme.launcher.widget.FlymeLauncherAppWidgetHostView");
         pressedWidgetBounds = pressedWidget.getMethod("getIconBounds", View.class, Rect.class);
@@ -88,6 +92,13 @@ final class LauncherContourHooks {
     }
 
     void install(ClassLoader loader, SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
+        installer.hook(CLEAR_ALL, "draw", chain -> {
+            View host = (View) chain.getThisObject();
+            try { styleClearButton(host); }
+            catch (Exception | LinkageError error) { report(host, error); }
+            return chain.proceed();
+        }, Canvas.class);
+        deoptimize.accept(loader.loadClass(CLEAR_ALL).getDeclaredMethod("draw", Canvas.class));
         installer.hook(PREVIEW, "drawBackground", chain -> {
             Object result = chain.proceed();
             Object preview = chain.getThisObject();
@@ -227,6 +238,41 @@ final class LauncherContourHooks {
             }
         };
         ctx.getContentResolver().registerContentObserver(ModuleSettings.URI, false, observer);
+    }
+
+    private void styleClearButton(View host) throws Exception {
+        if (!clearButtons.containsKey(host)) {
+            // The carousel also owns a textual ClearAllButton. Only style the
+            // separate Flyme circular button, preserving filtered-list actions.
+            boolean circular = host.getId() != View.NO_ID && "flyme_clear_all".equals(
+                    host.getResources().getResourceEntryName(host.getId()));
+            clearButtons.put(host, circular ? new ClearButtonStyle() : null);
+            if (circular) track(host);
+        }
+        ClearButtonStyle style = clearButtons.get(host);
+        if (style == null) return;
+        if (icon.getAsBoolean()) {
+            if (style.replacement == null) {
+                Context module = host.getContext().createPackageContext("dev.rikumi.flymemod", 0);
+                style.replacement = module.getDrawable(R.drawable.recents_clear_all_contour).mutate();
+            }
+            if (host.getBackground() != style.replacement) {
+                style.original = host.getBackground();
+                style.tint = host.getBackgroundTintList();
+                host.setBackgroundTintList(null);
+                host.setBackground(style.replacement);
+            }
+        } else if (host.getBackground() == style.replacement && style.replacement != null) {
+            host.setBackground(style.original);
+            host.setBackgroundTintList(style.tint);
+            style.original = null;
+            style.tint = null;
+        }
+    }
+
+    private static final class ClearButtonStyle {
+        Drawable original, replacement;
+        ColorStateList tint;
     }
 
     private void suppressArrow(View host, boolean nativeUpdated) throws IllegalAccessException {

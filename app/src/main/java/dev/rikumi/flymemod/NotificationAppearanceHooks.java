@@ -2,6 +2,7 @@ package dev.rikumi.flymemod;
 
 import android.content.Context;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.drawable.Drawable;
@@ -14,6 +15,9 @@ import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.ColorFilter;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.util.SparseBooleanArray;
 import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import java.lang.ref.WeakReference;
@@ -42,7 +46,12 @@ final class NotificationAppearanceHooks {
     private final Field stackExpanded;
     private final Method pinned, animatingAway;
     private final Field clipRadius, roundable, maxRadius, mediaRadius, pushBackground, flymeBackground, nativeBackground;
-    private final Method rowBackground, mediaBackground, applyRoundness, tintNoBlur;
+    private final Method rowBackground, mediaBackground, applyRoundness, tintNoBlur, rowClipPath;
+    private final Field landscapeRadius;
+    private final Paint lightFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final ColorFilter dismissFilter = new PorterDuffColorFilter(0xFF808080, PorterDuff.Mode.SRC_ATOP);
+    private final Map<Resources, SparseBooleanArray> dismissIds = new WeakHashMap<>();
+    private final Map<ImageView, ColorFilter> dismissOriginals = new WeakHashMap<>();
     private final Map<Object, Float> headerRadii = new WeakHashMap<>();
     private final Map<View, Float> imageRadii = new WeakHashMap<>();
     private final Map<View, Float> maskRadii = new WeakHashMap<>();
@@ -68,6 +77,9 @@ final class NotificationAppearanceHooks {
         rowBackground=rowClass.getMethod("setBackground"); mediaBackground=mediaClass.getMethod("setBackground");
         applyRoundness=rowClass.getMethod("applyRoundnessAndInvalidate");
         tintNoBlur=backgroundClass.getMethod("setTintForNoBlur",int.class);
+        rowClipPath=rowClass.getMethod("getClipPath",boolean.class);
+        landscapeRadius=landscapeClass.getField("mClipCornerRadius");
+        lightFill.setColor(LIGHT_FLOATING_COLOR);
     }
     private int color() {
         return Color.argb(Math.round(Math.max(0,Math.min(ModuleSettings.LIGHT_OPACITY_MAX,opacity.getAsInt()))*255f/100f),255,255,255);
@@ -105,11 +117,10 @@ final class NotificationAppearanceHooks {
     void install(SignalHooks.Installer installer) {
         installer.hook("android.view.ViewGroup","dispatchDraw",chain -> {
             View view=(View)chain.getThisObject();
-            if(!night(view) && (landscapeClass.isInstance(view) || mediaClass.isInstance(view))) {
+            if((landscapeClass.isInstance(view) || mediaClass.isInstance(view)) && !night(view)) {
                 float radius=landscapeClass.isInstance(view)
-                        ?landscapeClass.getField("mClipCornerRadius").getFloat(view):mediaRadius.getFloat(view);
-                Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG);fill.setColor(0xCCFFFFFF);
-                ((Canvas)chain.getArg(0)).drawRoundRect(0,0,view.getWidth(),view.getHeight(),radius,radius,fill);
+                        ?landscapeRadius.getFloat(view):mediaRadius.getFloat(view);
+                ((Canvas)chain.getArg(0)).drawRoundRect(0,0,view.getWidth(),view.getHeight(),radius,radius,lightFill);
             }
             return chain.proceed();
         },Canvas.class);
@@ -128,7 +139,7 @@ final class NotificationAppearanceHooks {
             if(rowClass.isInstance(view) && !night(view) && content && !whiteRows.containsKey(view)) {
                 whiteRows.put(view,Boolean.TRUE);
                 Canvas canvas=(Canvas)chain.getArg(0);
-                Path path=(Path)view.getClass().getMethod("getClipPath",boolean.class).invoke(view,false);
+                Path path=(Path)rowClipPath.invoke(view,false);
                 int save=canvas.save();
                 try { canvas.clipPath(path);canvas.drawColor(0xCCFFFFFF); }
                 finally { canvas.restoreToCount(save); }
@@ -137,14 +148,16 @@ final class NotificationAppearanceHooks {
         },Canvas.class,View.class,long.class);
         installer.hook("android.widget.ImageView", "onDraw", chain -> {
             ImageView icon=(ImageView)chain.getThisObject();
-            if(night(icon) || icon.getId()==View.NO_ID)return chain.proceed();
-            String name;
-            try { name=icon.getResources().getResourceEntryName(icon.getId()); }
-            catch(android.content.res.Resources.NotFoundException ignored) { return chain.proceed(); }
-            if(!name.equals("dismiss_view") && !name.equals("filter_dismiss_view"))return chain.proceed();
-            ColorFilter original=icon.getColorFilter();
-            try { icon.setColorFilter(Color.rgb(128,128,128)); return chain.proceed(); }
-            finally { icon.setColorFilter(original); }
+            if(isDismissIcon(icon) && !night(icon)) {
+                if(icon.getColorFilter()!=dismissFilter) {
+                    dismissOriginals.put(icon,icon.getColorFilter());
+                    icon.setColorFilter(dismissFilter);
+                }
+            } else if(dismissOriginals.containsKey(icon)) {
+                ColorFilter original=dismissOriginals.remove(icon);
+                if(icon.getColorFilter()==dismissFilter)icon.setColorFilter(original);
+            }
+            return chain.proceed();
         },Canvas.class);
         installer.hook("com.android.systemui.statusbar.notification.row.ActivatableNotificationView", "setBackground", chain -> {
             View view=(View)chain.getThisObject();
@@ -198,6 +211,23 @@ final class NotificationAppearanceHooks {
             settings.accept(view.getContext());
             return chain.proceed(new Object[]{view,backgroundColor(view,(Integer)chain.getArg(1),true)});
         },View.class,int.class);
+    }
+
+    private boolean isDismissIcon(ImageView icon) {
+        int id=icon.getId();
+        if(id==View.NO_ID || id==0)return false;
+        Resources resources=icon.getResources();
+        SparseBooleanArray ids=dismissIds.get(resources);
+        if(ids==null) { ids=new SparseBooleanArray(); dismissIds.put(resources,ids); }
+        int index=ids.indexOfKey(id);
+        if(index>=0)return ids.valueAt(index);
+        boolean dismiss=false;
+        try {
+            String name=resources.getResourceEntryName(id);
+            dismiss=name.equals("dismiss_view") || name.equals("filter_dismiss_view");
+        } catch(Resources.NotFoundException ignored) { }
+        ids.put(id,dismiss);
+        return dismiss;
     }
     private State observe(View view) {
         WeakReference<State> reference=states.get(view); State state=reference==null?null:reference.get();
@@ -269,6 +299,7 @@ final class NotificationAppearanceHooks {
         };
         State(View view) { owner=new WeakReference<>(view); media=mediaClass.isInstance(view); }
         @Override public void onViewAttachedToWindow(View view) {
+            if(observer==view.getViewTreeObserver() && observer.isAlive())return;
             observer=view.getViewTreeObserver(); observer.addOnPreDrawListener(this);
         }
         @Override public void onViewDetachedFromWindow(View view) {

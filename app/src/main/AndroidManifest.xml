@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Complete background icon index, including installed packages without Launcher activities. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <permission android:name="dev.rikumi.flymemod.permission.CONTROL_GOOGLE_SERVICE"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="dev.rikumi.flymemod.permission.CONTROL_GOOGLE_SERVICE" />
 
     <queries>
         <intent>
@@ -64,6 +67,18 @@
         android:description="@string/xposed_description"
         android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
         tools:ignore="MissingApplicationIcon">
+
+        <service
+            android:name=".GoogleServiceTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_google_service_tile"
+            android:label="@string/google_service_tile"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
+        </service>
 
         <provider
             android:name=".SettingsProvider"

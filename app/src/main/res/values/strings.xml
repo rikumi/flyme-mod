@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Flyme Mod</string>
+    <string name="google_service_tile">Google 服务</string>
+    <string name="google_service_enabled">已开启</string>
+    <string name="google_service_disabled">已关闭</string>
+    <string name="google_service_pending">正在同步</string>
+    <string name="google_service_enabling">正在启用 Google 服务…</string>
+    <string name="google_service_disabling">正在停用 Google 服务…</string>
+    <string name="google_service_not_installed">未安装 Google 基础服务</string>
+    <string name="google_service_write_failed">Google 服务切换失败，请重试</string>
+    <string name="google_service_locked">请解锁设备后重试</string>
+    <string name="google_service_bridge_unavailable">请在 LSPosed 中启用系统界面作用域并重启系统界面</string>
     <string name="xposed_description">一个针对 Flyme 的全方位体验增强模块，永久免费\n禁止分享、转载、盗卖以及其他违规用途\n开发者：rikumi</string>
 </resources>

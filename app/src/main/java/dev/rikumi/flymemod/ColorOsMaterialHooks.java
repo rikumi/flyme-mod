@@ -29,6 +29,7 @@ final class ColorOsMaterialHooks {
     private final BooleanSupplier contourEnabled, splitNetworkEnabled, notificationEnabled;
     private final IntSupplier notificationOpacity;
     private final Map<ImageView, ButtonStyle> notificationButtons = new WeakHashMap<>();
+    private final Map<ImageView, DeleteBadgeDrawable> deleteBadges = new WeakHashMap<>();
     private final Map<View, Contour> notificationContours = new WeakHashMap<>();
     private final Set<View> notificationErrors = Collections.newSetFromMap(new WeakHashMap<>());
     private final BiConsumer<String, Throwable> log;
@@ -59,6 +60,18 @@ final class ColorOsMaterialHooks {
     void install(ClassLoader loader, SignalHooks.Installer installer) throws ReflectiveOperationException {
         if (Build.VERSION.SDK_INT < 33) return;
         mediaSwipeCorners.install(installer);
+        String tile = "com.flyme.systemui.controlcenter.qs.UnifiedQSTileView";
+        loader.loadClass(tile).getDeclaredMethod("getMDeleteBadge");
+        installer.hook(tile, "getMDeleteBadge", chain -> {
+            Object result = chain.proceed();
+            if (result instanceof ImageView badge && !deleteBadges.containsKey(badge)) {
+                settings.accept(badge.getContext());
+                DeleteBadgeDrawable styled = new DeleteBadgeDrawable(badge, badge.getDrawable());
+                deleteBadges.put(badge, styled);
+                badge.setImageDrawable(styled);
+            }
+            return result;
+        });
         String stack = "com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout";
         for (String method : new String[]{"setDismissView", "setFilterDismissView"}) {
             loader.loadClass(stack).getDeclaredMethod(method, ImageView.class);
@@ -237,6 +250,7 @@ final class ColorOsMaterialHooks {
         for (View view : new ArrayList<>(hosts.keySet())) if (view != null) apply(view);
         for (View view : new ArrayList<>(notificationContours.keySet())) if (view != null) view.invalidate();
         for (ButtonStyle button : new ArrayList<>(notificationButtons.values())) button.update();
+        for (DeleteBadgeDrawable badge : new ArrayList<>(deleteBadges.values())) badge.invalidateSelf();
     }
 
     private void observeButton(ImageView view) {
@@ -286,6 +300,7 @@ final class ColorOsMaterialHooks {
         boolean failed;
         ButtonStyle(ImageView view) { owner = new WeakReference<>(view); }
         public void onViewAttachedToWindow(View view) {
+            if(observer==view.getViewTreeObserver() && observer.isAlive())return;
             observer = view.getViewTreeObserver(); observer.addOnPreDrawListener(this); update();
         }
         public void onViewDetachedFromWindow(View view) {
@@ -318,6 +333,54 @@ final class ColorOsMaterialHooks {
                 log.accept("Cannot style notification dismiss button", error);
             }
         }
+    }
+
+    /** Keep the native 24-unit delete hit area, 18-unit disk and white minus. */
+    private final class DeleteBadgeDrawable extends Drawable {
+        final WeakReference<View> owner;
+        final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final int width, height;
+        Contour contour;
+        int alpha = 255;
+        boolean failed;
+        DeleteBadgeDrawable(View view, Drawable original) {
+            owner = new WeakReference<>(view);
+            int size = Math.round(24f * view.getResources().getDisplayMetrics().density);
+            width = original != null && original.getIntrinsicWidth() > 0 ? original.getIntrinsicWidth() : size;
+            height = original != null && original.getIntrinsicHeight() > 0 ? original.getIntrinsicHeight() : size;
+        }
+        @Override public void draw(Canvas canvas) {
+            Rect bounds = getBounds();
+            View view = owner.get();
+            if (view == null || bounds.isEmpty()) return;
+            int saved = canvas.save();
+            if (alpha < 255) canvas.saveLayerAlpha(bounds.left, bounds.top, bounds.right, bounds.bottom, alpha);
+            canvas.translate(bounds.left, bounds.top);
+            float sx = bounds.width() / 24f, sy = bounds.height() / 24f;
+            paint.setColor(0xff808080);
+            canvas.drawOval(3f * sx, 3f * sy, 21f * sx, 21f * sy, paint);
+            if (contourEnabled.getAsBoolean() && !failed && canvas.isHardwareAccelerated()) {
+                int stroke = canvas.save();
+                try {
+                    if (contour == null) contour = new Contour(view, true);
+                    canvas.translate(3f * sx, 3f * sy);
+                    contour.setBounds(0, 0, Math.round(18f * sx), Math.round(18f * sy));
+                    contour.draw(canvas);
+                } catch (Exception | LinkageError error) {
+                    failed = true;
+                    log.accept("Cannot render control-center delete badge contour", error);
+                } finally { canvas.restoreToCount(stroke); }
+            }
+            paint.setColor(Color.WHITE);
+            canvas.drawRoundRect(7f * sx, 11f * sy, 17f * sx, 13f * sy, .5f * sx, .5f * sy, paint);
+            canvas.restoreToCount(saved);
+        }
+        @Override public int getIntrinsicWidth() { return width; }
+        @Override public int getIntrinsicHeight() { return height; }
+        @Override public void setAlpha(int value) { alpha = value; invalidateSelf(); }
+        @Override public int getAlpha() { return alpha; }
+        @Override public void setColorFilter(ColorFilter filter) {}
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
     /** Same 48-unit circle and cross geometry as native ic_btn_dismiss_all. */
@@ -371,11 +434,12 @@ final class ColorOsMaterialHooks {
         } catch (ReflectiveOperationException error) { log.accept("Cannot bind split network contours", error); }
     }
 
+    void observeDialog(View view) { track(view, 3); }
     private void track(View view) { track(view, 0); }
     private void track(View view, int networkRole) {
         settings.accept(view.getContext());
         if (isMedia(view)) mediaViews.add(view);
-        if (corners != null && !view.getClass().getName().endsWith(".MediaCarouseTransitionLayout")) corners.observe(view, networkRole);
+        if (corners != null && networkRole != 3 && !view.getClass().getName().endsWith(".MediaCarouseTransitionLayout")) corners.observe(view, networkRole);
         if (!hosts.containsKey(view)) {
             hosts.put(view, new Host());
             view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> apply(v, false));
@@ -425,6 +489,7 @@ final class ColorOsMaterialHooks {
         Host host = hosts.get(view);
         if (host == null) return;
         if (host.outline != null) {
+            host.outline.renderCache.clear();
             view.getOverlay().remove(host.outline);
             if (view.getTag(TILE_CONTOUR_TAG) == host.outline) view.setTag(TILE_CONTOUR_TAG, null);
             host.outline = null;
@@ -494,7 +559,13 @@ final class ColorOsMaterialHooks {
         return drawable;
     }
     private float radius(View view, Drawable drawable) {
-        if (corners != null && corners.isEnabled() && !view.getClass().getName().endsWith(".NotificationBackgroundView")
+        Host host = hosts.get(view);
+        if (host != null && host.networkRole == 3 && drawable != null) {
+            Outline outline = new Outline();
+            drawable.getOutline(outline);
+            if (!outline.isEmpty()) return outline.getRadius();
+        }
+        if (corners != null && corners.isEnabled() && !(hosts.containsKey(view) && hosts.get(view).networkRole == 3) && !view.getClass().getName().endsWith(".NotificationBackgroundView")
                 && !view.getClass().getName().endsWith(".MediaCarouseTransitionLayout"))
             return corners.radius(view, view.getWidth(), view.getHeight());
         // Both slider cards use the root's native outline rather than the progress Drawable's rectangle.
@@ -534,6 +605,8 @@ final class ColorOsMaterialHooks {
         final Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         final ContourMaskCache renderedMask = new ContourMaskCache();
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final ContourRenderCache renderCache = new ContourRenderCache();
+        long shaderGeneration;
         int alpha = 255;
         RuntimeShader configuredShader;
         int configuredWidth, configuredHeight;
@@ -638,9 +711,14 @@ final class ColorOsMaterialHooks {
                     shader.setFloatUniform("uFarLineParams", farParams);
                     configuredShader = shader; configuredWidth = bounds.width(); configuredHeight = bounds.height();
                     configuredRadius = radius; configuredStroke = width; configuredNight = dark;
+                    shaderGeneration++;
                 }
-                paint.setShader(shader); paint.setAlpha(alpha);
-                canvas.drawRect(bounds, paint);
+                paint.setShader(shader);
+                if (!notification && mediaGeometry == null && canvas.isHardwareAccelerated()) {
+                    renderCache.draw(canvas, bounds, paint, shaderGeneration, alpha);
+                } else {
+                    paint.setAlpha(alpha); canvas.drawRect(bounds, paint);
+                }
             } catch (Exception | LinkageError error) {
                 if (view.getClass().getName().endsWith(".NotificationBackgroundView")) {
                     if (notificationErrors.add(view)) log.accept("Cannot render ColorOS notification contour", error);
@@ -750,6 +828,7 @@ final class ColorOsMaterialHooks {
             // without changing geometry. Keep the existing bitmap and GPU input in
             // that case; compare exact verbs/points, not an approximate bounding box.
             if (renderedMask.matches(path, bounds.width(), bounds.height(), stroke)) return;
+            shaderGeneration++;
             Bitmap bitmap = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888);
             Canvas mask = new Canvas(bitmap);
             mask.clipPath(path);
