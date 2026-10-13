@@ -65,7 +65,19 @@ final class CollapsedCardHeightHooks {
         installer.hook("android.widget.LinearLayout", "onMeasure", chain -> {
             State state = panels.get(chain.getThisObject());
             if (state != null) syncHeight(state, true);
-            return chain.proceed();
+            Object result=chain.proceed();
+            if(state!=null && state.managed && isCombined(state.owner.get())) {
+                View panel=(View)chain.getThisObject(), wrapper=state.wrapper.get();
+                if(wrapper!=null && wrapper.getLayoutParams().width==ViewGroup.LayoutParams.MATCH_PARENT) {
+                    int margins=wrapper.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp
+                            ?lp.leftMargin+lp.rightMargin:0;
+                    int width=Math.max(0,panel.getMeasuredWidth()-panel.getPaddingLeft()-panel.getPaddingRight()-margins);
+                    if(width>0 && wrapper.getMeasuredWidth()!=width)
+                        wrapper.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(wrapper.getMeasuredHeight(),View.MeasureSpec.EXACTLY));
+                }
+            }
+            return result;
         }, int.class, int.class);
         installer.hook(MINI, "onDensityOrFontScaleChanged", chain -> {
             Object result = chain.proceed();

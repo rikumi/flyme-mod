@@ -631,7 +631,9 @@ final class ColorOsMaterialHooks {
                     shader.setFloatUniform("uRatio", .5f + bounds.width()/(4f*(bounds.width()+bounds.height())));
                     shader.setFloatUniform("u_corner", radius); shader.setFloatUniform("u_weight", .2f);
                     shader.setColorUniform("uColor", Color.WHITE);
-                    nearParams[0] = farParams[0] = width; nearParams[1] = dark ? .2f : .4f;
+                    nearParams[0] = farParams[0] = width; nearParams[1] = .4f * (dark ? .4f : 1f);
+                    farParams[1] = .2f * (dark ? .4f : 1f);
+                    ContourInnerLight.configure(shader, view.getResources().getDisplayMetrics().density, dark);
                     shader.setFloatUniform("uNearLineParams", nearParams);
                     shader.setFloatUniform("uFarLineParams", farParams);
                     configuredShader = shader; configuredWidth = bounds.width(); configuredHeight = bounds.height();
@@ -751,6 +753,9 @@ final class ColorOsMaterialHooks {
             Bitmap bitmap = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888);
             Canvas mask = new Canvas(bitmap);
             mask.clipPath(path);
+            maskPaint.setStyle(Paint.Style.FILL);
+            maskPaint.setColor(Color.RED);
+            mask.drawPath(path, maskPaint);
             maskPaint.setStyle(Paint.Style.STROKE);
             // Red stores inward edge distance; alpha stores curve coverage. Keep ColorOS's original
             // fade-toward-center math instead of substituting a uniform-brightness stroke.

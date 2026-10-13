@@ -152,6 +152,7 @@ final class TileBackdropHooks {
     private final Class<?> notificationStack;
     private final Field stackClipping, stackClipLeft, stackClipTop, stackClipRight, stackClipBottom;
     private final Map<View, WeakReference<State>> states = new WeakHashMap<>();
+    private boolean detailShowing;
     private final TileBackdropBatch batchCompositor;
     private volatile boolean batchFailed;
 
@@ -226,6 +227,14 @@ final class TileBackdropHooks {
     }
 
     void install(SignalHooks.Installer installer) throws ReflectiveOperationException {
+        for(String host:new String[]{"com.android.systemui.qs.QSTileHost","com.android.systemui.qs.QSHostAdapter"}) {
+            notificationBackground.getClassLoader().loadClass(host).getDeclaredMethod("setShowingDetail",boolean.class);
+            installer.hook(host,"setShowingDetail",chain->{
+                detailShowing=(Boolean)chain.getArg(0);
+                refresh();
+                return chain.proceed();
+            },boolean.class);
+        }
         installPositionUpdateOptimization(installer);
         notificationBackground.getDeclaredMethod("onAttachedToWindow");
         notificationBackground.getDeclaredMethod("setCustomBackground",Drawable.class);
@@ -443,6 +452,10 @@ final class TileBackdropHooks {
             View view = owner.get();
             if (view == null) return;
             if (!(notification ? notificationsEnabled : enabled).getAsBoolean() || !view.isAttachedToWindow()) { remove(view); return; }
+            if(!notification&&detailShowing) {
+                if(effect!=null)setEffectVisibility(false,0);
+                return;
+            }
             boolean split = networkStyle.getAsInt() != 0;
             if ((networkRole == 1 && split) || (networkRole == 2 && !split)) { remove(view); return; }
             if (failed || view.getWidth() == 0 || view.getHeight() == 0) return;

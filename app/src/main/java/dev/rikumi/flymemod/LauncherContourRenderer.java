@@ -55,7 +55,9 @@ final class LauncherContourRenderer {
         near[0] = far[0] = 2f * context.getResources().getDisplayMetrics().density;
         boolean night = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
-        near[1] = night ? .2f : .4f;
+        near[1] = .4f * (night ? .4f : 1f);
+        far[1] = .2f * (night ? .4f : 1f);
+        ContourInnerLight.configure(shader, context.getResources().getDisplayMetrics().density, night);
         shader.setFloatUniform("uNearLineParams", near); shader.setFloatUniform("uFarLineParams", far);
         paint.setShader(shader); paint.setAlpha(Math.round(255f*Math.max(0f, Math.min(1f, alpha))));
         int save = canvas.save(); canvas.translate(bounds.left, bounds.top);
@@ -86,6 +88,8 @@ final class LauncherContourRenderer {
                 && lastHeight == height && lastStroke == stroke) return pathMask;
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas mask = new Canvas(bitmap); mask.clipPath(path);
+        Paint coverage = new Paint(Paint.ANTI_ALIAS_FLAG);
+        coverage.setColor(Color.RED); mask.drawPath(path, coverage);
         Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG); maskPaint.setStyle(Paint.Style.STROKE);
         // Same inward-distance mask encoding as ColorOsMaterialHooks. AGSL determines the light.
         for (float distance = stroke; distance > 0f; distance -= .5f) {

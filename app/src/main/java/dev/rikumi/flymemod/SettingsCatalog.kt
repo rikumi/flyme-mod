@@ -51,7 +51,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             ),
         )),
         SettingsGroup("轮廓光", listOf(
-            SwitchItem(ModuleSettings.COLOROS_CONTOUR, "ColorOS 轮廓光"),
+            SwitchItem(ModuleSettings.COLOROS_CONTOUR, "磁贴轮廓光"),
         )),
         SettingsGroup("控制中心主题", listOf(
             SwitchItem(ModuleSettings.LIGHT, "控制中心磁贴亮色背景",
@@ -120,7 +120,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
     ),
     "notification" to listOf(
         SettingsGroup("轮廓光", listOf(
-            SwitchItem(ModuleSettings.NOTIFICATION_CONTOUR, "ColorOS 通知轮廓光"),
+            SwitchItem(ModuleSettings.NOTIFICATION_CONTOUR, "通知轮廓光"),
         )),
         SettingsGroup("通知中心主题", listOf(
             SwitchItem(ModuleSettings.NOTIFICATION_LIGHT, "通知亮色背景",
@@ -203,6 +203,9 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
     "navigation" to listOf(
         SettingsGroup("导航与返回", listOf(
             CustomItem("app_navigation") { actions -> AppNavigationPreference(actions.onSelectNavigationApplications) },
+            SwitchItem(ModuleSettings.GESTURE_BAR_WIDTH_ENABLED, "调整 mBack 条长度", defaultEnabled = true,
+                slider = SliderSpec(ModuleSettings.GESTURE_BAR_WIDTH_DP,
+                    ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT, 80, 120, unit = "dp")),
             CustomItem("back_gesture_width") { BackGestureWidthPreference() },
             SwitchItem(ModuleSettings.BACK_GESTURE_REMOVE_SMART, "放宽侧滑返回判定", defaultEnabled = true),
             SwitchItem(ModuleSettings.BACK_GESTURE_ARROW, "侧滑返回区域增加箭头"),

@@ -186,6 +186,8 @@ public final class XposedInit extends XposedModule {
     private boolean colorOsContourEnabled;
     private ColorOsMaterialHooks activeColorOsMaterialHooks;
     private boolean notificationContourEnabled, mbackSystemTimeoutEnabled, mbackMissingAssistantHomeEnabled;
+    private MBackRippleHooks activeMBackRippleHooks;
+    private GestureBarWidthHooks activeGestureBarWidthHooks;
     private boolean gestureBarWidthEnabled = true;
     private int gestureBarWidthDp=ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT;
     private boolean backGestureArrowEnabled;
@@ -720,6 +722,22 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve back gesture direction", error);
         }
         try {
+            activeMBackRippleHooks=new MBackRippleHooks(loader, () -> gestureBarWidthEnabled, () -> gestureBarWidthDp,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeMBackRippleHooks.install(
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),this::deoptimize);
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve mBack pressed ripple bounds", error);
+        }
+        try {
+            activeGestureBarWidthHooks=new GestureBarWidthHooks(loader,this::loadSettings,
+                    () -> gestureBarWidthEnabled, () -> gestureBarWidthDp);
+            activeGestureBarWidthHooks.install(
+                    (name, method, hooker, parameters) -> install(loader,name,method,hooker,parameters));
+        } catch(ReflectiveOperationException error) {
+            log(Log.ERROR,"FlymeMod","Cannot resolve gesture bar width",error);
+        }
+        try {
             new MBackAssistantHooks(loader, this::loadSettings, () -> mbackMissingAssistantHomeEnabled).install(
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
         } catch (ReflectiveOperationException error) {
@@ -759,6 +777,8 @@ public final class XposedInit extends XposedModule {
                         () -> notificationLightEnabled, () -> notificationLightOpacity,
                         () -> notificationCustomCornersEnabled, () -> notificationCornerPercent, activeTileCornerHooks,
                         (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+                deoptimize(loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow")
+                        .getDeclaredMethod("dispatchDraw",Canvas.class));
                 activeNotificationAppearanceHooks.install(
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
             }
@@ -906,6 +926,7 @@ public final class XposedInit extends XposedModule {
             activeSplitNetworkCardHooks = new SplitNetworkCardHooks(loader, this::loadSettings,
                     () -> networkSplitStyle, () -> optimize2x1TextEnabled, this::applyIconColor,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            activeSplitNetworkCardHooks.setLightSurfacePolicy(this::shouldUseLightTileSurface);
             if (activeColorOsMaterialHooks != null)
                 activeSplitNetworkCardHooks.setContourListener(card -> {
                     activeColorOsMaterialHooks.updateNetworkRows(card);
@@ -1368,9 +1389,10 @@ public final class XposedInit extends XposedModule {
         if (icon == null) return;
         int value = (Integer) slider.getClass().getMethod("getProgress").invoke(slider);
         int max = (Integer) slider.getClass().getMethod("getMax").invoke(slider);
-        int color = max > 0 && (long) value * 100 > (long) max * 15
-                ? (volumeSliderIcons.contains(icon) ? ACTIVE_VOLUME_COLOR : activeTileIconColor("brightness"))
-                : Color.WHITE;
+        int color = volumeSliderIcons.contains(icon)
+                ? (max > 0 && (long)value*100 > (long)max*15 ? 0xCC555555 : 0xCCDADADA)
+                : (max > 0 && (long) value * 100 > (long) max * 15
+                    ? activeTileIconColor("brightness") : Color.WHITE);
         if (!force && Integer.valueOf(color).equals(sliderIconColors.get(icon))) return;
         // The brightness circle has overlapping fill and stroke. Tint each path
         // opaquely, then apply alpha once to the composited icon to avoid a darker rim.
@@ -1427,6 +1449,26 @@ public final class XposedInit extends XposedModule {
     }
 
     private void installWhiteActive(ClassLoader loader) {
+        install(loader,"com.flyme.systemui.volume.QSVolumeControllerImpl","changeIconResource",chain -> {
+            Object result=chain.proceed();
+            ImageView icon=(ImageView)chain.getThisObject().getClass().getField("mIcon").get(chain.getThisObject());
+            if(icon!=null) { volumeSliderIcons.add(icon); sliderIconColors.remove(icon); }
+            return result;
+        },int.class);
+        install(loader, "android.widget.ImageView", "onDraw", chain -> {
+            ImageView icon = (ImageView) chain.getThisObject();
+            if (volumeSliderIcons.contains(icon)) {
+                View owner = sliderOwner(icon);
+                if (owner != null) {
+                    View slider = (View) owner.getClass().getField("mSlider").get(owner);
+                    if (slider != null) {
+                        loadSettings(icon.getContext());
+                        updateSliderIcon(slider, false);
+                    }
+                }
+            }
+            return chain.proceed();
+        }, Canvas.class);
         Class<?> tileStateClass;
         try {
             tileStateClass = Class.forName("com.android.systemui.plugins.qs.QSTile$State", false, loader);
@@ -1516,7 +1558,7 @@ public final class XposedInit extends XposedModule {
                 View owner = sliderOwner(icon);
                 if (owner != null) {
                     loadSettings(icon.getContext());
-                    if (whiteActiveEnabled) {
+                    if (whiteActiveEnabled || volumeSliderIcons.contains(icon)) {
                         View slider = (View) owner.getClass().getField("mSlider").get(owner);
                         if (slider != null) updateSliderIcon(slider, true);
                     }
@@ -1529,6 +1571,7 @@ public final class XposedInit extends XposedModule {
                 if ("volume.json".equals(chain.getArg(0))) {
                     ImageView icon = (ImageView) chain.getThisObject();
                     volumeSliderIcons.add(icon);
+                    sliderIconColors.remove(icon);
                     loadSettings(icon.getContext());
                     if (whiteActiveEnabled) {
                         int color = ACTIVE_FOREGROUND;
@@ -1594,8 +1637,7 @@ public final class XposedInit extends XposedModule {
 
     private boolean shouldDarken(Context context) {
         loadSettings(context);
-        return darkenEnabled && (context.getResources().getConfiguration().uiMode
-                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        return darkenEnabled;
     }
 
     private void installBlurRadius(ClassLoader loader) {
@@ -1637,7 +1679,24 @@ public final class XposedInit extends XposedModule {
         }, View.class, boolean.class, float.class);
     }
 
+    private boolean shouldUseLightTileSurface(Context context) {
+        return shouldDarken(context) && (context.getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK)!=Configuration.UI_MODE_NIGHT_YES;
+    }
+
     private void installDarkBackground(ClassLoader loader) {
+        try {
+            new LightTileSurfaceHooks(loader,this::shouldUseLightTileSurface,()->networkSplitStyle!=0).install(
+                    (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters));
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR,"FlymeMod","Cannot resolve light control center tile surfaces",error);
+        }
+        try {
+            new NotificationForegroundHooks(loader,this::shouldDarken).install(
+                    (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters));
+        } catch (ReflectiveOperationException error) {
+            log(Log.ERROR,"FlymeMod","Cannot resolve dark shade notification foreground",error);
+        }
         Map<Object, ShadeDimFrame> dimFrames = new WeakHashMap<>();
         // Extend only the native dim-layer call to apart mode. The normal blur
         // eligibility checks (including height/spring and lockscreen paths) stay intact.
@@ -1646,7 +1705,7 @@ public final class XposedInit extends XposedModule {
         install(loader, "com.android.systemui.shade.NotificationPanelViewController", "showBackgroundBlurDimLayer", chain -> {
             Object controller = chain.getThisObject();
             View view = (View) controller.getClass().getField("mView").get(controller);
-            // Re-read the theme's color first, restoring normal day-mode behavior.
+            // Re-read the theme's native color before applying the optional black backdrop.
             controller.getClass().getMethod("updateDimColor").invoke(controller);
             Object keyguard = controller.getClass().getField("mKeyguardStateController").get(controller);
             boolean locked = (Boolean) Class.forName("com.android.systemui.statusbar.policy.KeyguardStateController", false, loader)
@@ -1744,6 +1803,36 @@ public final class XposedInit extends XposedModule {
         }, Integer.class);
 
         // Header callbacks propagate the same color to footer/edit/device-center text.
+        try {
+            deoptimize(loader.loadClass("com.flyme.systemui.statusbar.phone.StatusBarHeaderView")
+                    .getDeclaredMethod("updateViewColor",int.class));
+            deoptimize(loader.loadClass("com.flyme.systemui.controlcenter.qs.QSStatusBarController")
+                    .getDeclaredMethod("updateViewColor",int.class));
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR,"FlymeMod","Cannot deoptimize dark control center header colors",error);
+        }
+        install(loader,"com.android.systemui.statusbar.policy.Clock","onDarkChanged",chain -> {
+            TextView clock=(TextView)chain.getThisObject();
+            Object result=chain.proceed();
+            for(View parent=clock; parent!=null; parent=parent.getParent() instanceof View next?next:null) {
+                if(parent.getClass().getName().equals("com.flyme.systemui.controlcenter.qs.QSStatusBar")) {
+                    if(shouldDarken(clock.getContext()))clock.setTextColor(Color.WHITE);
+                    break;
+                }
+            }
+            return result;
+        },ArrayList.class,float.class,int.class);
+        install(loader,"com.flyme.systemui.controlcenter.qs.QSStatusBarController","onDarkChanged",chain -> {
+            Object controller=chain.getThisObject();
+            View view=(View)controller.getClass().getField("mView").get(controller);
+            Object result=chain.proceed();
+            if(shouldDarken(view.getContext())) {
+                ((TextView)controller.getClass().getField("mClockView").get(controller)).setTextColor(Color.WHITE);
+                ((TextView)controller.getClass().getField("mDate").get(controller)).setTextColor(Color.WHITE);
+                controller.getClass().getMethod("updateViewColor",int.class).invoke(controller,Color.WHITE);
+            }
+            return result;
+        },ArrayList.class,float.class,int.class);
         install(loader, "com.flyme.systemui.statusbar.phone.StatusBarHeaderView", "updateViewColor", chain -> {
             View header = (View) chain.getThisObject();
             return shouldDarken(header.getContext())
@@ -1759,6 +1848,7 @@ public final class XposedInit extends XposedModule {
         XposedInterface.Hooker foreground = chain -> {
             View view = (View) chain.getThisObject();
             loadSettings(view.getContext());
+            if(shouldUseLightTileSurface(view.getContext()) && isControlCenterView(view))return Color.BLACK;
             if (whiteActiveEnabled && !hasCircularCardActivation(view) && (Integer) chain.getArg(0) == 2
                     && !(chain.getArgs().size() > 1 && Boolean.TRUE.equals(chain.getArg(1)))) return activeTileForegroundColor();
             return shouldDarken(view.getContext()) && isControlCenterView(view)
@@ -1775,6 +1865,7 @@ public final class XposedInit extends XposedModule {
             install(loader, "com.android.systemui.qs.tileimpl.QSIconViewImpl", "getColor", chain -> {
                 View view = (View) chain.getThisObject();
                 loadSettings(view.getContext());
+                if(shouldUseLightTileSurface(view.getContext()) && isControlCenterView(view))return Color.BLACK;
                 int tileState = chain.getArg(0).getClass().getField("state").getInt(chain.getArg(0));
                 if (whiteActiveEnabled && tileState == 2) return activeTileForegroundColor();
                 return shouldDarken(view.getContext()) && isControlCenterView(view) ? Color.WHITE : chain.proceed();
@@ -2228,6 +2319,8 @@ public final class XposedInit extends XposedModule {
                     loadSettings(appContext);
                     if (activeBackGestureSmartHooks != null && previousBackSmart != backGestureRemoveSmart)
                         activeBackGestureSmartHooks.refresh();
+                    if(activeMBackRippleHooks!=null)activeMBackRippleHooks.refresh();
+                    if(activeGestureBarWidthHooks!=null)activeGestureBarWidthHooks.refresh();
                     if (activeBackGestureWidthHooks != null) activeBackGestureWidthHooks.refresh();
                     if (activeBackGestureBackgroundHooks != null) activeBackGestureBackgroundHooks.refresh();
                     reapplyStatusIconVisibility();

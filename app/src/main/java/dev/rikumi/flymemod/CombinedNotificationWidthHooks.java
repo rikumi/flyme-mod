@@ -32,6 +32,7 @@ final class CombinedNotificationWidthHooks {
     private final Field expanded,shade,side,panel,stackController,stackView,barState,shared;
     private final Method classics,value,onKeyguard,filter,topPosition,setTopPosition;
     private final Map<Object,WeakReference<State>> states=new WeakHashMap<>();
+    private final Map<View,WeakReference<State>> panels=new WeakHashMap<>();
 
     CombinedNotificationWidthHooks(ClassLoader loader,Consumer<Context> settings,BooleanSupplier enabled,
                                    BiConsumer<String,Throwable> log) throws ReflectiveOperationException {
@@ -50,6 +51,13 @@ final class CombinedNotificationWidthHooks {
     }
 
     void install(SignalHooks.Installer installer) {
+        installer.hook("android.view.ViewGroup","dispatchDraw",chain->{
+            WeakReference<State> reference=panels.get(chain.getThisObject());
+            State state=reference==null?null:reference.get();
+            // Draw below native children and overlays, including expanded tile controls.
+            if(state!=null&&state.added)state.separator.draw((Canvas)chain.getArg(0));
+            return chain.proceed();
+        },Canvas.class);
         installer.hook(STACK,"setIsExpanded",chain->{
             View stack=(View)chain.getThisObject();
             boolean changed=expanded.getBoolean(stack)!=(Boolean)chain.getArg(0);
@@ -88,6 +96,7 @@ final class CombinedNotificationWidthHooks {
         if(state==null) {
             state=new State(controller,(View)panel.get(controller),(View)stackView.get(stackController.get(controller)));
             states.put(controller,new WeakReference<>(state));
+            panels.put((View)panel.get(controller),new WeakReference<>(state));
         }
         state.controls=new WeakReference<>(controls);
         state.base=original;state.extra=state.extra();state.update();
@@ -140,7 +149,7 @@ final class CombinedNotificationWidthHooks {
         }
         @Override public void onViewDetachedFromWindow(View host) {
             if(observer!=null&&observer.isAlive())observer.removeOnPreDrawListener(this);
-            observer=null;host.getOverlay().remove(separator);added=false;
+            observer=null;added=false;
         }
         @Override public boolean onPreDraw() {update();return true;}
         void update() {
@@ -152,7 +161,7 @@ final class CombinedNotificationWidthHooks {
                         &&Boolean.TRUE.equals(value.invoke(classics.invoke(shade.get(notifications))))
                         &&notifications.getResources().getConfiguration().orientation==Configuration.ORIENTATION_PORTRAIT;
                 boolean show=(extra>0||added)&&mode&&content(notifications)&&panel.isShown()&&qs!=null&&qs.isShown();
-                if(!show) {if(added)panel.getOverlay().remove(separator);added=false;return;}
+                if(!show) {if(added)panel.invalidate();added=false;return;}
                 float density=panel.getResources().getDisplayMetrics().density;
                 float width=44f*density,height=4f*density;
                 animatedPoint[0]=animatedPoint[1]=restPoint[0]=restPoint[1]=0;
@@ -172,8 +181,9 @@ final class CombinedNotificationWidthHooks {
                 float left=(panel.getWidth()-width)/2f+animatedPoint[0]-restPoint[0];
                 float top=base+animatedPoint[1]-restPoint[1];
                 int alpha=Math.round(51f*Math.max(0f,Math.min(1f,opacity)));
-                separator.update(left,top,width,height,alpha);
-                if(!added) {panel.getOverlay().add(separator);added=true;}
+                boolean changed=separator.update(left,top,width,height,alpha);
+                if(!added||changed)panel.invalidate();
+                added=true;
             } catch(ReflectiveOperationException|RuntimeException error) {log.accept("Cannot position merged notification separator",error);}
         }
     }
@@ -181,11 +191,12 @@ final class CombinedNotificationWidthHooks {
         final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         final RectF rect=new RectF();
         Separator(){paint.setColor(Color.WHITE);paint.setAlpha(51);}
-        void update(float left,float top,float width,float height,int alpha) {
-            if(rect.left==left&&rect.top==top&&rect.width()==width&&rect.height()==height&&paint.getAlpha()==alpha) return;
+        boolean update(float left,float top,float width,float height,int alpha) {
+            if(rect.left==left&&rect.top==top&&rect.width()==width&&rect.height()==height&&paint.getAlpha()==alpha) return false;
             rect.set(left,top,left+width,top+height);paint.setAlpha(alpha);
             setBounds((int)Math.floor(left),(int)Math.floor(top),(int)Math.ceil(left+width),(int)Math.ceil(top+height));
             invalidateSelf();
+            return true;
         }
         @Override public void draw(Canvas canvas){canvas.drawRoundRect(rect,rect.height()/2f,rect.height()/2f,paint);}
         @Override public void setAlpha(int alpha){paint.setAlpha(alpha);invalidateSelf();}

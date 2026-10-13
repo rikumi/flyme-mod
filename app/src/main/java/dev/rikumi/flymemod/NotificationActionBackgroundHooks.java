@@ -28,6 +28,13 @@ final class NotificationActionBackgroundHooks {
     }
 
     void install(SignalHooks.Installer installer) {
+        // RemoteViews/theme updates may replace the fill after template resolution.
+        installer.hook("android.view.View", "setBackground", chain -> {
+            Object result=chain.proceed();
+            View view=(View)chain.getThisObject();
+            if(containers.containsKey(view))apply(view);
+            return result;
+        },Drawable.class);
         installer.hook(actions.getDeclaringClass().getName(), "resolveTemplateViews", chain -> {
             Object result=chain.proceed();
             if (actions.get(chain.getThisObject()) instanceof View view) {

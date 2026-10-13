@@ -1,3 +1,6 @@
+uniform float uGlowDepth;
+uniform float uGlowAlpha;
+uniform float3 uGlowGeometry;
 uniform shader uMask;
 uniform float2 u_size; uniform float u_corner; uniform float u_weight;
 layout(color) uniform vec4 uColor;
@@ -55,10 +58,33 @@ LineParams nearLineParams = LineParams(uNearLineParams[0], uNearLineParams[1], f
    float lineAlpha = clamp(lineNearAlpha + lineFarAlpha, 0.0, 1.0);
    return GradientStrokeResult(vec4(uColor.xyz, lineAlpha), rectSdf);
 }
+// UX Design 17.0.18: ShadowStyle 2 and a5.e's dimension-independent padding.
+// Reflect the native vertical offset to direct the inner light toward Flyme's bottom edge.
+float bottomGlow(vec2 coords) {
+    vec2 halfSize = u_size * 0.5;
+    vec2 pos = coords - halfSize;
+    pos.y += uGlowGeometry.z;
+    vec2 expanded = halfSize + uGlowGeometry.xy;
+    float corner = min(min(expanded.x, expanded.y), max(uGlowDepth * 1.2, u_corner));
+    float sdf = RBox(pos, expanded, corner);
+    float fade = smoothstep(-max(uGlowDepth, 0.001), 0.0, sdf);
+    fade = pow(fade, 4.0) * 0.7 + fade * 0.3;
+    // The source effect surrounds the whole shape. This module requests bottom light only.
+    float bottom = smoothstep(u_size.y * 0.45, u_size.y * 0.65, coords.y);
+    float alpha = uGlowAlpha * fade;
+    // Native ShadowEdge alpha dithering with soft-light blending.
+    vec2 uv = coords * 0.013;
+    float noise = fract(sin(dot(uv.yx, vec2(79.1214, 78.233))) * 43760.5453);
+    float n = clamp((noise - 0.5) * 0.01 + 0.5, 0.0, 1.0);
+    float low = alpha - (1.0 - 2.0 * n) * alpha * (1.0 - alpha);
+    float high = alpha + (2.0 * n - 1.0) * (sqrt(alpha) - alpha);
+    return clamp(mix(low, high, step(0.5, n)), 0.0, 1.0) * bottom;
+}
 vec4 main(vec2 coords) {
  GradientInputParams inputParams = GradientInputParams(u_size, u_weight, u_corner, 0.0, u_size, float2(0.0, 0.0));
  GradientStrokeResult strokeResult = gradientStrokeColorWithRatio(coords, inputParams);
  float antiAliasing = uMask.eval(coords).a;
- float alpha = strokeResult.color.a * antiAliasing;
+ float glow = bottomGlow(coords);
+ float alpha = clamp(strokeResult.color.a + glow, 0.0, 1.0) * antiAliasing;
  return vec4(strokeResult.color.rgb * alpha, alpha);
 }

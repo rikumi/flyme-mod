@@ -1348,7 +1348,6 @@ fun FluixSlider(
     val finishChange by rememberUpdatedState(onValueChangeFinished)
     val interactionChange by rememberUpdatedState(onInteractionChange)
     val primary = MiuixTheme.colorScheme.primary
-    val onSurface = MiuixTheme.colorScheme.onSurface
     val trackOff = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.2f)
     val v = value.coerceIn(0f, 1f)
     Box(
@@ -1399,7 +1398,7 @@ fun FluixSlider(
                 size = Size(cx + 2 * barR, barH),
                 cornerRadius = CornerRadius(barR, barR),
             )
-            drawCircle(color = onSurface, radius = thumbR - gap, center = Offset(cx, cy))
+            drawCircle(color = Color.White, radius = thumbR - gap, center = Offset(cx, cy))
         }
     }
 }

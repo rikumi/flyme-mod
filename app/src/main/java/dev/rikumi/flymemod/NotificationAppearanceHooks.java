@@ -1,11 +1,19 @@
 package dev.rikumi.flymemod;
 
 import android.content.Context;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.View;
+import android.widget.ImageView;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.ColorFilter;
 import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import java.lang.ref.WeakReference;
@@ -23,6 +31,7 @@ import java.util.function.IntSupplier;
 final class NotificationAppearanceHooks {
     // Flyme's native night-mode blur tint and opaque heads-up fallback.
     private static final int DARK_BLUR_COLOR = 0xB21A1A1A;
+    private static final int LIGHT_FLOATING_COLOR = 0xCCFFFFFF;
     private static final int DARK_SOLID_COLOR = 0xFF1A1A1A;
     private final Consumer<Context> settings;
     private final BooleanSupplier light, corners;
@@ -82,11 +91,61 @@ final class NotificationAppearanceHooks {
         }
         return false;
     }
+    private boolean night(View view) {
+        return (view.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+    }
+    private int floatingColor(View view, boolean blur) {
+        return night(view) ? (blur ? DARK_BLUR_COLOR : DARK_SOLID_COLOR) : LIGHT_FLOATING_COLOR;
+    }
     private int backgroundColor(View view,int nativeColor,boolean blur) throws ReflectiveOperationException {
-        if(floating(view))return blur?DARK_BLUR_COLOR:DARK_SOLID_COLOR;
+        if(floating(view))return floatingColor(view,blur);
         return light.getAsBoolean()?color():nativeColor;
     }
     void install(SignalHooks.Installer installer) {
+        installer.hook("android.view.ViewGroup","dispatchDraw",chain -> {
+            View view=(View)chain.getThisObject();
+            if(!night(view) && (landscapeClass.isInstance(view) || mediaClass.isInstance(view))) {
+                float radius=landscapeClass.isInstance(view)
+                        ?landscapeClass.getField("mClipCornerRadius").getFloat(view):mediaRadius.getFloat(view);
+                Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG);fill.setColor(0xCCFFFFFF);
+                ((Canvas)chain.getArg(0)).drawRoundRect(0,0,view.getWidth(),view.getHeight(),radius,radius,fill);
+            }
+            return chain.proceed();
+        },Canvas.class);
+        Map<Object,Boolean> whiteRows=new WeakHashMap<>();
+        installer.hook(rowClass.getName(),"dispatchDraw",chain -> {
+            Object owner=chain.getThisObject();whiteRows.remove(owner);
+            try { return chain.proceed(); }
+            finally { whiteRows.remove(owner); }
+        },Canvas.class);
+        installer.hook("com.android.systemui.statusbar.notification.row.ExpandableOutlineView","drawChild",chain -> {
+            View view=(View)chain.getThisObject();
+            View child=(View)chain.getArg(1);
+            String name=child.getClass().getName();
+            boolean content=name.equals("com.android.systemui.statusbar.notification.row.NotificationContentView")
+                    || name.equals("com.android.systemui.statusbar.notification.stack.NotificationChildrenContainer");
+            if(rowClass.isInstance(view) && !night(view) && content && !whiteRows.containsKey(view)) {
+                whiteRows.put(view,Boolean.TRUE);
+                Canvas canvas=(Canvas)chain.getArg(0);
+                Path path=(Path)view.getClass().getMethod("getClipPath",boolean.class).invoke(view,false);
+                int save=canvas.save();
+                try { canvas.clipPath(path);canvas.drawColor(0xCCFFFFFF); }
+                finally { canvas.restoreToCount(save); }
+            }
+            return chain.proceed();
+        },Canvas.class,View.class,long.class);
+        installer.hook("android.widget.ImageView", "onDraw", chain -> {
+            ImageView icon=(ImageView)chain.getThisObject();
+            if(night(icon) || icon.getId()==View.NO_ID)return chain.proceed();
+            String name;
+            try { name=icon.getResources().getResourceEntryName(icon.getId()); }
+            catch(android.content.res.Resources.NotFoundException ignored) { return chain.proceed(); }
+            if(!name.equals("dismiss_view") && !name.equals("filter_dismiss_view"))return chain.proceed();
+            ColorFilter original=icon.getColorFilter();
+            try { icon.setColorFilter(Color.rgb(128,128,128)); return chain.proceed(); }
+            finally { icon.setColorFilter(original); }
+        },Canvas.class);
         installer.hook("com.android.systemui.statusbar.notification.row.ActivatableNotificationView", "setBackground", chain -> {
             View view=(View)chain.getThisObject();
             if (!rowClass.isInstance(view)) return chain.proceed();
@@ -109,7 +168,7 @@ final class NotificationAppearanceHooks {
             Object result=chain.proceed();
             Drawable drawable=view.getBackground();
             if(drawable!=null && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable"))
-                drawable.mutate().setTint(DARK_SOLID_COLOR);
+                drawable.mutate().setTint(floatingColor(view,false));
             return result;
         });
         installer.hook(mediaClass.getName(), "setBackground", chain -> {
@@ -244,6 +303,7 @@ final class NotificationAppearanceHooks {
                 saved=false;
             }
         }
+        boolean lastNight;
         void finish() throws ReflectiveOperationException {
             View view=owner.get(); if(view==null)return;
             if(corners.getAsBoolean() || lastCorners) {
@@ -261,11 +321,11 @@ final class NotificationAppearanceHooks {
                     if(background!=null && nativeBackground.get(background) instanceof Drawable drawable
                             && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable")
                             && !drawable.getClass().getName().endsWith("WallpaperBlurDrawable"))
-                        tintNoBlur.invoke(background,isFloating?DARK_SOLID_COLOR:color());
+                        tintNoBlur.invoke(background,isFloating?floatingColor(view,false):color());
                 }
             }
             lastColor=color(); lastLight=light.getAsBoolean(); lastCorners=corners.getAsBoolean();
-            lastFloating=isFloating;
+            lastFloating=isFloating; lastNight=night(view);
             lastRadius=lastCorners?radius(view):-1f;
         }
         void update() {
@@ -276,7 +336,7 @@ final class NotificationAppearanceHooks {
             catch(ReflectiveOperationException error) {
                 failed=true; log.accept("Cannot resolve floating notification state",error); return;
             }
-            boolean changed=currentFloating!=lastFloating || currentCorners!=lastCorners || currentLight!=lastLight
+            boolean changed=(currentFloating && night(view)!=lastNight) || currentFloating!=lastFloating || currentCorners!=lastCorners || currentLight!=lastLight
                     || (currentLight && color()!=lastColor) || (currentCorners && radius(view)!=lastRadius);
             if(!changed)return;
             running=true;
