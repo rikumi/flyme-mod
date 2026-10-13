@@ -14,7 +14,7 @@ README 格式与更新要求：
 
 一个针对 Flyme 的全方位体验增强模块，集百家 ~~(ColorOS)~~ 之长，提供桌面、控制中心、通知中心与状态栏、锁屏和系统净化等功能，改善系统界面与交互体验。
 
-<img width="4450" height="2499" alt="image" src="https://github.com/user-attachments/assets/f77a9ac8-ebc1-40de-b8be-3ee038a10e39" />
+<img width="4450" height="2499" alt="image" src="https://github.com/user-attachments/assets/62329c74-caad-49a8-96f7-553ab2faa654" />
 
 本项目为 [ColorOS Mod](https://github.com/Xposed-Modules-Repo/com.rikumi.colorosmod) 姊妹项目。
 
