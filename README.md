@@ -4,7 +4,7 @@
 
 一个针对 Flyme 的全方位体验增强模块，提供桌面、控制中心、通知中心与状态栏、锁屏和系统净化等功能，改善系统界面与交互体验。
 
-<img width="5934" height="3332" src="https://github.com/user-attachments/assets/249bb7db-92a4-4f2e-ba65-8ddd17016610" />
+<img width="4450" height="2499" alt="image" src="https://github.com/user-attachments/assets/f77a9ac8-ebc1-40de-b8be-3ee038a10e39" />
 
 本项目为 [ColorOS Mod](https://github.com/Xposed-Modules-Repo/com.rikumi.colorosmod) 姊妹项目。
 
