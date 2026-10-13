@@ -47,7 +47,7 @@ final class CameraNightHooks {
     }
 
     private boolean blockAutoNight() throws ReflectiveOperationException {
-        return settings.getBoolean(ModuleSettings.CAMERA_DISABLE_AUTO_NIGHT, false) && inMode("AUTO");
+        return settings.getBoolean(ModuleSettings.CAMERA_DISABLE_AUTO_NIGHT, OneClickPreset.defaultSwitch(ModuleSettings.CAMERA_DISABLE_AUTO_NIGHT)) && inMode("AUTO");
     }
 
     private void installDetection(ClassLoader loader, SignalHooks.Installer installer,
@@ -165,7 +165,7 @@ final class CameraNightHooks {
     }
 
     private boolean exposureEnabled() throws ReflectiveOperationException {
-        return settings.getBoolean(ModuleSettings.CAMERA_NIGHT_EXPOSURE_ENABLED, false)
+        return settings.getBoolean(ModuleSettings.CAMERA_NIGHT_EXPOSURE_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.CAMERA_NIGHT_EXPOSURE_ENABLED))
                 && inMode("SUPER_NIGHT");
     }
 

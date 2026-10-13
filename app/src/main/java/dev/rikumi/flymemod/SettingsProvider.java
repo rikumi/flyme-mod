@@ -64,7 +64,7 @@ public final class SettingsProvider extends ContentProvider {
         if (arg == null || !arg.matches("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+"))
             throw new IllegalArgumentException("Invalid package name");
         SharedPreferences prefs = ModuleSettings.preferences(getContext());
-        if (!prefs.getBoolean(ModuleSettings.LAUNCHER_HIDE_APP_MENU, false))
+        if (!prefs.getBoolean(ModuleSettings.LAUNCHER_HIDE_APP_MENU, OneClickPreset.defaultSwitch(ModuleSettings.LAUNCHER_HIDE_APP_MENU)))
             throw new IllegalStateException("允许隐藏应用未开启");
         java.util.Set<String> packages = new java.util.HashSet<>(prefs.getStringSet(
                 ModuleSettings.HIDDEN_LAUNCHER_APPS, java.util.Collections.emptySet()));
@@ -166,7 +166,7 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS);
         columns.add(ModuleSettings.RECENTS_CORNER_ENABLED);
         columns.add(ModuleSettings.RECENTS_CORNER_DP);
-        columns.add(ModuleSettings.COLOROS_CONTOUR);
+        columns.add(ModuleSettings.TILES_CONTOUR);
         columns.add(ModuleSettings.BACK_GESTURE_REMOVE_SMART);
         columns.add(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED);
         columns.add(ModuleSettings.BACK_GESTURE_WIDTH_DP);
@@ -211,178 +211,178 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.BACKGROUND_SCALE_ENABLED);
         columns.add(ModuleSettings.BACKGROUND_SCALE);
         MatrixCursor cursor = new MatrixCursor(columns.toArray(new String[0]));
-        java.util.List<Object> values = new java.util.ArrayList<>(java.util.Arrays.asList(new Object[]{prefs.getBoolean(ModuleSettings.SCALE, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.LIGHT, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.DARKEN, false) ? 1 : 0,
+        java.util.List<Object> values = new java.util.ArrayList<>(java.util.Arrays.asList(new Object[]{prefs.getBoolean(ModuleSettings.SCALE, OneClickPreset.defaultSwitch(ModuleSettings.SCALE)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.LIGHT, OneClickPreset.defaultSwitch(ModuleSettings.LIGHT)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.DARKEN, OneClickPreset.defaultSwitch(ModuleSettings.DARKEN)) ? 1 : 0,
                 ModuleSettings.controlCenterStyle(prefs) != 0 ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.NETWORK_DARK_SPINNER, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.HEADS_UP_WIDTH, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.BLUR_ENABLED, false) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.NETWORK_DARK_SPINNER, OneClickPreset.defaultSwitch(ModuleSettings.NETWORK_DARK_SPINNER)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.HEADS_UP_WIDTH, OneClickPreset.defaultSwitch(ModuleSettings.HEADS_UP_WIDTH)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.BLUR_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.BLUR_ENABLED)) ? 1 : 0,
                 prefs.getInt(ModuleSettings.BLUR_RADIUS, ModuleSettings.BLUR_DEFAULT),
-                prefs.getBoolean(ModuleSettings.WALLPAPER_STARTUP_FIX, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.HIDE_GBOARD, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.RECENTS_SWIPE_UP_KILL, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.RECENTS_HIDE_NOT_RUNNING, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STACKED_RECENTS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.FOLDER_PAGING, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.FOLDER_CENTER, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.FOLDER_RESTORE_COLOR, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.FOLDER_RADIUS_ENABLED, false) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.WALLPAPER_STARTUP_FIX, OneClickPreset.defaultSwitch(ModuleSettings.WALLPAPER_STARTUP_FIX)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.HIDE_GBOARD, OneClickPreset.defaultSwitch(ModuleSettings.HIDE_GBOARD)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.RECENTS_SWIPE_UP_KILL, OneClickPreset.defaultSwitch(ModuleSettings.RECENTS_SWIPE_UP_KILL)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.RECENTS_HIDE_NOT_RUNNING, OneClickPreset.defaultSwitch(ModuleSettings.RECENTS_HIDE_NOT_RUNNING)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STACKED_RECENTS, OneClickPreset.defaultSwitch(ModuleSettings.STACKED_RECENTS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.FOLDER_PAGING, OneClickPreset.defaultSwitch(ModuleSettings.FOLDER_PAGING)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.FOLDER_CENTER, OneClickPreset.defaultSwitch(ModuleSettings.FOLDER_CENTER)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.FOLDER_RESTORE_COLOR, OneClickPreset.defaultSwitch(ModuleSettings.FOLDER_RESTORE_COLOR)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.FOLDER_RADIUS_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.FOLDER_RADIUS_ENABLED)) ? 1 : 0,
                 prefs.getInt(ModuleSettings.FOLDER_RADIUS, ModuleSettings.FOLDER_RADIUS_DEFAULT),
-                prefs.getBoolean(ModuleSettings.ORIGINAL_NOTIFICATION_ICONS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.REMOVE_NOTIFICATION_ACTION_BACKGROUND, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.MERGE_DUAL_SIGNAL, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.SEPARATE_NETWORK_TYPE, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.HIDE_DISABLED_APPS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.HIDE_LUNAR, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.BLOCK_STORE_SPLASH, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.SLIDER_ACTIVE_CORNERS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_HIDE_FEATURED, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_HIDE_GAMES, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_HIDE_POPULAR, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_HIDE_COMMUNITY, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_HIDE_DAILY, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.BLOCK_WEATHER_ADS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.WEATHER_DARK_BACKGROUND, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_HIDE_SEARCH_HOT, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_EMPTY_APPLICATION_PAGE, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.INSTALLER_SKIP_WARNINGS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_DETAIL_HIDE_TOPICS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.STORE_DETAIL_HIDE_REVIEWS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.COMBINED_PULL_ANIMATION, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.LIMIT_AOD_MOVEMENT, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.COMBINED_COLLAPSE_FIX, false) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.ORIGINAL_NOTIFICATION_ICONS, OneClickPreset.defaultSwitch(ModuleSettings.ORIGINAL_NOTIFICATION_ICONS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS, OneClickPreset.defaultSwitch(ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.REMOVE_NOTIFICATION_ACTION_BACKGROUND, OneClickPreset.defaultSwitch(ModuleSettings.REMOVE_NOTIFICATION_ACTION_BACKGROUND)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.MERGE_DUAL_SIGNAL, OneClickPreset.defaultSwitch(ModuleSettings.MERGE_DUAL_SIGNAL)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.SEPARATE_NETWORK_TYPE, OneClickPreset.defaultSwitch(ModuleSettings.SEPARATE_NETWORK_TYPE)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.HIDE_DISABLED_APPS, OneClickPreset.defaultSwitch(ModuleSettings.HIDE_DISABLED_APPS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.HIDE_LUNAR, OneClickPreset.defaultSwitch(ModuleSettings.HIDE_LUNAR)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.BLOCK_STORE_SPLASH, OneClickPreset.defaultSwitch(ModuleSettings.BLOCK_STORE_SPLASH)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS, OneClickPreset.defaultSwitch(ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.SLIDER_ACTIVE_CORNERS, OneClickPreset.defaultSwitch(ModuleSettings.SLIDER_ACTIVE_CORNERS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_HIDE_FEATURED, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_FEATURED)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_HIDE_GAMES, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_GAMES)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_HIDE_POPULAR, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_POPULAR)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_HIDE_COMMUNITY, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_COMMUNITY)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_HIDE_DAILY, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_DAILY)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.BLOCK_WEATHER_ADS, OneClickPreset.defaultSwitch(ModuleSettings.BLOCK_WEATHER_ADS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.WEATHER_DARK_BACKGROUND, OneClickPreset.defaultSwitch(ModuleSettings.WEATHER_DARK_BACKGROUND)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_HIDE_SEARCH_HOT, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_SEARCH_HOT)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_EMPTY_APPLICATION_PAGE, OneClickPreset.defaultSwitch(ModuleSettings.STORE_EMPTY_APPLICATION_PAGE)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.INSTALLER_SKIP_WARNINGS, OneClickPreset.defaultSwitch(ModuleSettings.INSTALLER_SKIP_WARNINGS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL, OneClickPreset.defaultSwitch(ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_DETAIL_HIDE_TOPICS, OneClickPreset.defaultSwitch(ModuleSettings.STORE_DETAIL_HIDE_TOPICS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.STORE_DETAIL_HIDE_REVIEWS, OneClickPreset.defaultSwitch(ModuleSettings.STORE_DETAIL_HIDE_REVIEWS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.COMBINED_PULL_ANIMATION, OneClickPreset.defaultSwitch(ModuleSettings.COMBINED_PULL_ANIMATION)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.LIMIT_AOD_MOVEMENT, OneClickPreset.defaultSwitch(ModuleSettings.LIMIT_AOD_MOVEMENT)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.COMBINED_COLLAPSE_FIX, OneClickPreset.defaultSwitch(ModuleSettings.COMBINED_COLLAPSE_FIX)) ? 1 : 0,
                 prefs.getInt(ModuleSettings.VOLUME_FIRST_FOUR, 0),
-                prefs.getBoolean(ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.QS_TRANSLATION_ORIGIN, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.SECONDARY_EXPANSION_FIX, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.COMBINED_FILTER_SETTINGS, false) ? 1 : 0,
-                prefs.getBoolean(ModuleSettings.HOME_ICON_MINIMUM_SIZE, false) ? 1 : 0}));
-        for (String[] folder : ModuleSettings.MEDIA_FOLDERS) values.add(prefs.getBoolean(folder[1], false) ? 1 : 0);
-        for (String key : ModuleSettings.HIDE_STATUS_ICON_KEYS) values.add(prefs.getBoolean(key, false) ? 1 : 0);
+                prefs.getBoolean(ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT, OneClickPreset.defaultSwitch(ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.QS_TRANSLATION_ORIGIN, OneClickPreset.defaultSwitch(ModuleSettings.QS_TRANSLATION_ORIGIN)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.SECONDARY_EXPANSION_FIX, OneClickPreset.defaultSwitch(ModuleSettings.SECONDARY_EXPANSION_FIX)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN, OneClickPreset.defaultSwitch(ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.COMBINED_FILTER_SETTINGS, OneClickPreset.defaultSwitch(ModuleSettings.COMBINED_FILTER_SETTINGS)) ? 1 : 0,
+                prefs.getBoolean(ModuleSettings.HOME_ICON_MINIMUM_SIZE, OneClickPreset.defaultSwitch(ModuleSettings.HOME_ICON_MINIMUM_SIZE)) ? 1 : 0}));
+        for (String[] folder : ModuleSettings.MEDIA_FOLDERS) values.add(prefs.getBoolean(folder[1], OneClickPreset.defaultSwitch(folder[1])) ? 1 : 0);
+        for (String key : ModuleSettings.HIDE_STATUS_ICON_KEYS) values.add(prefs.getBoolean(key, OneClickPreset.defaultSwitch(key)) ? 1 : 0);
         values.add(prefs.getInt(ModuleSettings.LOCK_CLOCK_FONT, 0));
         values.add(prefs.getInt(ModuleSettings.AOD_CLOCK_FONT, 0));
         values.add(prefs.getInt(ModuleSettings.STATUS_BAR_CLOCK_FONT, 0));
-        values.add(prefs.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, OneClickPreset.defaultSwitch(ModuleSettings.STATUS_BAR_LYRIC_AVOID)) ? 1 : 0);
         values.add(Math.max(0, Math.min(2, prefs.getInt(ModuleSettings.STATUS_BAR_CHARGING_INFO, ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT))));
         values.add(prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_FONT, 0));
-        values.add(prefs.getBoolean(ModuleSettings.LOCK_CLOCK_MONOSPACE, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.AOD_CLOCK_MONOSPACE, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STATUS_BAR_CLOCK_MONOSPACE, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_MONOSPACE, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.LOCK_CLOCK_MONOSPACE, OneClickPreset.defaultSwitch(ModuleSettings.LOCK_CLOCK_MONOSPACE)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.AOD_CLOCK_MONOSPACE, OneClickPreset.defaultSwitch(ModuleSettings.AOD_CLOCK_MONOSPACE)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STATUS_BAR_CLOCK_MONOSPACE, OneClickPreset.defaultSwitch(ModuleSettings.STATUS_BAR_CLOCK_MONOSPACE)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_MONOSPACE, OneClickPreset.defaultSwitch(ModuleSettings.CONTROL_CENTER_CLOCK_MONOSPACE)) ? 1 : 0);
         values.add(prefs.getInt(ModuleSettings.STATUS_BAR_CLOCK_WEIGHT, 0));
         values.add(prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_WEIGHT, 0));
-        values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP, OneClickPreset.defaultSwitch(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP)) ? 1 : 0);
         values.add(prefs.getInt(ModuleSettings.CLOCK_FONT_WEIGHT, 0));
         values.add(prefs.getInt(ModuleSettings.LOCK_CLOCK_SPACING, 0));
         values.add(prefs.getInt(ModuleSettings.AOD_CLOCK_SPACING, 0));
         values.add(prefs.getInt(ModuleSettings.STATUS_BAR_CLOCK_SPACING, 0));
         values.add(prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_SPACING, 0));
-        values.add(prefs.getBoolean(ModuleSettings.LOCK_CLOCK_SPACING_ENABLED, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.AOD_CLOCK_SPACING_ENABLED, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STATUS_BAR_CLOCK_SPACING_ENABLED, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_SPACING_ENABLED, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true)
+        values.add(prefs.getBoolean(ModuleSettings.LOCK_CLOCK_SPACING_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.LOCK_CLOCK_SPACING_ENABLED)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.AOD_CLOCK_SPACING_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.AOD_CLOCK_SPACING_ENABLED)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STATUS_BAR_CLOCK_SPACING_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.STATUS_BAR_CLOCK_SPACING_ENABLED)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_CLOCK_SPACING_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.CONTROL_CENTER_CLOCK_SPACING_ENABLED)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED))
                 ? String.join("\n", prefs.getStringSet(ModuleSettings.HIDDEN_LAUNCHER_APPS, java.util.Collections.emptySet())) : "");
         values.add(Math.max(0, Math.min(40, prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE,
                 ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP_DISTANCE_DEFAULT))));
         values.add(ModuleSettings.networkSplitStyle(prefs) != 0 ? 1 : 0);
         // Retain the provider column for compatibility; radiant backgrounds use fixed 90% alpha.
         values.add(90);
-        values.add(prefs.getBoolean(ModuleSettings.CIRCLE_SMALL_TILES, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.COMBINED_NOTIFICATION_WIDTH, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.FOLD_IDLE_MEDIA, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.FIX_MEDIA_SWIPE, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.EARPHONE_NOISE_CONTROL, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.CIRCLE_SMALL_TILES, OneClickPreset.defaultSwitch(ModuleSettings.CIRCLE_SMALL_TILES)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.COMBINED_NOTIFICATION_WIDTH, OneClickPreset.defaultSwitch(ModuleSettings.COMBINED_NOTIFICATION_WIDTH)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FOLD_IDLE_MEDIA, OneClickPreset.defaultSwitch(ModuleSettings.FOLD_IDLE_MEDIA)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FIX_MEDIA_SWIPE, OneClickPreset.defaultSwitch(ModuleSettings.FIX_MEDIA_SWIPE)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.EARPHONE_NOISE_CONTROL, OneClickPreset.defaultSwitch(ModuleSettings.EARPHONE_NOISE_CONTROL)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS, OneClickPreset.defaultSwitch(ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS)) ? 1 : 0);
         values.add(ModuleSettings.networkSplitStyle(prefs));
-        values.add(prefs.getBoolean(ModuleSettings.OPTIMIZE_2X1_TEXT, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.ANIMATED_MUTE_SLASH, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.WIFI_LABEL, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.OPTIMIZE_2X1_TEXT, OneClickPreset.defaultSwitch(ModuleSettings.OPTIMIZE_2X1_TEXT)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.ANIMATED_MUTE_SLASH, OneClickPreset.defaultSwitch(ModuleSettings.ANIMATED_MUTE_SLASH)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.WIFI_LABEL, OneClickPreset.defaultSwitch(ModuleSettings.WIFI_LABEL)) ? 1 : 0);
         values.add(Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, prefs.getInt(ModuleSettings.LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT))));
-        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_LIGHT, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_LIGHT, OneClickPreset.defaultSwitch(ModuleSettings.NOTIFICATION_LIGHT)) ? 1 : 0);
         values.add(Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX,
                 prefs.getInt(ModuleSettings.NOTIFICATION_LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT))));
-        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR, OneClickPreset.defaultSwitch(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR)) ? 1 : 0);
         values.add(Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
                 Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX,
                         prefs.getInt(ModuleSettings.NOTIFICATION_BACKGROUND_SATURATION, ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT))));
-        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS, OneClickPreset.defaultSwitch(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS)) ? 1 : 0);
         values.add(Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN, Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX,
                 prefs.getInt(ModuleSettings.NOTIFICATION_CORNER_PERCENT, ModuleSettings.TILE_CORNER_PERCENT_DEFAULT))));
-        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_READ_LAYER_FIX, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.TILE_CORNERS, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_READ_LAYER_FIX, OneClickPreset.defaultSwitch(ModuleSettings.NOTIFICATION_READ_LAYER_FIX)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.TILE_CORNERS, OneClickPreset.defaultSwitch(ModuleSettings.TILE_CORNERS)) ? 1 : 0);
         values.add(Math.max(ModuleSettings.TILE_CORNER_PERCENT_MIN, Math.min(ModuleSettings.TILE_CORNER_PERCENT_MAX,
                 prefs.getInt(ModuleSettings.TILE_CORNER_PERCENT, ModuleSettings.TILE_CORNER_PERCENT_DEFAULT))));
-        values.add(prefs.getBoolean(ModuleSettings.TILE_BACKGROUND_COLOR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.TILE_BACKGROUND_COLOR, OneClickPreset.defaultSwitch(ModuleSettings.TILE_BACKGROUND_COLOR)) ? 1 : 0);
         values.add(Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
                 Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX,
                         prefs.getInt(ModuleSettings.TILE_BACKGROUND_SATURATION, ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT))));
-        values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_BUTTONS_UP, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.CONTROL_CENTER_BUTTONS_UP, OneClickPreset.defaultSwitch(ModuleSettings.CONTROL_CENTER_BUTTONS_UP)) ? 1 : 0);
         values.add(Math.max(0, Math.min(40, prefs.getInt(ModuleSettings.CONTROL_CENTER_BUTTONS_UP_DISTANCE, 8))));
-        values.add(prefs.getBoolean(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.FOLDER_CLOSE_TARGET, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.EDIT_APP_ICON_NAME, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.LOCK_WIDGET_STARTUP_FIX, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.HIDE_CARRIER, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.LAUNCHER_HIDE_APP_MENU, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.RECENTS_CORNER_ENABLED, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION, OneClickPreset.defaultSwitch(ModuleSettings.NATIVE_NOTIFICATION_EXPANSION)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS, OneClickPreset.defaultSwitch(ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FOLDER_CLOSE_TARGET, OneClickPreset.defaultSwitch(ModuleSettings.FOLDER_CLOSE_TARGET)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.EDIT_APP_ICON_NAME, OneClickPreset.defaultSwitch(ModuleSettings.EDIT_APP_ICON_NAME)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, OneClickPreset.defaultSwitch(ModuleSettings.SYSTEM_ICON_PACK)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.LOCK_WIDGET_STARTUP_FIX, OneClickPreset.defaultSwitch(ModuleSettings.LOCK_WIDGET_STARTUP_FIX)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT, OneClickPreset.defaultSwitch(ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.HIDE_CARRIER, OneClickPreset.defaultSwitch(ModuleSettings.HIDE_CARRIER)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.LAUNCHER_HIDE_APP_MENU, OneClickPreset.defaultSwitch(ModuleSettings.LAUNCHER_HIDE_APP_MENU)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS, OneClickPreset.defaultSwitch(ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.RECENTS_CORNER_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.RECENTS_CORNER_ENABLED)) ? 1 : 0);
         values.add(RecentsCornerSettings.radiusDp(getContext(), prefs));
-        values.add(prefs.getBoolean(ModuleSettings.COLOROS_CONTOUR, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, true) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.TILES_CONTOUR, OneClickPreset.defaultSwitch(ModuleSettings.TILES_CONTOUR)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, OneClickPreset.defaultSwitch(ModuleSettings.BACK_GESTURE_REMOVE_SMART)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED)) ? 1 : 0);
         values.add(Math.max(0, Math.min(prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_MAX_DP, ModuleSettings.BACK_GESTURE_WIDTH_MAX_DEFAULT),
                 prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP, ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT))));
-        values.add(prefs.getBoolean(ModuleSettings.MBACK_SYSTEM_TIMEOUT, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.GESTURE_BAR_WIDTH_ENABLED, true) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.MBACK_SYSTEM_TIMEOUT, OneClickPreset.defaultSwitch(ModuleSettings.MBACK_SYSTEM_TIMEOUT)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.GESTURE_BAR_WIDTH_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.GESTURE_BAR_WIDTH_ENABLED)) ? 1 : 0);
         values.add(ModuleSettings.gestureBarWidth(prefs.getInt(ModuleSettings.GESTURE_BAR_WIDTH_DP,
                 ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT)));
-        values.add(prefs.getBoolean(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CONTOUR, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME, OneClickPreset.defaultSwitch(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_CONTOUR, OneClickPreset.defaultSwitch(ModuleSettings.NOTIFICATION_CONTOUR)) ? 1 : 0);
         values.add(ModuleSettings.controlCenterStyle(prefs));
         values.add(prefs.getInt(ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR, ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR_DEFAULT));
-        values.add(prefs.getBoolean(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_EMPTY_HOME, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_SUBSCRIBE_WISH, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_CAMPAIGN_QUICK_APP, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_PHONE_CLEAR, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_CLEAN_SEARCH, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_YOU_MAY_LIKE, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DOWNLOAD_RECOMMENDATIONS, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_STAR_APPS, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_HIGH_RATED, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_EVERYONE_WATCHING, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, true) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, true) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, true) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, true) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, true) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.FIX_ICON_PACK_PREVIEW, true) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.ICON_CONTOUR, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.FOLDER_MENU_ALIGNMENT, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.WIDGET_CONTOUR, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.MENU_CONTOUR, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_ARROW, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, true) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION, OneClickPreset.defaultSwitch(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_EMPTY_HOME, OneClickPreset.defaultSwitch(ModuleSettings.STORE_EMPTY_HOME)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_SUBSCRIBE_WISH, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_MINE_SUBSCRIBE_WISH)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_CAMPAIGN_QUICK_APP, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_MINE_CAMPAIGN_QUICK_APP)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_PHONE_CLEAR, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_MINE_PHONE_CLEAR)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_CLEAN_SEARCH, OneClickPreset.defaultSwitch(ModuleSettings.STORE_CLEAN_SEARCH)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_YOU_MAY_LIKE, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_YOU_MAY_LIKE)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_DOWNLOAD_RECOMMENDATIONS, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_DOWNLOAD_RECOMMENDATIONS)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_STAR_APPS, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_STAR_APPS)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_HIGH_RATED, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_HIGH_RATED)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.STORE_HIDE_EVERYONE_WATCHING, OneClickPreset.defaultSwitch(ModuleSettings.STORE_HIDE_EVERYONE_WATCHING)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, OneClickPreset.defaultSwitch(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, OneClickPreset.defaultSwitch(ModuleSettings.WIRELESS_DEBUG_THEME_FIX)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, OneClickPreset.defaultSwitch(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC, OneClickPreset.defaultSwitch(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, OneClickPreset.defaultSwitch(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, OneClickPreset.defaultSwitch(ModuleSettings.DARK_APP_WHITELIST_MODE)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, OneClickPreset.defaultSwitch(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FIX_ICON_PACK_PREVIEW, OneClickPreset.defaultSwitch(ModuleSettings.FIX_ICON_PACK_PREVIEW)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.ICON_CONTOUR, OneClickPreset.defaultSwitch(ModuleSettings.ICON_CONTOUR)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.FOLDER_MENU_ALIGNMENT, OneClickPreset.defaultSwitch(ModuleSettings.FOLDER_MENU_ALIGNMENT)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.WIDGET_CONTOUR, OneClickPreset.defaultSwitch(ModuleSettings.WIDGET_CONTOUR)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.MENU_CONTOUR, OneClickPreset.defaultSwitch(ModuleSettings.MENU_CONTOUR)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_ARROW, OneClickPreset.defaultSwitch(ModuleSettings.BACK_GESTURE_ARROW)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, OneClickPreset.defaultSwitch(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND)) ? 1 : 0);
         values.add(ModuleSettings.backGestureDarkOpacity(prefs.getInt(ModuleSettings.BACK_GESTURE_DARK_OPACITY,
                 ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT)));
-        values.add(prefs.getBoolean(ModuleSettings.SEPARATE_SHADE_SWIPE, false) ? 1 : 0);
-        values.add(prefs.getBoolean(ModuleSettings.BACKGROUND_SCALE_ENABLED, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.SEPARATE_SHADE_SWIPE, OneClickPreset.defaultSwitch(ModuleSettings.SEPARATE_SHADE_SWIPE)) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACKGROUND_SCALE_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.BACKGROUND_SCALE_ENABLED)) ? 1 : 0);
         values.add(prefs.getInt(ModuleSettings.BACKGROUND_SCALE, ModuleSettings.BACKGROUND_SCALE_DEFAULT));
         cursor.addRow(values);
         return cursor;

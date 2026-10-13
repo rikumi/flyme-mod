@@ -278,7 +278,7 @@ public final class XposedInit extends XposedModule {
             ZygoteRestartBootHooks.install(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                     () -> getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)
-                            .getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, true),
+                            .getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, OneClickPreset.defaultSwitch(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK)),
                     this::deoptimize,
                     (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
@@ -345,7 +345,7 @@ public final class XposedInit extends XposedModule {
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                         this::deoptimize,
                         () -> getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)
-                                .getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, true));
+                                .getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, OneClickPreset.defaultSwitch(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION)));
             } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve fingerprint animation settings", error);
             }
@@ -595,7 +595,7 @@ public final class XposedInit extends XposedModule {
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                     this::deoptimize,
                     () -> getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)
-                            .getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, true));
+                            .getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, OneClickPreset.defaultSwitch(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION)));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve fingerprint animation effects", error);
         }
@@ -2579,7 +2579,7 @@ public final class XposedInit extends XposedModule {
                 mbackSystemTimeoutEnabled = mbackColumn >= 0 && cursor.getInt(mbackColumn) != 0;
                 int mbackAssistantColumn = cursor.getColumnIndex(ModuleSettings.MBACK_MISSING_ASSISTANT_HOME);
                 mbackMissingAssistantHomeEnabled = mbackAssistantColumn >= 0 && cursor.getInt(mbackAssistantColumn) != 0;
-                int contourColumn = cursor.getColumnIndex(ModuleSettings.COLOROS_CONTOUR);
+                int contourColumn = cursor.getColumnIndex(ModuleSettings.TILES_CONTOUR);
                 colorOsContourEnabled = contourColumn >= 0 && cursor.getInt(contourColumn) != 0;
                 int lightOpacityColumn = cursor.getColumnIndex(ModuleSettings.LIGHT_OPACITY);
                 lightBackgroundOpacity = lightOpacityColumn < 0 ? ModuleSettings.LIGHT_OPACITY_DEFAULT

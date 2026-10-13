@@ -41,7 +41,7 @@ internal fun HomeModuleControls() {
                                 OneClickPreset.apply(it, enabled)
                             }.commit()
                             if (saved) ModuleSettings.MEDIA_FOLDERS.forEach { (folder, key) ->
-                                updateMediaFolder(folder, preferences.getBoolean(key, false))
+                                updateMediaFolder(folder, preferences.getBoolean(key, OneClickPreset.defaultSwitch(key)))
                             }
                             saved
                         }

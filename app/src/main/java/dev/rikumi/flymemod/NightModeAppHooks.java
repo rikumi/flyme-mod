@@ -119,7 +119,7 @@ final class NightModeAppHooks {
 
     private void read() {
         try {
-            enabled = preferences.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, false);
+            enabled = preferences.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, OneClickPreset.defaultSwitch(ModuleSettings.DARK_APP_SPECIAL_PACKAGES));
         } catch (RuntimeException error) {
             if (!readErrorLogged) {
                 readErrorLogged = true;

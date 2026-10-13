@@ -18,14 +18,14 @@ final class NightModeWhitelistHooks {
         Method state = model.getDeclaredMethod("setNightModeEnabled", boolean.class);
         Method read = base.getDeclaredMethod("j", String.class);
         installer.hook(manager, "j", chain -> {
-            if (!preferences.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, true)) return chain.proceed();
+            if (!preferences.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, OneClickPreset.defaultSwitch(ModuleSettings.DARK_APP_WHITELIST_MODE))) return chain.proceed();
             Context ctx = (Context) context.get(chain.getThisObject());
             return NightModeWhitelistPolicy.contains(Settings.Global.getString(ctx.getContentResolver(),
                     NightModeWhitelistPolicy.KEY), (String) chain.getArg(0));
         }, String.class);
         installer.hook(manager, "t", chain -> {
             Object result = chain.proceed();
-            if (preferences.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, true)) {
+            if (preferences.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, OneClickPreset.defaultSwitch(ModuleSettings.DARK_APP_WHITELIST_MODE))) {
                 Context ctx = (Context) context.get(chain.getThisObject());
                 synchronized (NightModeWhitelistHooks.class) {
                     String original = Settings.Global.getString(ctx.getContentResolver(), NightModeWhitelistPolicy.KEY);
@@ -37,7 +37,7 @@ final class NightModeWhitelistHooks {
         }, String.class, boolean.class);
         installer.hook(manager, "s", chain -> {
             Object result = chain.proceed();
-            if (preferences.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, true)) {
+            if (preferences.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, OneClickPreset.defaultSwitch(ModuleSettings.DARK_APP_WHITELIST_MODE))) {
                 Context ctx = (Context) context.get(chain.getThisObject());
                 synchronized (NightModeWhitelistHooks.class) {
                     String original = Settings.Global.getString(ctx.getContentResolver(), NightModeWhitelistPolicy.KEY);

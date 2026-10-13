@@ -48,7 +48,7 @@ final class SystemIconPackStore {
     void rebuild() {
         boolean wasReady=generations.get()!=null;
         long ticket=generations.invalidate();
-        boolean enabled=settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK,false);
+        boolean enabled=settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, OneClickPreset.defaultSwitch(ModuleSettings.SYSTEM_ICON_PACK));
         if(enabled || wasReady) context.getContentResolver().notifyChange(URI,null);
         if(!enabled) return;
         String pack=selection.getString("pack","");
@@ -156,7 +156,7 @@ final class SystemIconPackStore {
     }
     Bundle lookup(String pkg,String component,int user) {
         Bundle result=new Bundle();
-        if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK,false) || user!=android.os.Process.myUid()/100000) return result;
+        if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, OneClickPreset.defaultSwitch(ModuleSettings.SYSTEM_ICON_PACK)) || user!=android.os.Process.myUid()/100000) return result;
         synchronized(generations) {
             Snapshot snapshot=generations.get();
             if(snapshot==null) return result;
@@ -174,7 +174,7 @@ final class SystemIconPackStore {
     ParcelFileDescriptor open(Uri uri)throws FileNotFoundException {
         synchronized(generations) {
             Snapshot snapshot=generations.get(); List<String> parts=uri.getPathSegments();
-            if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK,false) || snapshot==null || parts.size()!=2
+            if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, OneClickPreset.defaultSwitch(ModuleSettings.SYSTEM_ICON_PACK)) || snapshot==null || parts.size()!=2
                     || !snapshot.id.equals(parts.get(0)) || !snapshot.files.containsValue(parts.get(1)))
                 throw new FileNotFoundException("Icon cache generation unavailable");
             return ParcelFileDescriptor.open(new File(snapshot.directory,parts.get(1)),ParcelFileDescriptor.MODE_READ_ONLY);

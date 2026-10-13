@@ -130,7 +130,7 @@ public final class ModuleSettings {
     public static final String COMBINED_COLLAPSE_FIX = "combined_control_center_collapse_fix";
     public static final String COMBINED_PULL_ANIMATION = "combined_control_center_pull_animation";
     public static final String SCALE = "operation_area_scale";
-    public static final String COLOROS_CONTOUR = "coloros_control_center_contour";
+    public static final String TILES_CONTOUR = "coloros_control_center_contour";
     public static final String LIGHT = "light_tile_background";
     public static final String LIGHT_OPACITY = "light_tile_background_opacity";
     public static final int LIGHT_OPACITY_DEFAULT = 12;
@@ -152,7 +152,7 @@ public final class ModuleSettings {
     public static final int CONTROL_CENTER_ACTIVE_COLOR_DEFAULT = 0x80E6F2FF;
     public static int controlCenterStyle(SharedPreferences preferences) {
         return Math.max(0, Math.min(2, preferences.getInt(CONTROL_CENTER_STYLE,
-                preferences.getBoolean(WHITE_ACTIVE, false) ? 1 : 0)));
+                preferences.getBoolean(WHITE_ACTIVE, OneClickPreset.defaultSwitch(WHITE_ACTIVE)) ? 1 : 0)));
     }
     public static final String WHITE_ACTIVE = "white_active_tiles";
     public static final String WHITE_ACTIVE_OPACITY = "white_active_opacity";
@@ -257,7 +257,7 @@ public final class ModuleSettings {
     private ModuleSettings() {}
 
     public static int networkSplitStyle(SharedPreferences preferences) {
-        return preferences.getBoolean(SPLIT_NETWORK_CARD, false)
+        return preferences.getBoolean(SPLIT_NETWORK_CARD, OneClickPreset.defaultSwitch(SPLIT_NETWORK_CARD))
                 ? 1 : 0;
     }
 
@@ -277,10 +277,10 @@ public final class ModuleSettings {
         }
         if (!preferences.contains(CONTROL_CENTER_STYLE)) {
             preferences.edit().putInt(CONTROL_CENTER_STYLE,
-                    preferences.getBoolean(WHITE_ACTIVE, false) ? 1 : 0).commit();
+                    preferences.getBoolean(WHITE_ACTIVE, OneClickPreset.defaultSwitch(WHITE_ACTIVE)) ? 1 : 0).commit();
         }
         if (!preferences.contains(SPLIT_NETWORK_CARD)) {
-            int oldStyle = preferences.getInt(NETWORK_SPLIT_STYLE, 0);
+            int oldStyle = preferences.getInt(NETWORK_SPLIT_STYLE, OneClickPreset.defaultSwitch(SPLIT_NETWORK_CARD) ? 1 : 0);
             preferences.edit().putBoolean(SPLIT_NETWORK_CARD, oldStyle != 0).commit();
         }
         if (!preferences.contains("hidden_launcher_apps_migrated")) {
@@ -347,7 +347,9 @@ public final class ModuleSettings {
         for (String[] group : groups) {
             // Existing grouped values, including explicit false, must never be overwritten.
             if (preferences.contains(group[0])) continue;
-            boolean enabled = false;
+            boolean hasLegacyValue = false;
+            for (int i = 1; i < group.length; i++) hasLegacyValue |= preferences.contains(group[i]);
+            boolean enabled = !hasLegacyValue && OneClickPreset.defaultSwitch(group[0]);
             for (int i = 1; i < group.length; i++) enabled |= preferences.getBoolean(group[i], false);
             if (editor == null) editor = preferences.edit();
             editor.putBoolean(group[0], enabled);

@@ -36,7 +36,7 @@ final class CameraLivePhotoHooks {
     }
 
     private int extraMs() {
-        return settings.getBoolean(ModuleSettings.CAMERA_LIVE_PREROLL_ENABLED, false)
+        return settings.getBoolean(ModuleSettings.CAMERA_LIVE_PREROLL_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.CAMERA_LIVE_PREROLL_ENABLED))
                 ? ModuleSettings.cameraLivePrerollMs(settings.getInt(ModuleSettings.CAMERA_LIVE_PREROLL_MS,
                         ModuleSettings.CAMERA_LIVE_PREROLL_DEFAULT)) : 0;
     }

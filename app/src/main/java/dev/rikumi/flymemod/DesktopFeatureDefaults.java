@@ -12,7 +12,7 @@ final class DesktopFeatureDefaults {
                 ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK,ModuleSettings.REMOVE_FINGERPRINT_ANIMATION}) {
             if(preferences.contains(key)) continue;
             if(editor==null) editor=preferences.edit();
-            editor.putBoolean(key,true);
+            editor.putBoolean(key,OneClickPreset.defaultSwitch(key));
         }
         if(editor!=null) editor.commit();
     }

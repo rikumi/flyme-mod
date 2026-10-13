@@ -269,7 +269,7 @@ final class SmallWindowLimitHooks {
     static boolean expandedMode(int mode) { return mode == 11 || mode == 1035; }
 
     private boolean enabled() {
-        return preferences.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false);
+        return preferences.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED));
     }
 
     private boolean isFloating(Object task) throws ReflectiveOperationException {

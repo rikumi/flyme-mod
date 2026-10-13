@@ -19,7 +19,7 @@ final class SplashScreenBlackHooks {
     SplashScreenBlackHooks(SharedPreferences preferences){this.preferences=preferences;}
 
     private boolean enabled(Context context,ApplicationInfo app) {
-        return preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND,false)
+        return preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, OneClickPreset.defaultSwitch(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND))
                 && (context.getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES
                 && app!=null && (app.flags&(ApplicationInfo.FLAG_SYSTEM|ApplicationInfo.FLAG_UPDATED_SYSTEM_APP))!=0;
     }

@@ -95,7 +95,7 @@ final class ThemeColorHooks {
             // for independent pure-black backgrounds and wireless-debugging fixes.
             boolean nextEnabled = false;
             int nextColor = 0;
-            boolean nextBlack = preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false);
+            boolean nextBlack = preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, OneClickPreset.defaultSwitch(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND));
             if (configured && enabled == nextEnabled && selectedColor == nextColor && blackBackground == nextBlack) return;
             blackBackground = nextBlack;
             backgroundFilter = null;

@@ -29,7 +29,7 @@ final class WirelessDebugPageHooks {
     }
 
     private void read() {
-        enabled = preferences.getBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, true);
+        enabled = preferences.getBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, OneClickPreset.defaultSwitch(ModuleSettings.WIRELESS_DEBUG_THEME_FIX));
         synchronized (icons) {
             for (ImageView icon : icons.keySet()) icon.post(icon::invalidate);
         }

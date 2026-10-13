@@ -87,7 +87,7 @@ final class SettingsHomeGoogleHooks {
             installer.hook(task.getDeclaredMethod("doInBackground", Object[].class), chain -> {
                 Object page = owner.get(chain.getThisObject()); pages.put(page, Boolean.TRUE);
                 Object result = chain.proceed();
-                if (!preferences.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, true)) return result;
+                if (!preferences.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, OneClickPreset.defaultSwitch(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE))) return result;
                 try {
                     Object targetAdapter = adapter.get(page);
                     Context context = (Activity) activity.invoke(page);
@@ -117,7 +117,7 @@ final class SettingsHomeGoogleHooks {
                         immersive.setInt(row, 3);
                         main.post(() -> {
                             try {
-                                if (!preferences.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, true)
+                                if (!preferences.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, OneClickPreset.defaultSwitch(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE))
                                         || adapter.get(page) != targetAdapter || list.get(targetAdapter) != rows) return;
                                 for (Object existing : rows)
                                     if (GOOGLE.equals(componentPackage.get(existing)) && LINK.equals(component.get(existing))) return;

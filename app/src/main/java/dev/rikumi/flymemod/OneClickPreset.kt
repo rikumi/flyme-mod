@@ -2,141 +2,75 @@ package dev.rikumi.flymemod
 
 import android.content.SharedPreferences
 
-/** Developer preset updated on 2026-10-14; excludes app lists and system Settings. */
+/** Developer preset; app lists and system Settings values are preserved. */
 internal object OneClickPreset {
-    val switches = mapOf(
-        ModuleSettings.STATUS_BAR_LYRIC_AVOID to ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT,
-        ModuleSettings.ANIMATED_MUTE_SLASH to true,
-        ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED to true,
-        ModuleSettings.BACKGROUND_SCALE_ENABLED to true,
-        ModuleSettings.SEPARATE_SHADE_SWIPE to true,
-        ModuleSettings.FIX_MEDIA_SWIPE to true,
-        ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS to true,
-        ModuleSettings.EARPHONE_NOISE_CONTROL to true,
-        ModuleSettings.AOD_CLOCK_MONOSPACE to false,
-        ModuleSettings.AOD_CLOCK_SPACING_ENABLED to false,
-        ModuleSettings.BACK_GESTURE_DARK_BACKGROUND to true,
-        ModuleSettings.BACK_GESTURE_WIDTH_ENABLED to false,
-        ModuleSettings.BACK_GESTURE_REMOVE_SMART to true,
-        ModuleSettings.BLOCK_LOCKSCREEN_LONG_PRESS_EDIT to true,
-        ModuleSettings.BLOCK_STORE_SPLASH to true,
-        ModuleSettings.BLOCK_WEATHER_ADS to true,
-        ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS to true,
-        ModuleSettings.CAMERA_DISABLE_AUTO_NIGHT to true,
-        ModuleSettings.CAMERA_KEEP_FILTER to true,
-        ModuleSettings.CAMERA_LIVE_PREROLL_ENABLED to true,
-        ModuleSettings.CAMERA_NIGHT_EXPOSURE_ENABLED to true,
-        ModuleSettings.CIRCLE_SMALL_TILES to true,
-        ModuleSettings.COLOROS_CONTOUR to false,
-        ModuleSettings.NOTIFICATION_CONTOUR to false,
-        ModuleSettings.COMBINED_COLLAPSE_FIX to true,
-        ModuleSettings.COMBINED_PULL_ANIMATION to true,
-        ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN to true,
-        ModuleSettings.COMBINED_FILTER_SETTINGS to true,
-        ModuleSettings.COMBINED_NOTIFICATION_WIDTH to true,
-        ModuleSettings.SECONDARY_EXPANSION_FIX to true,
-        ModuleSettings.CONTROL_CENTER_BUTTONS_UP to true,
-        ModuleSettings.CONTROL_CENTER_CLOCK_DATE_UP to true,
-        ModuleSettings.CONTROL_CENTER_CLOCK_MONOSPACE to false,
-        ModuleSettings.CONTROL_CENTER_CLOCK_SPACING_ENABLED to false,
-        ModuleSettings.TILE_CORNERS to true,
-        ModuleSettings.QS_TRANSLATION_ORIGIN to true,
-        ModuleSettings.WIFI_LABEL to true,
-        ModuleSettings.DARKEN to true,
-        ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND to true,
-        ModuleSettings.DISABLE_GOOGLE_NOTIFICATION_SUGGESTIONS to true,
-        ModuleSettings.EDIT_APP_ICON_NAME to true,
-        ModuleSettings.SYSTEM_ICON_PACK to true,
-        ModuleSettings.FOLD_IDLE_MEDIA to true,
-        ModuleSettings.FOLDER_RADIUS_ENABLED to true,
-        ModuleSettings.FOLDER_PAGING to true,
-        ModuleSettings.FOLDER_RESTORE_COLOR to true,
-        ModuleSettings.FOLDER_CLOSE_TARGET to true,
-        ModuleSettings.FOLDER_CENTER to true,
-        ModuleSettings.GESTURE_BAR_WIDTH_ENABLED to true,
-        ModuleSettings.HIDE_LUNAR to false,
-        ModuleSettings.HIDE_DISABLED_APPS to true,
-        ModuleSettings.HIDE_CARRIER to true,
-        ModuleSettings.HOME_ICON_MINIMUM_SIZE to true,
-        ModuleSettings.INSTALLER_SKIP_WARNINGS to true,
-        ModuleSettings.FOLDER_MENU_ALIGNMENT to true,
-        ModuleSettings.LAUNCHER_HIDE_APP_MENU to true,
-        ModuleSettings.ICON_CONTOUR to false,
-        ModuleSettings.FIX_ICON_PACK_PREVIEW to false,
-        ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK to true,
-        ModuleSettings.MENU_CONTOUR to true,
-        ModuleSettings.LAUNCHER_SPREAD_HIDDEN_APPS to true,
-        ModuleSettings.WIDGET_CONTOUR to false,
-        ModuleSettings.LIGHT to true,
-        ModuleSettings.LIMIT_AOD_MOVEMENT to true,
-        ModuleSettings.LOCK_CLOCK_MONOSPACE to true,
-        ModuleSettings.LOCK_CLOCK_SPACING_ENABLED to true,
-        ModuleSettings.LOCK_WIDGET_STARTUP_FIX to true,
-        ModuleSettings.MBACK_MISSING_ASSISTANT_HOME to true,
-        ModuleSettings.MBACK_SYSTEM_TIMEOUT to true,
-        "media_folder_block_alarms" to true,
-        "media_folder_block_audiobooks" to true,
-        "media_folder_block_movies" to true,
-        "media_folder_block_notifications" to true,
-        "media_folder_block_podcasts" to true,
-        "media_folder_block_recordings" to true,
-        "media_folder_block_ringtones" to true,
-        ModuleSettings.MERGE_DUAL_SIGNAL to true,
-        ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS to true,
-        ModuleSettings.NATIVE_NOTIFICATION_EXPANSION to true,
-        ModuleSettings.NETWORK_DARK_SPINNER to false,
-        ModuleSettings.NOTIFICATION_BACKGROUND_COLOR to true,
-        ModuleSettings.NOTIFICATION_CUSTOM_CORNERS to true,
-        ModuleSettings.NOTIFICATION_LIGHT to true,
-        ModuleSettings.NOTIFICATION_READ_LAYER_FIX to true,
-        ModuleSettings.SCALE to true,
-        ModuleSettings.OPTIMIZE_2X1_TEXT to true,
-        ModuleSettings.ORIGINAL_NOTIFICATION_ICONS to true,
-        ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION to true,
-        ModuleSettings.BLUR_ENABLED to true,
-        ModuleSettings.RECENTS_HIDE_NOT_RUNNING to true,
-        ModuleSettings.RECENTS_CORNER_ENABLED to true,
-        ModuleSettings.RECENTS_SWIPE_UP_KILL to true,
-        ModuleSettings.REMOVE_NOTIFICATION_ACTION_BACKGROUND to true,
-        ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT to true,
-        ModuleSettings.SEPARATE_NETWORK_TYPE to true,
-        ModuleSettings.SLIDER_ACTIVE_CORNERS to true,
-        ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED to true,
-        ModuleSettings.SPLIT_NETWORK_CARD to true,
-        ModuleSettings.STACKED_RECENTS to true,
-        ModuleSettings.STATUS_BAR_CLOCK_MONOSPACE to false,
-        ModuleSettings.STATUS_BAR_CLOCK_SPACING_ENABLED to false,
-        ModuleSettings.STORE_CLEAN_SEARCH to true,
-        ModuleSettings.STORE_DETAIL_HIDE_REVIEWS to true,
-        ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL to true,
-        ModuleSettings.STORE_DETAIL_HIDE_TOPICS to true,
-        ModuleSettings.STORE_EMPTY_APPLICATION_PAGE to true,
-        ModuleSettings.STORE_EMPTY_HOME to true,
-        ModuleSettings.STORE_HIDE_COMMUNITY to true,
-        ModuleSettings.STORE_HIDE_DAILY to true,
-        ModuleSettings.STORE_HIDE_DETAIL_RECOMMENDATIONS to true,
-        ModuleSettings.STORE_HIDE_DOWNLOAD_PAGE_RECOMMENDATIONS to true,
-        ModuleSettings.STORE_HIDE_DOWNLOAD_RECOMMENDATIONS to false,
-        ModuleSettings.STORE_HIDE_EVERYONE_WATCHING to false,
-        ModuleSettings.STORE_HIDE_FEATURED to true,
-        ModuleSettings.STORE_HIDE_GAMES to true,
-        ModuleSettings.STORE_HIDE_HIGH_RATED to false,
-        ModuleSettings.STORE_HIDE_MINE_CAMPAIGN_QUICK_APP to true,
-        ModuleSettings.STORE_HIDE_MINE_PHONE_CLEAR to true,
-        ModuleSettings.STORE_HIDE_MINE_RECOMMENDATIONS to true,
-        ModuleSettings.STORE_HIDE_MINE_SUBSCRIBE_WISH to true,
-        ModuleSettings.STORE_HIDE_POPULAR to true,
-        ModuleSettings.STORE_HIDE_SEARCH_HOT to true,
-        ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS to true,
-        ModuleSettings.STORE_HIDE_STAR_APPS to false,
-        ModuleSettings.STORE_HIDE_UPDATE_PAGE_RECOMMENDATIONS to true,
-        ModuleSettings.STORE_HIDE_YOU_MAY_LIKE to false,
-        ModuleSettings.TILE_BACKGROUND_COLOR to true,
-        ModuleSettings.WALLPAPER_STARTUP_FIX to true,
-        ModuleSettings.WEATHER_DARK_BACKGROUND to true,
-        ModuleSettings.WHITE_ACTIVE to true,
-        ModuleSettings.HEADS_UP_WIDTH to true,
+    // Only these switches are disabled by the developer preset.
+    private val disabledSwitches = setOf(
+        // Font monospace and spacing are left disabled by default except lockscreen clock.
+        ModuleSettings.CONTROL_CENTER_CLOCK_MONOSPACE,
+        ModuleSettings.CONTROL_CENTER_CLOCK_SPACING_ENABLED,
+        ModuleSettings.STATUS_BAR_CLOCK_MONOSPACE,
+        ModuleSettings.STATUS_BAR_CLOCK_SPACING_ENABLED,
+
+        // Contour switches are left disabled by default.
+        ModuleSettings.TILES_CONTOUR,
+        ModuleSettings.NOTIFICATION_CONTOUR,
+        ModuleSettings.ICON_CONTOUR,
+        ModuleSettings.MENU_CONTOUR,
+        ModuleSettings.WIDGET_CONTOUR,
+
+        // Hide lunar switch is left disabled by default.
+        ModuleSettings.HIDE_LUNAR,
     )
+
+    @JvmStatic
+    fun defaultSwitch(key: String): Boolean = key !in disabledSwitches
+
+    // Legacy and custom controls have no SwitchItem in the settings catalog.
+    private val additionalSwitches = setOf(
+        ModuleSettings.AOD_CLOCK_MONOSPACE,
+        ModuleSettings.AOD_CLOCK_SPACING_ENABLED,
+        ModuleSettings.BACK_GESTURE_WIDTH_ENABLED,
+        ModuleSettings.NETWORK_DARK_SPINNER,
+        ModuleSettings.STORE_HIDE_DOWNLOAD_RECOMMENDATIONS,
+        ModuleSettings.STORE_HIDE_EVERYONE_WATCHING,
+        ModuleSettings.STORE_HIDE_HIGH_RATED,
+        ModuleSettings.STORE_HIDE_STAR_APPS,
+        ModuleSettings.STORE_HIDE_YOU_MAY_LIKE,
+        ModuleSettings.STORE_DETAIL_HIDE_REVIEWS,
+        ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL,
+        ModuleSettings.STORE_DETAIL_HIDE_TOPICS,
+        ModuleSettings.STORE_EMPTY_APPLICATION_PAGE,
+        ModuleSettings.STORE_HIDE_COMMUNITY,
+        ModuleSettings.STORE_HIDE_DAILY,
+        ModuleSettings.STORE_HIDE_POPULAR,
+        ModuleSettings.STORE_HIDE_SEARCH_HOT,
+        ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS,
+        ModuleSettings.WHITE_ACTIVE,
+    )
+
+    val switches: Map<String, Boolean> by lazy {
+        buildSet {
+            fun collect(items: List<SettingsItem>) {
+                items.forEach { item ->
+                    when (item) {
+                        is SwitchItem -> {
+                            add(item.key)
+                            collect(item.children)
+                        }
+                        is FolderBlockItem -> add(item.key)
+                        is ColorItem -> add(item.key)
+                        else -> Unit
+                    }
+                }
+            }
+            SETTINGS_GROUPS.values.flatten().forEach { collect(it.items) }
+            add(HIDE_DISABLED_APPS_ITEM.key)
+            addAll(additionalSwitches)
+            addAll(applicationSwitches)
+            addAll(disabledSwitches)
+        }.associateWith { defaultSwitch(it) }
+    }
     val values = mapOf(
         ModuleSettings.AUTO_BRIGHTNESS_OFFSET to ModuleSettings.AUTO_BRIGHTNESS_OFFSET_DEFAULT,
         ModuleSettings.STATUS_BAR_CHARGING_INFO to ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT,
@@ -187,18 +121,18 @@ internal object OneClickPreset {
     )
 
     fun isEnabled(preferences: SharedPreferences): Boolean =
-        switches.keys.any { preferences.getBoolean(it, it == ModuleSettings.STATUS_BAR_LYRIC_AVOID && ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT) } ||
-            preferences.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, false) ||
-            preferences.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, false) ||
-            (preferences.getBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true) &&
+        switches.keys.any { preferences.getBoolean(it, defaultSwitch(it)) } ||
+            preferences.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, OneClickPreset.defaultSwitch(ModuleSettings.APP_IMMERSIVE_NAVIGATION)) ||
+            preferences.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, OneClickPreset.defaultSwitch(ModuleSettings.DARK_APP_SPECIAL_PACKAGES)) ||
+            (preferences.getBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED)) &&
                 !preferences.getStringSet(ModuleSettings.HIDDEN_LAUNCHER_APPS, emptySet()).isNullOrEmpty()) ||
-            (preferences.getBoolean(ModuleSettings.LANDSCAPE_GAME_ENABLED, true) &&
+            (preferences.getBoolean(ModuleSettings.LANDSCAPE_GAME_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.LANDSCAPE_GAME_ENABLED)) &&
                 !preferences.getStringSet(ModuleSettings.LANDSCAPE_GAME_PACKAGES, emptySet()).isNullOrEmpty()) ||
             modeKeys.any { preferences.getInt(it, if (it == ModuleSettings.STATUS_BAR_CHARGING_INFO) ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT else 0) != 0 }
 
     fun apply(editor: SharedPreferences.Editor, enabled: Boolean) {
         if (enabled) {
-            switches.filterValues { it }.forEach { (key, _) -> editor.putBoolean(key, true) }
+            switches.forEach { (key, value) -> editor.putBoolean(key, value) }
             values.forEach { (key, value) ->
                 if (key !in modeKeys || value != 0) editor.putInt(key, value)
             }

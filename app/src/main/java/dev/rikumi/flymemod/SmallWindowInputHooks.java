@@ -126,7 +126,7 @@ final class SmallWindowInputHooks {
         log.accept("Flyme retained pin-window touch regions and native gesture targeting registered", null);
     }
 
-    private boolean enabled() { return preferences.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false); }
+    private boolean enabled() { return preferences.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED)); }
 
     private void restoreExpanded(Object area) throws ReflectiveOperationException {
         // Native findMinPositionForRootTask refuses to lower an always-on-top pin.
