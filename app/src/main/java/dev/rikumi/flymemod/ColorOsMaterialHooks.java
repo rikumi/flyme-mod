@@ -450,18 +450,36 @@ final class ColorOsMaterialHooks {
         }
         if (networkRole != 0) hosts.get(view).networkRole = networkRole;
         apply(view);
+        if(networkRole==1)for(View candidate:new ArrayList<>(hosts.keySet())) {
+            Host host=hosts.get(candidate);
+            if(candidate!=null&&host!=null&&host.networkRole==1&&!networkContourVisible(candidate,host))
+                remove(candidate);
+        }
     }
 
     private void apply(View view) {
         apply(view, true);
+    }
+
+    private boolean networkContourVisible(View view, Host host) {
+        boolean split=splitNetworkEnabled.getAsBoolean();
+        if(host.networkRole==2)return split;
+        if(host.networkRole!=1)return true;
+        if(split)return false;
+        // The panel wrapper, card and row parent can share the same outer bounds.
+        // Only the outermost registered network host owns the unsplit outline.
+        for(android.view.ViewParent parent=view.getParent();parent instanceof View ancestor;parent=ancestor.getParent()) {
+            Host owner=hosts.get(ancestor);
+            if(owner!=null&&owner.networkRole==1)return false;
+        }
+        return true;
     }
     private void apply(View view, boolean invalidateMask) {
         if (Build.VERSION.SDK_INT < 33) return;
         Host host = hosts.get(view);
         if (host == null) return;
         try {
-            boolean split = splitNetworkEnabled.getAsBoolean();
-            boolean visible = host.networkRole == 1 ? !split : host.networkRole != 2 || split;
+            boolean visible = networkContourVisible(view, host);
             boolean enabled = isMedia(view) ? notificationEnabled.getAsBoolean() : contourEnabled.getAsBoolean();
             if (!enabled || !visible) {
                 remove(view);
@@ -638,6 +656,8 @@ final class ColorOsMaterialHooks {
         public void draw(Canvas canvas) {
             View view = owner.get(); Rect bounds = getBounds();
             if (view == null || bounds.isEmpty()) return;
+            Host host=hosts.get(view);
+            if(!circularButton&&host!=null&&!networkContourVisible(view,host))return;
             // A stale display list can still reference a displaced drawable. Only
             // the current tile owner may draw; notification contours are direct draws.
             if (!circularButton && !view.getClass().getName().endsWith(".NotificationBackgroundView")

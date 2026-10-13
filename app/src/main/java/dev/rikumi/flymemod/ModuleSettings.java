@@ -5,6 +5,9 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 
 public final class ModuleSettings {
+    public static final String AUTO_BRIGHTNESS_OFFSET_ENABLED = "auto_brightness_offset_enabled";
+    public static final String AUTO_BRIGHTNESS_OFFSET = "auto_brightness_offset";
+    public static final int AUTO_BRIGHTNESS_OFFSET_DEFAULT = 10;
     public static final String DARK_SYSTEM_APP_BLACK_BACKGROUND = "dark_system_app_black_background";
     public static final String WIRELESS_DEBUG_THEME_FIX = "wireless_debug_theme_fix";
     public static final String FIX_ZYGOTE_RESTART_UNLOCK = "fix_zygote_restart_unlock";
@@ -139,9 +142,9 @@ public final class ModuleSettings {
     public static final int TILE_CORNER_PERCENT_MAX = 50;
     public static final String TILE_BACKGROUND_COLOR = "tile_background_color";
     public static final String TILE_BACKGROUND_SATURATION = "tile_background_saturation";
-    public static final int TILE_BACKGROUND_SATURATION_DEFAULT = 100;
-    public static final int TILE_BACKGROUND_SATURATION_MIN = 50;
-    public static final int TILE_BACKGROUND_SATURATION_MAX = 150;
+    public static final int TILE_BACKGROUND_SATURATION_DEFAULT = 50;
+    public static final int TILE_BACKGROUND_SATURATION_MIN = 0;
+    public static final int TILE_BACKGROUND_SATURATION_MAX = 100;
     public static final String NETWORK_DARK_SPINNER = "network_tile_dark_spinner_fix";
     public static final String DARKEN = "dark_mode_background_darken";
     public static final String CONTROL_CENTER_STYLE = "coloros_control_center_style";

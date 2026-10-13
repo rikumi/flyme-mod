@@ -268,6 +268,13 @@ public final class XposedInit extends XposedModule {
     @Override public void onSystemServerStarting(SystemServerStartingParam param) {
         ClassLoader loader = param.getClassLoader();
         try {
+            AutoBrightnessOffsetHooks.install(loader, getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                    this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve automatic brightness offset", error);
+        }
+        try {
             ZygoteRestartBootHooks.install(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                     () -> getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)
@@ -1470,7 +1477,8 @@ public final class XposedInit extends XposedModule {
         int value = (Integer) slider.getClass().getMethod("getProgress").invoke(slider);
         int max = (Integer) slider.getClass().getMethod("getMax").invoke(slider);
         int color = volumeSliderIcons.contains(icon)
-                ? (max > 0 && (long)value*100 > (long)max*15 ? 0xCC555555 : 0xCCDADADA)
+                ? (!whiteActiveEnabled ? Color.WHITE
+                    : max > 0 && (long)value*100 > (long)max*15 ? 0xCC555555 : 0xCCDADADA)
                 : (max > 0 && (long) value * 100 > (long) max * 15
                     ? activeTileIconColor("brightness") : Color.WHITE);
         if (!force && Integer.valueOf(color).equals(sliderIconColors.get(icon))) return;
@@ -2789,6 +2797,7 @@ public final class XposedInit extends XposedModule {
                         + ", statusBarChargingInfo=" + statusBarChargingInfoMode
                         + ", monochromeNotificationActions=" + monochromeNotificationActionsEnabled
                         + ", volumeFirstFour=" + volumeFirstFourMode
+                        + ", earphoneNoiseControl=" + earphoneNoiseControlEnabled
                         + ", limitAodMovement=" + limitAodMovementEnabled
                         + ", combinedCollapseFix=" + combinedCollapseFixEnabled
                         + ", combinedPullAnimation=" + combinedPullAnimationEnabled

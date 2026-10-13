@@ -69,7 +69,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.TILE_BACKGROUND_COLOR, "控制中心磁贴背景增色", subtitle = "可能影响功耗",
                 slider = SliderSpec(
                     ModuleSettings.TILE_BACKGROUND_SATURATION, ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT, ModuleSettings.TILE_BACKGROUND_SATURATION_MIN, ModuleSettings.TILE_BACKGROUND_SATURATION_MAX,
-                    format = { String.format(java.util.Locale.ROOT, "%.2f", it / 100f) },
+                    unit = "%",
                 ),
             ),
             SwitchItem(ModuleSettings.TILE_CORNERS, "控制中心磁贴圆角大小",
@@ -122,6 +122,14 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.SECONDARY_EXPANSION_FIX, "修复合并控制中心二次展开动画"),
             SwitchItem(ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN, "合并控制中心清空通知后保持开启"),
         )),
+        SettingsGroup("亮度调节设置", listOf(
+            SwitchItem(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED, "自动亮度偏移",
+                slider = SliderSpec(
+                    ModuleSettings.AUTO_BRIGHTNESS_OFFSET, ModuleSettings.AUTO_BRIGHTNESS_OFFSET_DEFAULT,
+                    -30, 50, unit = "%", step = 5,
+                ),
+            ),
+        )),
         SettingsGroup("音量调节设置", listOf(
             SwitchItem(ModuleSettings.EARPHONE_NOISE_CONTROL, "音量条显示切换降噪模式图标"),
             SelectItem(ModuleSettings.VOLUME_FIRST_FOUR, "修改音量调节前四小格", listOf("不修改", "合并为两中格", "合并为一大格")),
@@ -141,7 +149,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR, "通知背景增色", subtitle = "可能影响功耗",
                 slider = SliderSpec(
                     ModuleSettings.NOTIFICATION_BACKGROUND_SATURATION, ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT, ModuleSettings.TILE_BACKGROUND_SATURATION_MIN, ModuleSettings.TILE_BACKGROUND_SATURATION_MAX,
-                    format = { String.format(java.util.Locale.ROOT, "%.2f", it / 100f) },
+                    unit = "%",
                 ),
             ),
             SwitchItem(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS, "通知圆角大小",

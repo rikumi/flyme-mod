@@ -615,7 +615,7 @@ final class TileBackdropHooks {
                     previousRadius = radius; previousSmoothness = smoothing;
                 }
                 visible = !visibleBounds.isEmpty();
-                float saturation = (float) Math.max(0.5, Math.min(1.5,
+                float saturation = (float) Math.max(0.0, Math.min(1.0,
                         (notification ? notificationSaturation : saturationAmount).getAsDouble()));
                 if (saturation != previousSaturation) {
                     setFloat.invoke(effect,"saturationAmount",saturation);

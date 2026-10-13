@@ -19,7 +19,9 @@ public final class CameraSettingsBridge extends Application {
     private void notifyServicesChanged() { serviceObservers.forEach(Runnable::run); }
     private SharedPreferences local;
     private final SharedPreferences.OnSharedPreferenceChangeListener changes = (prefs, key) -> {
-        if (ModuleSettings.STATUS_BAR_LYRIC_AVOID.equals(key)
+        if (ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED.equals(key)
+                || ModuleSettings.AUTO_BRIGHTNESS_OFFSET.equals(key)
+                || ModuleSettings.STATUS_BAR_LYRIC_AVOID.equals(key)
                 || ModuleSettings.SYSTEM_ICON_PACK.equals(key)
                 || ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND.equals(key)
                 || ModuleSettings.WIRELESS_DEBUG_THEME_FIX.equals(key)
@@ -27,6 +29,8 @@ public final class CameraSettingsBridge extends Application {
                 || ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC.equals(key)
                 || ModuleSettings.REMOVE_FINGERPRINT_ANIMATION.equals(key)
                 || ModuleSettings.LOCK_CLOCK_FONT.equals(key)
+                || ModuleSettings.LOCK_CLOCK_SPACING_ENABLED.equals(key)
+                || ModuleSettings.LOCK_CLOCK_SPACING.equals(key)
                 || ModuleSettings.CLOCK_FONT_WEIGHT.equals(key)
                 || ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE.equals(key)
                 || ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION.equals(key)
@@ -82,6 +86,10 @@ public final class CameraSettingsBridge extends Application {
         for (XposedService service : services) {
             try {
                 service.getRemotePreferences(REMOTE_FILE).edit()
+                        .putBoolean(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED,
+                                local.getBoolean(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED, false))
+                        .putInt(ModuleSettings.AUTO_BRIGHTNESS_OFFSET,
+                                local.getInt(ModuleSettings.AUTO_BRIGHTNESS_OFFSET, ModuleSettings.AUTO_BRIGHTNESS_OFFSET_DEFAULT))
                         .putBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID,
                                 local.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT))
                         .putBoolean(ModuleSettings.SYSTEM_ICON_PACK,local.getBoolean(ModuleSettings.SYSTEM_ICON_PACK,false))
@@ -96,6 +104,8 @@ public final class CameraSettingsBridge extends Application {
                         .putBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION,
                                 local.getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, false))
                         .putInt(ModuleSettings.LOCK_CLOCK_FONT,local.getInt(ModuleSettings.LOCK_CLOCK_FONT,0))
+                        .putBoolean(ModuleSettings.LOCK_CLOCK_SPACING_ENABLED,local.getBoolean(ModuleSettings.LOCK_CLOCK_SPACING_ENABLED,false))
+                        .putInt(ModuleSettings.LOCK_CLOCK_SPACING,local.getInt(ModuleSettings.LOCK_CLOCK_SPACING,0))
                         .putInt(ModuleSettings.CLOCK_FONT_WEIGHT,local.getInt(ModuleSettings.CLOCK_FONT_WEIGHT,0))
                         .putBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE,
                                 local.getBoolean(ModuleSettings.SETTINGS_HOME_FORCE_GOOGLE, true))

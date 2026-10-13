@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.graphics.drawable.Drawable;
+import android.graphics.Rect;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.os.Handler;
@@ -15,6 +16,9 @@ import android.os.RemoteException;
 import android.os.Looper;
 import android.os.Parcel;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.MotionEvent;
+import android.view.TouchDelegate;
 import android.widget.ImageView;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
@@ -38,7 +42,11 @@ final class EarphoneNoiseHooks {
     private final Map<ImageView,Drawable> originals=new WeakHashMap<>();
     private final Map<ImageView,Drawable> replacements=new WeakHashMap<>();
     private final Map<ImageView,Boolean> clickable=new WeakHashMap<>();
+    private final Map<ViewGroup,TouchDelegate> touchGestures=new WeakHashMap<>();
+    private final EarphoneNoiseState noiseState=new EarphoneNoiseState();
+    private final Map<ImageView,Drawable> foregrounds=new WeakHashMap<>();
     private String initializedDevice;
+    private long initializationRequestedAt;
     private volatile IBinder appBinder;
     private boolean appBound;
     private volatile IBinder binder;
@@ -67,7 +75,7 @@ final class EarphoneNoiseHooks {
         }
         public void onServiceDisconnected(ComponentName name){
             if(name.getClassName().endsWith("RemotePrefService"))appBinder=null;else binder=null;
-            initializedDevice=null;deviceId=null;mode=0;main.post(()->apply(0));
+            initializedDevice=null;deviceId=null;mode=0;noiseState.clear();main.post(()->apply(0));
         }
         public void onBindingDied(ComponentName name){onServiceDisconnected(name);release();}
         public void onNullBinding(ComponentName name){onBindingDied(name);}
@@ -119,18 +127,57 @@ final class EarphoneNoiseHooks {
         installer.hook("android.view.View","performClick",chain->{
             if(chain.getThisObject() instanceof ImageView icon&&icons.containsKey(icon)
                     &&enabled.getAsBoolean()&&deviceId!=null&&mode>=1&&media(icon)){
-                String id=deviceId;int target=mode==3?2:3;
+                String id=deviceId;
                 worker.post(()->{
                     try{
-                        if(!id.equals(deviceId)||appBinder==null)return;
-                        Parcel reply=appRequest(5,id,target);reply.recycle();
-                        integer(19,id,null);read();
+                        if(!enabled.getAsBoolean()||!id.equals(deviceId)||binder==null)return;
+                        int target=noiseState.target(id,mode);
+                        // The app wrapper skips requests matching its stale SDK cache.
+                        // Use the same SDK setter directly, after read() has validated the device.
+                        if(integer(20,id,target)==0){status("Noise mode request rejected");return;}
+                        noiseState.requested(id,target);
+                        mode=target;
+                        main.post(()->{if(id.equals(deviceId))apply(target);});
+                        status("Noise mode requested: "+target);
+                        integer(19,id,null);
                     }catch(Exception error){log.accept("Cannot switch earphone noise mode",error);}
                 });
                 return true;
             }
             return chain.proceed();
         });
+        installer.hook("android.view.ViewGroup","dispatchTouchEvent",chain->{
+            ViewGroup parent=(ViewGroup)chain.getThisObject();
+            MotionEvent event=(MotionEvent)chain.getArg(0);
+            int action=event.getActionMasked();
+            if(action==MotionEvent.ACTION_DOWN){
+                touchGestures.remove(parent);
+                if(enabled.getAsBoolean()&&deviceId!=null&&mode>=1)
+                    for(ImageView icon:clickable.keySet()){
+                        if(icon.getParent()!=parent||!icon.isShown()||!media(icon))continue;
+                        Rect bounds=new Rect();icon.getHitRect(bounds);
+                        float density=icon.getResources().getDisplayMetrics().density;
+                        int size=Math.max(Math.round(48*density),Math.max(bounds.width(),bounds.height())+Math.round(16*density));
+                        int x=bounds.centerX(),y=bounds.centerY();
+                        bounds.set(x-size/2,y-size/2,x+(size+1)/2,y+(size+1)/2);
+                        if(bounds.contains((int)event.getX(),(int)event.getY())){
+                            touchGestures.put(parent,new TouchDelegate(bounds,icon));
+                            break;
+                        }
+                    }
+            }
+            TouchDelegate delegate=touchGestures.get(parent);
+            if(delegate==null)return chain.proceed();
+            MotionEvent copy=MotionEvent.obtain(event);
+            try{
+                if(!enabled.getAsBoolean()||deviceId==null||mode<1)copy.setAction(MotionEvent.ACTION_CANCEL);
+                delegate.onTouchEvent(copy);
+            }finally{
+                copy.recycle();
+                if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)touchGestures.remove(parent);
+            }
+            return true;
+        },MotionEvent.class);
         // The animation path can inline changeIconResource/setUpIconFrame; keep
         // their actual owner calls observable on precompiled SystemUI builds.
         for(Method method:loader.loadClass(OWNER).getDeclaredMethods())
@@ -178,7 +225,7 @@ final class EarphoneNoiseHooks {
     private void release(){
         if(bound){try{context.unbindService(connection);}catch(RuntimeException ignored){}bound=false;}
         if(appBound){try{context.unbindService(connection);}catch(RuntimeException ignored){}appBound=false;}
-        binder=null;appBinder=null;initializedDevice=null;
+        binder=null;appBinder=null;initializedDevice=null;noiseState.clear();
     }
     private final Runnable tick=new Runnable(){public void run(){
         if(!enabled.getAsBoolean()){polling=false;return;}
@@ -205,7 +252,7 @@ final class EarphoneNoiseHooks {
                 if(candidate==null||candidate.isEmpty())continue;
                 if(appBinder==null)continue;
                 if(!candidate.equals(initializedDevice)){
-                    Parcel reply=appRequest(4,candidate,null);reply.recycle();initializedDevice=candidate;
+                    initializeDevice(candidate);
                     continue;
                 }
                 if(integer(62,candidate,null)==0){status("Recognized earphone is not connected to SDK");continue;}
@@ -215,18 +262,34 @@ final class EarphoneNoiseHooks {
                     recognized=appDevice.readInt()!=0&&candidate.equals(appDevice.readString());
                     if(recognized){String appModel=appDevice.readString();recognized=appModel!=null&&!appModel.isEmpty();}
                 }finally{appDevice.recycle();}
-                if(!recognized){status("Earphone app has not accepted the device");continue;}
+                if(!recognized){
+                    status("Earphone app has not accepted the device");
+                    // initBtSdk posts prepare() + directConnectDevice() to the app's main thread.
+                    // Its own SDK binding is asynchronous, so the first request may create no
+                    // cached device. A successful Binder transaction is not device acceptance.
+                    if(android.os.SystemClock.uptimeMillis()-initializationRequestedAt>=5000)
+                        initializeDevice(candidate);
+                    continue;
+                }
                 if(integer(63,candidate,null)==0){status("Waiting for earphone protocol");integer(7,candidate,null);continue;}
                 integer(19,candidate,null);
                 String model=string(56,candidate);
                 if(model==null||model.isEmpty())continue;
                 int value=integer(18,candidate,null);
-                if(value>=1&&value<=3){id=candidate;current=value;status("Noise mode available: "+value);break;}
+                if(value>=1&&value<=3){id=candidate;current=noiseState.observed(candidate,value);status("Noise mode available: "+value);break;}
                 status("Unsupported or pending noise mode: "+value);
             }
         }
+        if(id==null)noiseState.clear();
         deviceId=id;mode=current;
         int next=current;main.post(()->apply(next));
+    }
+    private void initializeDevice(String id) throws Exception {
+        Parcel reply=appRequest(4,id,null);
+        reply.recycle();
+        initializedDevice=id;
+        initializationRequestedAt=android.os.SystemClock.uptimeMillis();
+        status("Earphone app initialization requested");
     }
     private synchronized void status(String message){
         if(message.equals(lastStatus))return;
@@ -265,6 +328,7 @@ final class EarphoneNoiseHooks {
             else if(clickable.containsKey(icon)){
                 icon.setImageDrawable(originals.get(icon));icon.setClickable(clickable.remove(icon));
                 replacements.remove(icon);
+                icon.setForeground(foregrounds.remove(icon));
             }
         }
     }
@@ -275,7 +339,11 @@ final class EarphoneNoiseHooks {
             String name=value==3?"dc_icon_anc_transparent_normal":value==2?"dc_icon_anc_on_normal":"dc_icon_anc_off_normal";
             int res=app.getResources().getIdentifier(name,"drawable","com.meizu.earphone");
             if(res==0)return;
-            if(!clickable.containsKey(icon))clickable.put(icon,icon.isClickable());
+            if(!clickable.containsKey(icon)){
+                clickable.put(icon,icon.isClickable());
+                foregrounds.put(icon,icon.getForeground());
+                icon.setForeground(EarphoneNoiseRipple.create());
+            }
             icon.setClickable(true);
             icon.getClass().getMethod("cancelAnimation").invoke(icon);
             Drawable replacement=app.getDrawable(res);

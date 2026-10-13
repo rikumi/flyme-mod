@@ -2,11 +2,17 @@ package dev.rikumi.flymemod
 
 import android.content.SharedPreferences
 
-/** Snapshot of Rikumi's module options on 2026-10-12; excludes app lists and system Settings. */
+/** Developer preset updated on 2026-10-14; excludes app lists and system Settings. */
 internal object OneClickPreset {
     val switches = mapOf(
         ModuleSettings.STATUS_BAR_LYRIC_AVOID to ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT,
         ModuleSettings.ANIMATED_MUTE_SLASH to true,
+        ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED to true,
+        ModuleSettings.BACKGROUND_SCALE_ENABLED to true,
+        ModuleSettings.SEPARATE_SHADE_SWIPE to true,
+        ModuleSettings.FIX_MEDIA_SWIPE to true,
+        ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS to true,
+        ModuleSettings.EARPHONE_NOISE_CONTROL to true,
         ModuleSettings.AOD_CLOCK_MONOSPACE to false,
         ModuleSettings.AOD_CLOCK_SPACING_ENABLED to false,
         ModuleSettings.BACK_GESTURE_DARK_BACKGROUND to true,
@@ -132,11 +138,13 @@ internal object OneClickPreset {
         ModuleSettings.HEADS_UP_WIDTH to true,
     )
     val values = mapOf(
+        ModuleSettings.AUTO_BRIGHTNESS_OFFSET to ModuleSettings.AUTO_BRIGHTNESS_OFFSET_DEFAULT,
         ModuleSettings.STATUS_BAR_CHARGING_INFO to ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT,
         ModuleSettings.AOD_CLOCK_FONT to 2,
         ModuleSettings.AOD_CLOCK_SPACING to 0,
         ModuleSettings.BACK_GESTURE_DARK_OPACITY to ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT,
         ModuleSettings.BACK_GESTURE_WIDTH_DP to 32,
+        ModuleSettings.BACKGROUND_SCALE to ModuleSettings.BACKGROUND_SCALE_DEFAULT,
         ModuleSettings.CAMERA_NIGHT_EXPOSURE_MS to 1000,
         ModuleSettings.CAMERA_LIVE_PREROLL_MS to ModuleSettings.CAMERA_LIVE_PREROLL_DEFAULT,
         ModuleSettings.SMALL_WINDOW_LIMIT to ModuleSettings.SMALL_WINDOW_LIMIT_DEFAULT,
@@ -154,14 +162,14 @@ internal object OneClickPreset {
         ModuleSettings.LIGHT_OPACITY to 10,
         ModuleSettings.LOCK_CLOCK_FONT to 2,
         ModuleSettings.LOCK_CLOCK_SPACING to -4,
-        ModuleSettings.NOTIFICATION_BACKGROUND_SATURATION to 100,
+        ModuleSettings.NOTIFICATION_BACKGROUND_SATURATION to ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT,
         ModuleSettings.NOTIFICATION_CORNER_PERCENT to 30,
         ModuleSettings.NOTIFICATION_LIGHT_OPACITY to 10,
         ModuleSettings.BLUR_RADIUS to 15,
         ModuleSettings.STATUS_BAR_CLOCK_FONT to 2,
         ModuleSettings.STATUS_BAR_CLOCK_SPACING to 0,
         ModuleSettings.STATUS_BAR_CLOCK_WEIGHT to 0,
-        ModuleSettings.TILE_BACKGROUND_SATURATION to 100,
+        ModuleSettings.TILE_BACKGROUND_SATURATION to ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT,
         ModuleSettings.VOLUME_FIRST_FOUR to 1,
     )
     private val modeKeys = setOf(
