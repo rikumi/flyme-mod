@@ -83,10 +83,10 @@ final class SystemIconPackLauncherHooks {
         Constructor<?> replacement=entry.getConstructor(Drawable.class,String.class,String.class);
         Method label=entry.getMethod("getContentDescription"), title=entry.getMethod("getTitle");
         installer.hook(cache.getName(),"getCacheEntry",chain -> {
-            if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, OneClickPreset.defaultSwitch(ModuleSettings.SYSTEM_ICON_PACK)) || SystemIconPackClient.isNative()) return chain.proceed();
+            if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, false) || SystemIconPackClient.isNative()) return chain.proceed();
             Object original;
             try(SystemIconPackClient.NativeScope ignored=SystemIconPackClient.nativeScope()) { original=chain.proceed(); }
-            if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, OneClickPreset.defaultSwitch(ModuleSettings.SYSTEM_ICON_PACK)) || original==null) return original;
+            if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, false) || original==null) return original;
             Object taskInfo=chain.getArg(0), taskKey=key.get(taskInfo);
             Context ctx=(Context)context.get(chain.getThisObject());
             ComponentName entrance=(ComponentName)component.invoke(taskKey);

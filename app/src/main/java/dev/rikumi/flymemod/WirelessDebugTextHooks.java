@@ -71,7 +71,7 @@ final class WirelessDebugTextHooks {
     }
 
     ColorStateList textColors(TextView view, Integer customAccent) {
-        if (!preferences.getBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, OneClickPreset.defaultSwitch(ModuleSettings.WIRELESS_DEBUG_THEME_FIX))
+        if (!preferences.getBoolean(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, false)
                 || states == null || colors == null || view instanceof EditText || view.getError() != null
                 || (view.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 != Configuration.UI_MODE_NIGHT_YES || !roots.containsKey(view.getRootView())) return null;

@@ -20,7 +20,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 internal fun AppNavigationPreference(onSelectApplications: () -> Unit) {
     val context = LocalContext.current
     val preferences = remember(context) { ModuleSettings.preferences(context) }
-    var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, OneClickPreset.defaultSwitch(ModuleSettings.APP_IMMERSIVE_NAVIGATION))) }
+    var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, false)) }
     FluixSwitchPreference(
         title = "应用导航栏强制沉浸",
         subtitle = "由 SystemUI 实现，无需勾选应用作用域",

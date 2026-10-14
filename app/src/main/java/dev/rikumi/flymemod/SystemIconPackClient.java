@@ -128,7 +128,7 @@ final class SystemIconPackClient {
             this.user=user; this.density=density; this.original=original; this.badge=badge;
         }
         void refresh() {
-            boolean enabled=settings!=null && settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, OneClickPreset.defaultSwitch(ModuleSettings.SYSTEM_ICON_PACK));
+            boolean enabled=settings!=null && settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, false);
             Drawable next=enabled?lookup(context,pkg,component,user,density):null;
             Bitmap pixels=next instanceof BitmapDrawable?((BitmapDrawable)next).getBitmap():null;
             if(pixels==shown) return;
@@ -186,7 +186,7 @@ final class SystemIconPackClient {
     static Drawable applicationIcon(Context context,ApplicationInfo app) {
         configure(ModuleSettings.preferences(context));
         Drawable original=context.getPackageManager().getApplicationIcon(app);
-        if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, OneClickPreset.defaultSwitch(ModuleSettings.SYSTEM_ICON_PACK))) return original;
+        if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, false)) return original;
         return decorate(context,app.packageName,null,app.uid/100000,0,original,
                 icon->context.getPackageManager().getUserBadgedIcon(icon,android.os.UserHandle.getUserHandleForUid(app.uid)));
     }

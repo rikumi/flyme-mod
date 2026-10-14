@@ -23,7 +23,7 @@ final class FingerprintSuccessHapticHooks {
         installer.hook(client.getName(),"onAuthenticated",chain -> {
             Object result=chain.proceed();
             if(Boolean.TRUE.equals(chain.getArg(1)) && Boolean.TRUE.equals(success.invoke(chain.getThisObject()))
-                    && preferences.getBoolean(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC, OneClickPreset.defaultSwitch(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC))) {
+                    && preferences.getBoolean(ModuleSettings.FINGERPRINT_SUCCESS_HAPTIC, false)) {
                 try {
                     Vibrator vibrator=((Context)context.invoke(chain.getThisObject())).getSystemService(Vibrator.class);
                     if(vibrator!=null && vibrator.hasVibrator())

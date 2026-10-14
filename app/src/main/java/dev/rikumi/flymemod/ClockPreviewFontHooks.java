@@ -86,7 +86,7 @@ final class ClockPreviewFontHooks {
         }
     }
     private Float selectedSpacing() {
-        return preferences.getBoolean(ModuleSettings.LOCK_CLOCK_SPACING_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.LOCK_CLOCK_SPACING_ENABLED))
+        return preferences.getBoolean(ModuleSettings.LOCK_CLOCK_SPACING_ENABLED, false)
                 ? Math.max(-10,Math.min(10,preferences.getInt(ModuleSettings.LOCK_CLOCK_SPACING,0)))*0.01f : null;
     }
 

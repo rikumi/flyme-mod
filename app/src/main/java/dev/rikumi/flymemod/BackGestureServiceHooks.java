@@ -49,7 +49,7 @@ final class BackGestureServiceHooks {
             int action=event.getActionMasked();
             synchronized(owner) {
                 int nativeWidth=edgeWidth.getInt(owner);
-                if(preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED))) {
+                if(preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false)) {
                     int dp=Math.max(0,Math.min(ModuleSettings.BACK_GESTURE_WIDTH_MAX_DEFAULT,
                             preferences.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT)));
                     edgeWidth.setInt(owner,Math.round(dp*((Context)context.get(owner)).getResources().getDisplayMetrics().density));
@@ -66,7 +66,7 @@ final class BackGestureServiceHooks {
                     if(first!=null) {
                         boolean horizontal=BackGestureDirectionPolicy.isInwardFirstMove(first.x,first.y,dir.endsWith("LEFT"));
                         firstMoveAxes.put(owner,horizontal?FIRST_MOVE_HORIZONTAL:FIRST_MOVE_VERTICAL);
-                        if(preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, OneClickPreset.defaultSwitch(ModuleSettings.BACK_GESTURE_REMOVE_SMART)))
+                        if(preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, false))
                             log.accept("System side gesture first move: downX="+startX.getFloat(owner)
                                     +" downY="+startY.getFloat(owner)+" dx="+first.x+" dy="+first.y
                                     +" slop="+threshold+" accepted="+horizontal,null);
@@ -75,7 +75,7 @@ final class BackGestureServiceHooks {
                 try {
                     Object result=chain.proceed();
                     if(action==MotionEvent.ACTION_DOWN && state.get(owner)==pendingState
-                            && preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, OneClickPreset.defaultSwitch(ModuleSettings.BACK_GESTURE_REMOVE_SMART)))
+                            && preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, false))
                         log.accept("System side gesture admitted: x="+event.getRawX()+" y="+event.getRawY()
                                 +" direction="+direction.get(owner),null);
                     return result;
@@ -85,7 +85,7 @@ final class BackGestureServiceHooks {
         }, MotionEvent.class,int.class);
         installer.hook(recent.getName(),"checkRecentsGesture",chain -> {
             Object owner=chain.getThisObject();
-            if(!side.isInstance(owner) || !preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, OneClickPreset.defaultSwitch(ModuleSettings.BACK_GESTURE_REMOVE_SMART)))
+            if(!side.isInstance(owner) || !preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, false))
                 return chain.proceed();
             Integer firstAxis=firstMoveAxes.get(owner);
             if(System.currentTimeMillis()-downTime.getLong(owner)>300) {
@@ -110,7 +110,7 @@ final class BackGestureServiceHooks {
             return null;
         },MotionEvent.class);
         log.accept("System side gesture direction hooks registered: relaxed="
-                +preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, OneClickPreset.defaultSwitch(ModuleSettings.BACK_GESTURE_REMOVE_SMART)),null);
+                +preferences.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, false),null);
     }
 
     private static void clearFirstMoveAxis(int action, Object owner, Map<Object, Integer> firstMoveAxes) {

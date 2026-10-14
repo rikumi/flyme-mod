@@ -141,7 +141,7 @@ final class AppNavigationHooks {
     }
 
     private boolean enabled() {
-        return preferences.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, OneClickPreset.defaultSwitch(ModuleSettings.APP_IMMERSIVE_NAVIGATION));
+        return preferences.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, false);
     }
 
     private void recentsAnimationChanged(boolean running) {

@@ -17,7 +17,7 @@ internal fun rememberModuleThemeSettings(): ModuleThemeSettings {
     val context = LocalContext.current
     val preferences = remember(context) { ModuleSettings.preferences(context) }
     fun read(): ModuleThemeSettings {
-        return ModuleThemeSettings(preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, OneClickPreset.defaultSwitch(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND)))
+        return ModuleThemeSettings(preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false))
     }
     var settings by remember(preferences) { mutableStateOf(read()) }
     DisposableEffect(preferences) {

@@ -66,7 +66,7 @@ final class RecentsThumbnailBorderHooks {
 
     private void draw(View view,Canvas canvas,boolean refactored) throws ReflectiveOperationException {
         views.put(view,true);
-        if(!preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, OneClickPreset.defaultSwitch(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND))
+        if(!preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false)
                 || view.getWidth()<=0 || view.getHeight()<=0)return;
         Path path;
         if(refactored) {

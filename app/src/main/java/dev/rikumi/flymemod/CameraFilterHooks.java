@@ -136,7 +136,7 @@ final class CameraFilterHooks {
     }
 
     private boolean enabled() {
-        return settings.getBoolean(ModuleSettings.CAMERA_KEEP_FILTER, OneClickPreset.defaultSwitch(ModuleSettings.CAMERA_KEEP_FILTER));
+        return settings.getBoolean(ModuleSettings.CAMERA_KEEP_FILTER, false);
     }
 
     private SharedPreferences saved(Object manager) throws IllegalAccessException {

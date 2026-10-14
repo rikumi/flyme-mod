@@ -278,7 +278,7 @@ public final class XposedInit extends XposedModule {
             ZygoteRestartBootHooks.install(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                     () -> getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)
-                            .getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, OneClickPreset.defaultSwitch(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK)),
+                            .getBoolean(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, false),
                     this::deoptimize,
                     (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
@@ -340,12 +340,17 @@ public final class XposedInit extends XposedModule {
 
     private void installPackageHooks(String packageName, ClassLoader loader) {
         if ("com.android.settings".equals(packageName)) {
+            new DeviceInfoExtrasHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error))
+                    .install(loader, this::installDrawingHook);
+        }
+        if ("com.android.settings".equals(packageName)) {
             try {
                 FingerprintAnimationHooks.installSettings(loader,
                         (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                         this::deoptimize,
                         () -> getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)
-                                .getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, OneClickPreset.defaultSwitch(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION)));
+                                .getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, false));
             } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                 log(Log.ERROR, "FlymeMod", "Cannot resolve fingerprint animation settings", error);
             }
@@ -595,7 +600,7 @@ public final class XposedInit extends XposedModule {
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                     this::deoptimize,
                     () -> getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)
-                            .getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, OneClickPreset.defaultSwitch(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION)));
+                            .getBoolean(ModuleSettings.REMOVE_FINGERPRINT_ANIMATION, false));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve fingerprint animation effects", error);
         }
@@ -681,6 +686,9 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot resolve simplified control center text", error);
         }
         try {
+            BluetoothConnectionLabelHooks.install(loader,
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                    this::deoptimize, this::loadSettings, () -> optimize2x1TextEnabled);
             BluetoothDeviceCountHooks.install(loader,
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                     this::deoptimize);
@@ -1147,6 +1155,17 @@ public final class XposedInit extends XposedModule {
                     .install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         } catch (ReflectiveOperationException | RuntimeException error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve control center detail dialog surfaces", error);
+        }
+        try {
+            MediaOutputSurfaceHooks.install(loader,
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                    this::loadSettings, () -> lightEnabled, () -> tileBackgroundColorEnabled,
+                    this::lightBackgroundColor,
+                    view -> { if (activeColorOsMaterialHooks != null) activeColorOsMaterialHooks.observeDialog(view); },
+                    view -> { if (activeTileBackdropHooks != null) activeTileBackdropHooks.observeDialog(view); },
+                    () -> darkenEnabled, () -> DARK_BACKGROUND);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve media output dialog surface", error);
         }
         XposedInterface.Hooker background = chain -> {
             View tile = (View) chain.getThisObject();
@@ -2827,13 +2846,12 @@ public final class XposedInit extends XposedModule {
         settings.put("sleep", ModuleSettings.HIDE_STATUS_ICON_KEYS[0]);
         settings.put("vpn", ModuleSettings.HIDE_STATUS_ICON_KEYS[1]);
         settings.put("location", ModuleSettings.HIDE_STATUS_ICON_KEYS[2]);
-        settings.put("bluetooth", ModuleSettings.HIDE_STATUS_ICON_KEYS[3]);
-        settings.put("cast", ModuleSettings.HIDE_STATUS_ICON_KEYS[4]);
-        settings.put("connected_display", ModuleSettings.HIDE_STATUS_ICON_KEYS[4]);
-        settings.put("hotspot", ModuleSettings.HIDE_STATUS_ICON_KEYS[5]);
-        settings.put("screen_record", ModuleSettings.HIDE_STATUS_ICON_KEYS[6]);
-        settings.put("camera", ModuleSettings.HIDE_STATUS_ICON_KEYS[7]);
-        settings.put("microphone", ModuleSettings.HIDE_STATUS_ICON_KEYS[8]);
+        settings.put("cast", ModuleSettings.HIDE_STATUS_ICON_KEYS[3]);
+        settings.put("connected_display", ModuleSettings.HIDE_STATUS_ICON_KEYS[3]);
+        settings.put("hotspot", ModuleSettings.HIDE_STATUS_ICON_KEYS[4]);
+        settings.put("screen_record", ModuleSettings.HIDE_STATUS_ICON_KEYS[5]);
+        settings.put("camera", ModuleSettings.HIDE_STATUS_ICON_KEYS[6]);
+        settings.put("microphone", ModuleSettings.HIDE_STATUS_ICON_KEYS[7]);
         return settings;
     }
 

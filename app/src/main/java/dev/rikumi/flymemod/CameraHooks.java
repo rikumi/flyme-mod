@@ -92,7 +92,7 @@ final class CameraHooks {
 
     private void read() {
         try {
-            boolean rotation = preferences.getBoolean(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION, OneClickPreset.defaultSwitch(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION));
+            boolean rotation = preferences.getBoolean(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION, false);
             if (!settingsRead || systemRotation != rotation) {
                 log.accept("Camera remote settings: rotation=" + rotation, null);
                 rotationLogged = false;

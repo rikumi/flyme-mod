@@ -2,7 +2,7 @@ package dev.rikumi.flymemod;
 
 import android.content.SharedPreferences;
 
-/** First defaults only: absent switches opt in; explicit choices and numeric values are retained. */
+/** First defaults only: absent switches stay disabled; explicit choices and numeric values are retained. */
 final class DesktopFeatureDefaults {
     static synchronized void initialize(SharedPreferences preferences) {
         SharedPreferences.Editor editor=null;
@@ -12,7 +12,7 @@ final class DesktopFeatureDefaults {
                 ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK,ModuleSettings.REMOVE_FINGERPRINT_ANIMATION}) {
             if(preferences.contains(key)) continue;
             if(editor==null) editor=preferences.edit();
-            editor.putBoolean(key,OneClickPreset.defaultSwitch(key));
+            editor.putBoolean(key,false);
         }
         if(editor!=null) editor.commit();
     }

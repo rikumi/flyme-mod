@@ -23,9 +23,6 @@ internal object OneClickPreset {
         ModuleSettings.HIDE_LUNAR,
     )
 
-    @JvmStatic
-    fun defaultSwitch(key: String): Boolean = key !in disabledSwitches
-
     // Legacy and custom controls have no SwitchItem in the settings catalog.
     private val additionalSwitches = setOf(
         ModuleSettings.AOD_CLOCK_MONOSPACE,
@@ -69,11 +66,11 @@ internal object OneClickPreset {
             addAll(additionalSwitches)
             addAll(applicationSwitches)
             addAll(disabledSwitches)
-        }.associateWith { defaultSwitch(it) }
+        }.associateWith { it !in disabledSwitches }
     }
     val values = mapOf(
         ModuleSettings.AUTO_BRIGHTNESS_OFFSET to ModuleSettings.AUTO_BRIGHTNESS_OFFSET_DEFAULT,
-        ModuleSettings.STATUS_BAR_CHARGING_INFO to ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT,
+        ModuleSettings.STATUS_BAR_CHARGING_INFO to 1,
         ModuleSettings.AOD_CLOCK_FONT to 2,
         ModuleSettings.AOD_CLOCK_SPACING to 0,
         ModuleSettings.BACK_GESTURE_DARK_OPACITY to ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT,
@@ -121,12 +118,12 @@ internal object OneClickPreset {
     )
 
     fun isEnabled(preferences: SharedPreferences): Boolean =
-        switches.keys.any { preferences.getBoolean(it, defaultSwitch(it)) } ||
-            preferences.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, OneClickPreset.defaultSwitch(ModuleSettings.APP_IMMERSIVE_NAVIGATION)) ||
-            preferences.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, OneClickPreset.defaultSwitch(ModuleSettings.DARK_APP_SPECIAL_PACKAGES)) ||
-            (preferences.getBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED)) &&
+        switches.keys.any { preferences.getBoolean(it, false) } ||
+            preferences.getBoolean(ModuleSettings.APP_IMMERSIVE_NAVIGATION, false) ||
+            preferences.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, false) ||
+            (preferences.getBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, false) &&
                 !preferences.getStringSet(ModuleSettings.HIDDEN_LAUNCHER_APPS, emptySet()).isNullOrEmpty()) ||
-            (preferences.getBoolean(ModuleSettings.LANDSCAPE_GAME_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.LANDSCAPE_GAME_ENABLED)) &&
+            (preferences.getBoolean(ModuleSettings.LANDSCAPE_GAME_ENABLED, false) &&
                 !preferences.getStringSet(ModuleSettings.LANDSCAPE_GAME_PACKAGES, emptySet()).isNullOrEmpty()) ||
             modeKeys.any { preferences.getInt(it, if (it == ModuleSettings.STATUS_BAR_CHARGING_INFO) ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT else 0) != 0 }
 

@@ -103,8 +103,8 @@ public final class ModuleSettings {
     public static final String STATUS_BAR_CLOCK_FONT = "status_bar_clock_font";
     public static final String STATUS_BAR_LYRIC_AVOID = "status_bar_lyric_avoid";
     public static final String STATUS_BAR_CHARGING_INFO = "status_bar_charging_info";
-    public static final int STATUS_BAR_CHARGING_INFO_DEFAULT = 1;
-    public static final boolean STATUS_BAR_LYRIC_AVOID_DEFAULT = true;
+    public static final int STATUS_BAR_CHARGING_INFO_DEFAULT = 0;
+    public static final boolean STATUS_BAR_LYRIC_AVOID_DEFAULT = false;
     public static final String CONTROL_CENTER_CLOCK_FONT = "control_center_clock_font";
     public static final String LOCK_CLOCK_MONOSPACE = "lock_clock_monospace";
     public static final String AOD_CLOCK_MONOSPACE = "aod_clock_monospace";
@@ -152,7 +152,7 @@ public final class ModuleSettings {
     public static final int CONTROL_CENTER_ACTIVE_COLOR_DEFAULT = 0x80E6F2FF;
     public static int controlCenterStyle(SharedPreferences preferences) {
         return Math.max(0, Math.min(2, preferences.getInt(CONTROL_CENTER_STYLE,
-                preferences.getBoolean(WHITE_ACTIVE, OneClickPreset.defaultSwitch(WHITE_ACTIVE)) ? 1 : 0)));
+                preferences.getBoolean(WHITE_ACTIVE, false) ? 1 : 0)));
     }
     public static final String WHITE_ACTIVE = "white_active_tiles";
     public static final String WHITE_ACTIVE_OPACITY = "white_active_opacity";
@@ -203,7 +203,7 @@ public final class ModuleSettings {
     public static final String FOLDER_CLOSE_TARGET = "folder_restore_close_animation_target";
     public static final String[] HIDE_STATUS_ICON_KEYS = {
             "status_icon_hide_zen", "status_icon_hide_vpn", "status_icon_hide_location",
-            "status_icon_hide_bluetooth", "status_icon_hide_cast", "status_icon_hide_hotspot",
+            "status_icon_hide_cast", "status_icon_hide_hotspot",
             "status_icon_hide_screen_record", "status_icon_hide_camera", "status_icon_hide_microphone"
     };
     public static final String HIDE_LUNAR = "hide_control_center_lunar_date";
@@ -254,10 +254,13 @@ public final class ModuleSettings {
     public static final Uri URI = Uri.parse("content://dev.rikumi.flymemod.settings/control_center");
     private static final String CLOCK_SPACING_FORMAT_VERSION = "clock_spacing_format_version";
 
+    public static final String ANDROID_VERSION_KERNEL = "android_version_kernel";
+    public static final String STATUS_BATTERY_CAPACITY = "status_battery_capacity";
+
     private ModuleSettings() {}
 
     public static int networkSplitStyle(SharedPreferences preferences) {
-        return preferences.getBoolean(SPLIT_NETWORK_CARD, OneClickPreset.defaultSwitch(SPLIT_NETWORK_CARD))
+        return preferences.getBoolean(SPLIT_NETWORK_CARD, false)
                 ? 1 : 0;
     }
 
@@ -277,10 +280,10 @@ public final class ModuleSettings {
         }
         if (!preferences.contains(CONTROL_CENTER_STYLE)) {
             preferences.edit().putInt(CONTROL_CENTER_STYLE,
-                    preferences.getBoolean(WHITE_ACTIVE, OneClickPreset.defaultSwitch(WHITE_ACTIVE)) ? 1 : 0).commit();
+                    preferences.getBoolean(WHITE_ACTIVE, false) ? 1 : 0).commit();
         }
         if (!preferences.contains(SPLIT_NETWORK_CARD)) {
-            int oldStyle = preferences.getInt(NETWORK_SPLIT_STYLE, OneClickPreset.defaultSwitch(SPLIT_NETWORK_CARD) ? 1 : 0);
+            int oldStyle = preferences.getInt(NETWORK_SPLIT_STYLE, 0);
             preferences.edit().putBoolean(SPLIT_NETWORK_CARD, oldStyle != 0).commit();
         }
         if (!preferences.contains("hidden_launcher_apps_migrated")) {
@@ -347,9 +350,7 @@ public final class ModuleSettings {
         for (String[] group : groups) {
             // Existing grouped values, including explicit false, must never be overwritten.
             if (preferences.contains(group[0])) continue;
-            boolean hasLegacyValue = false;
-            for (int i = 1; i < group.length; i++) hasLegacyValue |= preferences.contains(group[i]);
-            boolean enabled = !hasLegacyValue && OneClickPreset.defaultSwitch(group[0]);
+            boolean enabled = false;
             for (int i = 1; i < group.length; i++) enabled |= preferences.getBoolean(group[i], false);
             if (editor == null) editor = preferences.edit();
             editor.putBoolean(group[0], enabled);

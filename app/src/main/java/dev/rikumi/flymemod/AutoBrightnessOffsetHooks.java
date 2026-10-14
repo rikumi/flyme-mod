@@ -37,7 +37,7 @@ final class AutoBrightnessOffsetHooks {
                              SharedPreferences preferences, SignalHooks.Installer installer) {
         installer.hook(target.getDeclaringClass().getName(), target.getName(), chain -> {
             Object result = chain.proceed();
-            if (!preferences.getBoolean(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED))) return result;
+            if (!preferences.getBoolean(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED, false)) return result;
             Object controller = controllerField.get(chain.getThisObject());
             // STATE_ON only: do not brighten AOD, suspended displays, or screen-off transitions.
             if (controller == null || state.getInt(controller) != 2 || policy.getInt(controller) == 1) return result;

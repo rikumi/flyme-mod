@@ -23,8 +23,8 @@ final class NightModeBlacklistHooks {
     private SharedPreferences.OnSharedPreferenceChangeListener changes;
     private final SharedPreferences preferences;
     NightModeBlacklistHooks(SharedPreferences preferences) { this.preferences = preferences; }
-    private boolean whitelist() { return preferences.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, OneClickPreset.defaultSwitch(ModuleSettings.DARK_APP_WHITELIST_MODE)); }
-    private boolean enabled() { return preferences.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, OneClickPreset.defaultSwitch(ModuleSettings.DARK_APP_SPECIAL_PACKAGES)); }
+    private boolean whitelist() { return preferences.getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, false); }
+    private boolean enabled() { return preferences.getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, false); }
 
     void install(ClassLoader loader, SignalHooks.Installer installer, Consumer<Method> deoptimize,
                  BiConsumer<String, Throwable> log) throws ReflectiveOperationException {

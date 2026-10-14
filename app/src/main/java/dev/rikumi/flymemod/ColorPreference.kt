@@ -111,7 +111,7 @@ private fun SmoothColorPicker(color: Color, opaque: Boolean, onColorChanged: (Co
 internal fun ColorSettingRow(item: ColorItem) {
     val context = LocalContext.current
     val preferences = remember(context) { ModuleSettings.preferences(context) }
-    var enabled by remember(item.key) { mutableStateOf(preferences.getBoolean(item.key, OneClickPreset.defaultSwitch(item.key))) }
+    var enabled by remember(item.key) { mutableStateOf(preferences.getBoolean(item.key, false)) }
     var color by remember(item.colorKey) { mutableIntStateOf(preferences.getInt(item.colorKey, item.defaultColor)) }
     var expanded by remember(item.key) { mutableStateOf(false) }
     FluixSwitchPreference(

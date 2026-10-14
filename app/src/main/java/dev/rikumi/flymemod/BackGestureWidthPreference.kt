@@ -20,7 +20,7 @@ internal fun BackGestureWidthPreference() {
     val context = LocalContext.current
     val preferences = remember(context) { ModuleSettings.preferences(context) }
     val maximum = ModuleSettings.BACK_GESTURE_WIDTH_MAX_DEFAULT
-    var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, OneClickPreset.defaultSwitch(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED))) }
+    var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false)) }
     var amount by remember { mutableStateOf(preferences.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,
         ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT).coerceIn(0, maximum)) }
     var expanded by remember { mutableStateOf(false) }

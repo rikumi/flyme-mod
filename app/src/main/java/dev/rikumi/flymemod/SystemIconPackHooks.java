@@ -17,7 +17,7 @@ final class SystemIconPackHooks {
         this.settings=settings; this.log=log;
         SystemIconPackClient.configure(settings);
     }
-    private boolean active() { return settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, OneClickPreset.defaultSwitch(ModuleSettings.SYSTEM_ICON_PACK)) && !SystemIconPackClient.isNative(); }
+    private boolean active() { return settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, false) && !SystemIconPackClient.isNative(); }
     void install(ClassLoader loader,SignalHooks.Installer installer,Consumer<Method> deoptimize)throws ReflectiveOperationException {
         Class<?> pm=loader.loadClass("android.app.ApplicationPackageManager");
         Field context=pm.getDeclaredField("mContext"); context.setAccessible(true);

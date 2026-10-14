@@ -31,7 +31,7 @@ final class GalleryPreviewHooks {
                 return chain.proceed();
             boolean enabled;
             try {
-                enabled = preferences.getBoolean(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION, OneClickPreset.defaultSwitch(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION));
+                enabled = preferences.getBoolean(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION, false);
             } catch (RuntimeException error) {
                 if (!reported) { reported = true; log.accept("Cannot read gallery preview settings", error); }
                 return chain.proceed();

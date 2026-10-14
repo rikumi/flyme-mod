@@ -53,7 +53,7 @@ internal data class SwitchItem(
     val subtitle: String? = null,
     val slider: SliderSpec? = null,
     val notifyChange: Boolean = true,
-    val defaultEnabled: Boolean = OneClickPreset.defaultSwitch(key),
+    val defaultEnabled: Boolean = false,
     val children: List<SettingsItem> = emptyList(),
 ) : SettingsItem
 
