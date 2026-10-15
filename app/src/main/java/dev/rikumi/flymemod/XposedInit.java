@@ -184,6 +184,7 @@ public final class XposedInit extends XposedModule {
     private WeatherRecommendationHooks activeWeatherRecommendationHooks;
     private WeatherBackgroundHooks activeWeatherBackgroundHooks;
     private ClockFontHooks activeClockFontHooks;
+    private HeaderDateHooks activeHeaderDateHooks;
     private StatusBarLyricHooks activeStatusBarLyricHooks;
     private boolean statusBarLyricAvoidEnabled = ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT;
     private ChargingInfoHooks activeChargingInfoHooks;
@@ -561,6 +562,21 @@ public final class XposedInit extends XposedModule {
         }
         if (!"com.android.systemui".equals(packageName)) return;
         try {
+            NetworkTileHooks networkTiles = new NetworkTileHooks(loader,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            Class<?> controller = loader.loadClass("com.flyme.systemui.statusbar.policy.MobileDataControllerImpl");
+            for (java.lang.reflect.Constructor<?> constructor : controller.getDeclaredConstructors()) {
+                hook(constructor).intercept(chain -> {
+                    Object result = chain.proceed();
+                    networkTiles.capture(chain.getThisObject());
+                    return result;
+                });
+            }
+            networkTiles.install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve network tile bridge", error);
+        }
+        try {
             new GoogleServiceTileHooks((message, error) -> log(Log.ERROR, "FlymeMod", message, error))
                     .install(loader, (name, method, hooker, parameters) ->
                             install(loader, name, method, hooker, parameters));
@@ -664,7 +680,9 @@ public final class XposedInit extends XposedModule {
         } catch (ReflectiveOperationException | RuntimeException error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve carrier label visibility hooks", error);
         }
-        new HeaderDateHooks(this::loadSettings, () -> hideLunarEnabled).install(
+        activeHeaderDateHooks = new HeaderDateHooks(this::loadSettings, () -> hideLunarEnabled,
+                (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+        activeHeaderDateHooks.install(
                 (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
         try {
             activeCombinedSettingsButtonHooks = new CombinedSettingsButtonHooks(loader, this::loadSettings,
@@ -1322,7 +1340,22 @@ public final class XposedInit extends XposedModule {
                 headsHeight.setInt(content, originalHeadsHeight + extra);
             }
             try {
-                return chain.proceed();
+                Object result = chain.proceed();
+                if (extra > 0) {
+                    View expanded = (View) content.getClass().getField("mExpandedChild").get(content);
+                    View contracted = (View) content.getClass().getField("mContractedChild").get(content);
+                    // Native onMeasure remeasures a shorter expanded child using the
+                    // contracted child's height as a parent spec. That fallback subtracts
+                    // our outer padding again, unlike the initial expanded measurement.
+                    // Restore only our deduction before layout/stack expansion reads it.
+                    if (expanded != null && contracted != null
+                            && expanded.getMeasuredHeight() < contracted.getMeasuredHeight()) {
+                        int height = Math.min(contracted.getMeasuredHeight(), expanded.getMeasuredHeight() + extra);
+                        expanded.measure(View.MeasureSpec.makeMeasureSpec(expanded.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+                    }
+                }
+                return result;
             } finally {
                 if (extra > 0) {
                     maxHeight.setInt(content, originalMaxHeight);
@@ -2397,7 +2430,7 @@ public final class XposedInit extends XposedModule {
                     String packageName = (String) sbn.getClass().getMethod("getOrigPackageName").invoke(sbn);
                     for (java.lang.reflect.Field mapField : maps) {
                         Object data = ((Map<?, ?>) mapField.get(chain.getThisObject())).get(packageName);
-                        if (data != null) iconField.set(data, drawable);
+                        if (data != null) iconField.set(data, new OriginalNotificationIcon(drawable));
                     }
                 } catch (ReflectiveOperationException | RuntimeException error) {
                     log(Log.ERROR, "FlymeMod", "Cannot load original lockscreen notification icon " + sbn.getPackageName(), error);
@@ -2429,7 +2462,7 @@ public final class XposedInit extends XposedModule {
                         if (drawable == null) return chain.proceed();
                         // Replace only this queued ticker segment, without changing the shared Notification.
                         return chain.proceed(new Object[]{chain.getArg(0), sbn,
-                                new OriginalTickerIcon(drawable), chain.getArg(3)});
+                                new OriginalNotificationIcon(drawable), chain.getArg(3)});
                     });
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot hook original ticker notification icons", error);
@@ -2470,15 +2503,15 @@ public final class XposedInit extends XposedModule {
         }
     }
 
-    private static final class OriginalTickerIcon extends DrawableWrapper {
-        OriginalTickerIcon(Drawable drawable) {
+    private static final class OriginalNotificationIcon extends DrawableWrapper {
+        OriginalNotificationIcon(Drawable drawable) {
             super(drawable);
         }
 
         @Override public void draw(Canvas canvas) {
             int saved = canvas.save();
             try {
-                // Keep native ticker layout, intrinsic size and dark-mode tinting unchanged.
+                // Scale only the artwork; preserve native layout, intrinsic size and tinting.
                 canvas.scale(.65f, .65f, getBounds().exactCenterX(), getBounds().exactCenterY());
                 super.draw(canvas);
             } finally {
@@ -2508,6 +2541,7 @@ public final class XposedInit extends XposedModule {
                     if (activeBackGestureBackgroundHooks != null) activeBackGestureBackgroundHooks.refresh();
                     reapplyStatusIconVisibility();
                     if (activeHeadsUpWidthHooks != null) activeHeadsUpWidthHooks.refresh();
+                    if (activeHeaderDateHooks != null) activeHeaderDateHooks.refresh();
                     if (activeClockFontHooks != null) activeClockFontHooks.refresh();
                     if (activeChargingInfoHooks != null) activeChargingInfoHooks.refresh();
                     if (activeStatusBarLyricHooks != null) activeStatusBarLyricHooks.refresh();

@@ -12,4 +12,8 @@
     <string name="google_service_locked">请解锁设备后重试</string>
     <string name="google_service_bridge_unavailable">请在 LSPosed 中启用系统界面作用域并重启系统界面</string>
     <string name="xposed_description">一个针对 Flyme 的全方位体验增强模块，永久免费\n禁止分享、转载、盗卖以及其他违规用途\n开发者：rikumi</string>
+    <string name="network_tile_wifi">Wi-Fi</string>
+    <string name="network_tile_bluetooth">蓝牙</string>
+    <string name="network_tile_mobile">移动数据</string>
+    <string name="network_tile_sim">切换数据卡</string>
 </resources>

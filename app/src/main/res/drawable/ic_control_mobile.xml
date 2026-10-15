@@ -1,0 +1,9 @@
+<!-- Exact cubic paths and final transforms from Flyme SystemUI assets/mobile_on.json. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="80dp" android:height="80dp"
+    android:viewportWidth="80" android:viewportHeight="80">
+    <group android:pivotX="40" android:pivotY="40" android:scaleX="1.25" android:scaleY="1.25">
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M27.364,42.353 L27.364,15.553 C27.364,14.889 27.9,14.353 28.564,14.353 L34.164,14.353 C34.828,14.353 35.364,14.889 35.364,15.553 L35.364,63.457 C35.364,64.525 34.072,65.061 33.316,64.305 L13.412,44.401 C12.656,43.645 13.192,42.353 14.26,42.353 L27.364,42.353 Z M56.136,37.897 L56.136,64.697 C56.136,65.361 55.6,65.897 54.936,65.897 L49.336,65.897 C48.672,65.897 48.136,65.361 48.136,64.697 L48.136,16.793 C48.136,15.725 49.428,15.189 50.184,15.945 L70.088,35.849 C70.844,36.605 70.308,37.897 69.24,37.897 L56.136,37.897 Z" />
+    </group>
+</vector>

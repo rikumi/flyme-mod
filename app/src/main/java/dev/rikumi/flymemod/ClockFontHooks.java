@@ -664,8 +664,9 @@ final class ClockFontHooks {
     }
 
     private float dateUpOffset(View header) {
-        return controlCenterDateUpEnabled.getAsBoolean()
-                ? -controlCenterDateUpDistance.getAsInt() * header.getResources().getDisplayMetrics().density : 0f;
+        int distance = controlCenterDateUpEnabled.getAsBoolean() ? controlCenterDateUpDistance.getAsInt() : 0;
+        if (hideLunar.getAsBoolean()) distance += 8;
+        return -distance * header.getResources().getDisplayMetrics().density;
     }
 
     private void applyGroupOffset(View group, float offset) {

@@ -10,6 +10,10 @@
         android:protectionLevel="signature" />
     <uses-permission android:name="dev.rikumi.flymemod.permission.CONTROL_GOOGLE_SERVICE" />
 
+    <permission android:name="dev.rikumi.flymemod.permission.CONTROL_NETWORK_TILES"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="dev.rikumi.flymemod.permission.CONTROL_NETWORK_TILES" />
+
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
@@ -79,6 +83,42 @@
             </intent-filter>
             <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
         </service>
+
+        <service android:name=".NetworkTileService$Wifi"
+            android:exported="true" android:icon="@drawable/ic_control_wifi"
+            android:label="@string/network_tile_wifi"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
+        </service>
+        <service android:name=".NetworkTileService$Bluetooth"
+            android:exported="true" android:icon="@drawable/ic_control_bluetooth"
+            android:label="@string/network_tile_bluetooth"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
+        </service>
+        <service android:name=".NetworkTileService$Mobile"
+            android:exported="true" android:icon="@drawable/ic_control_mobile"
+            android:label="@string/network_tile_mobile"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
+        </service>
+        <service android:name=".NetworkTileService$DataSim"
+            android:exported="true" android:icon="@drawable/ic_network_sim"
+            android:label="@string/network_tile_sim"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
+        </service>
+        <activity android:name=".NetworkTileSettingsActivity" android:exported="true"
+            android:excludeFromRecents="true" android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
         <provider
             android:name=".SettingsProvider"

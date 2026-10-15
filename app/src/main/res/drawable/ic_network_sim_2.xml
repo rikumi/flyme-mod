@@ -1,0 +1,15 @@
+<!-- Exact cubic paths and final transforms from Flyme SystemUI assets/mobile_on.json. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="80dp" android:height="80dp"
+    android:viewportWidth="80" android:viewportHeight="80">
+    <group>
+        <!-- Even-odd clipping keeps the digit transparent through every drawing layer. -->
+        <clip-path android:fillType="evenOdd" android:pathData="M0,0 H80 V80 H0 Z M66.557 65.476H59.776L62.592 62.519Q64.196 60.84 65.122 59.437Q66.048 58.034 66.048 56.474Q66.048 54.394 64.726 53.197Q63.405 52 60.924 52Q58.378 52 56.911 53.527Q55.443 55.055 55.443 57.189H58.573Q58.573 56.041 59.164 55.282Q59.754 54.524 60.87 54.524Q61.856 54.524 62.381 55.131Q62.907 55.737 62.907 56.788Q62.907 57.492 62.457 58.321Q62.007 59.15 60.859 60.417L55.757 65.855V68H66.557Z" />
+        <group android:pivotX="40" android:pivotY="40" android:scaleX="1.25" android:scaleY="1.25">
+            <path android:fillColor="#FFFFFFFF"
+                android:pathData="M27.364,42.353 L27.364,15.553 C27.364,14.889 27.9,14.353 28.564,14.353 L34.164,14.353 C34.828,14.353 35.364,14.889 35.364,15.553 L35.364,63.457 C35.364,64.525 34.072,65.061 33.316,64.305 L13.412,44.401 C12.656,43.645 13.192,42.353 14.26,42.353 L27.364,42.353 Z M56.136,37.897 L56.136,64.697 C56.136,65.361 55.6,65.897 54.936,65.897 L49.336,65.897 C48.672,65.897 48.136,65.361 48.136,64.697 L48.136,16.793 C48.136,15.725 49.428,15.189 50.184,15.945 L70.088,35.849 C70.844,36.605 70.308,37.897 69.24,37.897 L56.136,37.897 Z" />
+        </group>
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M61,44 C69.837,44 77,51.163 77,60 C77,68.837 69.837,76 61,76 C52.163,76 45,68.837 45,60 C45,51.163 52.163,44 61,44 Z" />
+    </group>
+</vector>
