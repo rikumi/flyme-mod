@@ -106,7 +106,8 @@ final class ColorOsMaterialHooks {
             View view = (View) chain.getThisObject();
             settings.accept(view.getContext());
             if (!notificationEnabled.getAsBoolean()) {
-                notificationContours.put(view, null);
+                Contour previous = notificationContours.get(view);
+                if (previous != null) previous.renderCache.clear();
                 return result;
             }
             try {
@@ -602,7 +603,7 @@ final class ColorOsMaterialHooks {
     }
     private static final class Host { Contour outline; int networkRole; boolean errorLogged; }
 
-    private final class Contour extends Drawable {
+    private final class Contour extends Drawable implements View.OnAttachStateChangeListener {
         final WeakReference<View> owner;
         final boolean circularButton;
         final RuntimeShader round, notificationRound, nativeCurve;
@@ -652,7 +653,11 @@ final class ColorOsMaterialHooks {
                 // Verified against the target Flyme framework Outline: public Path mPath.
                 outlinePath = Outline.class.getField("mPath");
             }
+            if (view.getClass().getName().endsWith(".NotificationBackgroundView"))
+                view.addOnAttachStateChangeListener(this);
         }
+        @Override public void onViewAttachedToWindow(View view) { }
+        @Override public void onViewDetachedFromWindow(View view) { renderCache.clear(); }
         public void draw(Canvas canvas) {
             View view = owner.get(); Rect bounds = getBounds();
             if (view == null || bounds.isEmpty()) return;
@@ -699,6 +704,7 @@ final class ColorOsMaterialHooks {
                                 || configuredCorners[2] != radii[4] || configuredCorners[3] != radii[6]) {
                             shader.setFloatUniform("u_notificationCorners",radii[0],radii[2],radii[4],radii[6]);
                             for (int i = 0; i < 4; i++) configuredCorners[i] = radii[i * 2];
+                            shaderGeneration++;
                         }
                     }
                 } else if (mediaGeometry != null) {
@@ -734,7 +740,10 @@ final class ColorOsMaterialHooks {
                     shaderGeneration++;
                 }
                 paint.setShader(shader);
-                if (!notification && mediaGeometry == null && canvas.isHardwareAccelerated()) {
+                // Scrolling only moves the notification's composition layer. Keep
+                // its expensive glow shader cached just like the control-center tiles.
+                // Width, height, theme and per-corner roundness still rebuild it.
+                if (mediaGeometry == null && canvas.isHardwareAccelerated()) {
                     renderCache.draw(canvas, bounds, paint, shaderGeneration, alpha);
                 } else {
                     paint.setAlpha(alpha); canvas.drawRect(bounds, paint);

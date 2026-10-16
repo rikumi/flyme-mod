@@ -1346,15 +1346,46 @@ public final class XposedInit extends XposedModule {
                 if (extra > 0) {
                     View expanded = (View) content.getClass().getField("mExpandedChild").get(content);
                     View contracted = (View) content.getClass().getField("mContractedChild").get(content);
+                    // The short contracted-template fallback passes mMinContractedHeight
+                    // directly to measureChildWithMargins, unlike the first measurement.
+                    // Restore only our padding deduction, keeping native insets intact.
+                    int nativePadding = content.getPaddingTop() + content.getPaddingBottom() - extra;
+                    int minimum = content.getClass().getField("mMinContractedHeight").getInt(content) - nativePadding;
+                    if (contracted != null) {
+                        android.view.ViewGroup.MarginLayoutParams margins =
+                                (android.view.ViewGroup.MarginLayoutParams) contracted.getLayoutParams();
+                        minimum -= margins.topMargin + margins.bottomMargin;
+                    }
+                    if (contracted != null && contracted.getMeasuredHeight() < minimum)
+                        contracted.measure(View.MeasureSpec.makeMeasureSpec(contracted.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(minimum, View.MeasureSpec.EXACTLY));
                     // Native onMeasure remeasures a shorter expanded child using the
                     // contracted child's height as a parent spec. That fallback subtracts
                     // our outer padding again, unlike the initial expanded measurement.
                     // Restore only our deduction before layout/stack expansion reads it.
-                    if (expanded != null && contracted != null
-                            && expanded.getMeasuredHeight() < contracted.getMeasuredHeight()) {
-                        int height = Math.min(contracted.getMeasuredHeight(), expanded.getMeasuredHeight() + extra);
-                        expanded.measure(View.MeasureSpec.makeMeasureSpec(expanded.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
-                                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+                    if (expanded != null && contracted != null) {
+                        android.view.ViewGroup.MarginLayoutParams margins =
+                                (android.view.ViewGroup.MarginLayoutParams) expanded.getLayoutParams();
+                        int height = contracted.getMeasuredHeight() - nativePadding - margins.topMargin - margins.bottomMargin;
+                        if (expanded.getMeasuredHeight() < height)
+                            expanded.measure(View.MeasureSpec.makeMeasureSpec(expanded.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
+                                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+                    }
+                    // A contracted-only card also needs its outer measured height
+                    // updated; otherwise FrameLayout still clips the restored child.
+                    int childHeight = 0;
+                    for (View child : new View[]{contracted, expanded}) {
+                        if (child != null) childHeight = Math.max(childHeight, child.getMeasuredHeight()
+                                + 2 * ((android.view.ViewGroup.MarginLayoutParams) child.getLayoutParams()).topMargin);
+                    }
+                    int heightSpec = (Integer) chain.getArg(1);
+                    if (View.MeasureSpec.getMode(heightSpec) != View.MeasureSpec.UNSPECIFIED)
+                        childHeight = Math.min(childHeight, View.MeasureSpec.getSize(heightSpec));
+                    int measuredHeight = childHeight + content.getPaddingTop() + content.getPaddingBottom();
+                    if (measuredHeight > content.getMeasuredHeight()) {
+                        java.lang.reflect.Method setSize = View.class.getDeclaredMethod("setMeasuredDimension", int.class, int.class);
+                        setSize.setAccessible(true);
+                        setSize.invoke(content, content.getMeasuredWidth(), measuredHeight);
                     }
                 }
                 return result;
