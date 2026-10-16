@@ -18,7 +18,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 internal fun ControlCenterStylePreference() {
     val context = LocalContext.current
-    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    val preferences = LocalModulePreferences.current
     var mode by remember { mutableIntStateOf(ModuleSettings.controlCenterStyle(preferences)) }
     var savedColor by remember {
         mutableIntStateOf(preferences.getInt(ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR,

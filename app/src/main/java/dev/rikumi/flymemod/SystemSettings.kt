@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -79,7 +80,7 @@ internal fun SystemSettingRow(setting: SystemSetting) {
     val scope = rememberCoroutineScope()
     var checked by remember(setting) { mutableStateOf(false) }
     var value by remember(setting) { mutableStateOf(setting.recommended) }
-    var expanded by remember(setting) { mutableStateOf(false) }
+    var expanded by rememberSaveable(setting) { mutableStateOf(false) }
     var running by remember(setting) { mutableStateOf(false) }
     LaunchedEffect(setting) {
         val current = withContext(Dispatchers.IO) { setting.read(context) }

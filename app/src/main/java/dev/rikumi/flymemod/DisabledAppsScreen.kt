@@ -319,7 +319,6 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
         topBar = {
             FluixTopAppBar(
                 title = if (picking) "选择系统应用" else "停用应用",
-                dividerProgress = fluixTopBarDividerProgress(currentListState, overscrollOffset),
                 navigationIcon = {
                     IconButton(onClick = { if (!busy) { if (picking) picking = false else onBack() } }) {
                         Icon(

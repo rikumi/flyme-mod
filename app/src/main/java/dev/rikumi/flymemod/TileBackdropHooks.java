@@ -1,5 +1,6 @@
 package dev.rikumi.flymemod;
 
+import android.content.res.Configuration;
 import android.graphics.Outline;
 import android.graphics.Rect;
 import android.graphics.RectF;
@@ -38,6 +39,7 @@ final class TileBackdropHooks {
             uniform float sksl_left, sksl_top, sksl_right, sksl_bottom, sksl_alpha;
             uniform float smoothCorner;
             uniform float saturationAmount;
+            uniform float brightnessBoost;
             uniform float cornerRadius;
             uniform float2 shapeSize;
             uniform float4 shapeClip;
@@ -112,9 +114,8 @@ final class TileBackdropHooks {
                 half4 background = sksl_background.eval(p);
                 half luminance = dot(background.rgb, half3(0.2126,0.7152,0.0722));
                 half3 saturated = clamp(half3(luminance) + (background.rgb-half3(luminance))*(1.0+saturationAmount), 0.0, background.a);
-                // Fixed +10% brightness applies only to the sampled backdrop. Preserve its
-                // premultiplied alpha and leave icons, text and tile foreground unchanged.
-                half3 brightened = min(saturated*1.1, half3(background.a));
+                // Only dark mode boosts brightness; preserve premultiplied alpha.
+                half3 brightened = min(saturated*(1.0+brightnessBoost), half3(background.a));
                 half4 composed = layer + half4(brightened,background.a)*(1.0-layer.a);
                 return mix(layer,composed,coverage);
             }
@@ -411,6 +412,7 @@ final class TileBackdropHooks {
         ViewTreeObserver observer;
         float previousRadius = -1, previousSmoothness = -1;
         float previousSaturation = -1;
+        float previousBrightnessBoost = -1;
         boolean failed;
         boolean drawableRenderable;
         final int networkRole;
@@ -454,6 +456,7 @@ final class TileBackdropHooks {
             batch = null;
             previousRadius = previousSmoothness = -1;
             previousSaturation = -1;
+            previousBrightnessBoost = -1;
             drawableRenderable = false;
         }
         void update() {
@@ -621,10 +624,17 @@ final class TileBackdropHooks {
                     setFloat.invoke(effect,"saturationAmount",saturation);
                     previousSaturation = saturation;
                 }
+                float brightnessBoost = (view.getResources().getConfiguration().uiMode
+                        & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES ? .1f : 0f;
+                if (brightnessBoost != previousBrightnessBoost) {
+                    setFloat.invoke(effect,"brightnessBoost",brightnessBoost);
+                    previousBrightnessBoost = brightnessBoost;
+                }
                 setEffectVisibility(visible,Math.round(Math.max(0f,Math.min(1f,alpha))*255));
                 if (visible && alpha > 0.99f && reportedTypes.add(view.getClass().getName()))
                     trace.accept("Live tile backdrop compositor attached: view=" + view.getClass().getSimpleName()
-                            + ", bounds=" + bounds + ", saturation=" + (1f+saturation) + ", brightness=1.1, contrast=1.0");
+                            + ", bounds=" + bounds + ", saturation=" + (1f+saturation)
+                            + ", brightness=" + (1f+brightnessBoost) + ", contrast=1.0");
             } catch (ReflectiveOperationException | RuntimeException error) {
                 remove(view); failed = true;
                 log.accept("Cannot render live saturated tile backdrop", error);

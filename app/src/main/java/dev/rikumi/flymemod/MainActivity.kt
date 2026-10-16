@@ -19,8 +19,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -131,37 +133,40 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         readPageRequest()
         setContent {
-            val moduleTheme = rememberModuleThemeSettings()
-            val darkPage = if (moduleTheme.blackBackground) Color.Black else FLUIX_PAGE_DARK
-            MiuixTheme(
-                controller = remember(moduleTheme.blackBackground) {
-                    ThemeController(
-                        colorSchemeMode = ColorSchemeMode.System,
-                        lightColors = lightColorScheme(
-                            primary = Color(0xFF206CFF),
-                            background = FLUIX_PAGE_LIGHT,
-                            surface = FLUIX_PAGE_LIGHT,
-                            onSurface = FLUIX_TEXT_LIGHT,
-                            onSurfaceVariantSummary = FLUIX_SUMMARY_LIGHT,
-                            surfaceContainer = FLUIX_GROUP_LIGHT,
-                            dividerLine = Color.Transparent,
-                        ),
-                        darkColors = darkColorScheme(
-                            primary = Color(0xFF1564ED),
-                            background = darkPage,
-                            surface = darkPage,
-                            onSurface = FLUIX_TEXT_DARK,
-                            onSurfaceVariantSummary = FLUIX_SUMMARY_DARK,
-                            surfaceContainer = FLUIX_GROUP_DARK,
-                            dividerLine = Color.Transparent,
-                        ),
-                    )
-                },
-                textStyles = fluixTextStyles(),
-            ) {
-                FluixStatusBar()
-                FluixOverscrollHost { SettingsScreen(requestedPage, pageRequest, resumeRequest, launcherEntry, ::returnToLauncher) }
-                if (RestartUiState.showLoading) RestartLoadingOverlay()
+            val preferences = remember { ModuleSettings.preferences(this) }
+            CompositionLocalProvider(LocalModulePreferences provides preferences) {
+                val moduleTheme = rememberModuleThemeSettings()
+                val darkPage = if (moduleTheme.blackBackground) Color.Black else FLUIX_PAGE_DARK
+                MiuixTheme(
+                    controller = remember(moduleTheme.blackBackground) {
+                        ThemeController(
+                            colorSchemeMode = ColorSchemeMode.System,
+                            lightColors = lightColorScheme(
+                                primary = Color(0xFF206CFF),
+                                background = FLUIX_PAGE_LIGHT,
+                                surface = FLUIX_PAGE_LIGHT,
+                                onSurface = FLUIX_TEXT_LIGHT,
+                                onSurfaceVariantSummary = FLUIX_SUMMARY_LIGHT,
+                                surfaceContainer = FLUIX_GROUP_LIGHT,
+                                dividerLine = Color.Transparent,
+                            ),
+                            darkColors = darkColorScheme(
+                                primary = Color(0xFF1564ED),
+                                background = darkPage,
+                                surface = darkPage,
+                                onSurface = FLUIX_TEXT_DARK,
+                                onSurfaceVariantSummary = FLUIX_SUMMARY_DARK,
+                                surfaceContainer = FLUIX_GROUP_DARK,
+                                dividerLine = Color.Transparent,
+                            ),
+                        )
+                    },
+                    textStyles = fluixTextStyles(),
+                ) {
+                    FluixStatusBar()
+                    FluixOverscrollHost { SettingsScreen(requestedPage, pageRequest, resumeRequest, launcherEntry, ::returnToLauncher) }
+                    if (RestartUiState.showLoading) RestartLoadingOverlay()
+                }
             }
         }
     }
@@ -218,7 +223,6 @@ private fun HomeScreen(onOpenCategory: (String) -> Unit) {
         topBar = {
             FluixLargeTitle(
                 title = "Flyme Mod",
-                dividerProgress = fluixTopBarDividerProgress(listState, overscrollOffset),
                 actions = { RestartMenu() },
             )
         },
@@ -274,7 +278,6 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
         topBar = {
             FluixTopAppBar(
                 title = category.title,
-                dividerProgress = fluixTopBarDividerProgress(listState, overscrollOffset),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -300,11 +303,18 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 item(key = "${category.id}/${group.title}/title") {
                     FluixSmallTitle(text = group.title)
                 }
-                item(key = "${category.id}/${group.title}/items") {
-                    SettingsCard(group.items, SettingsActions(
-                        onSelectNavigationApplications = { pickingNavigationApplications = true },
-                        onSelectGameApplications = { pickingGameApplications = true },
-                    ))
+                itemsIndexed(
+                    items = group.items,
+                    key = { _, item -> "${category.id}/${group.title}/${item.key}" },
+                    contentType = { _, item -> item.javaClass },
+                ) { index, item ->
+                    FluixCardRow(first = index == 0, last = index == group.items.lastIndex) {
+                        if (index > 0) FluixItemDivider()
+                        SettingsItemRow(item, SettingsActions(
+                            onSelectNavigationApplications = { pickingNavigationApplications = true },
+                            onSelectGameApplications = { pickingGameApplications = true },
+                        ))
+                    }
                 }
             }
             item { Box(Modifier.height(24.dp)) }

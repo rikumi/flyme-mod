@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun HomeModuleControls() {
     val context = LocalContext.current
-    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    val preferences = LocalModulePreferences.current
     val scope = rememberCoroutineScope()
     var version by remember { mutableStateOf(0) }
     var busy by remember { mutableStateOf(false) }

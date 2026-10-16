@@ -93,6 +93,7 @@ final class TileBackdropBatch {
         batch.bounds.setEmpty();
         int slot=0;
         float maximumSaturation=0f;
+        float maximumBrightnessBoost=0f;
         for(Object region:regions) {
             if(!tileIds.contains(id.getLong(region))) continue;
             Tile tile=tiles.get(region);
@@ -110,11 +111,14 @@ final class TileBackdropBatch {
             System.arraycopy(tile.holeRadii,0,values[8],0,4);
             System.arraycopy(tile.notificationCorners,0,values[9],0,4);
             values[5][2]=alpha.getFloat(region);
+            values[5][3]=tile.brightnessBoost;
             values[8][2]=tile.notification; values[8][3]=tile.saturation;
             maximumSaturation=Math.max(maximumSaturation,tile.saturation);
+            maximumBrightnessBoost=Math.max(maximumBrightnessBoost,tile.brightnessBoost);
         }
         batch.scalars.put("tileCount",(float)count);
         batch.scalars.put("maximumSaturation",maximumSaturation);
+        batch.scalars.put("maximumBrightnessBoost",maximumBrightnessBoost);
         // Reuse the native Parcel buffer instead of creating uniform arrays and Parcels per frame.
         Parcel packet=(Parcel)uniforms.get(batch.region);
         packet.setDataSize(0); packet.setDataPosition(0);
@@ -156,7 +160,7 @@ final class TileBackdropBatch {
     }
 
     private static final class Tile {
-        float radius,smooth,saturation=1,width,height,notification;
+        float radius,smooth,saturation=1,width,height,notification,brightnessBoost;
         final float[][] corners=new float[4][4];
         final float[] clip=new float[4];
         final float[] hole=new float[4], holeRadii=new float[4], notificationCorners=new float[4];
@@ -176,6 +180,7 @@ final class TileBackdropBatch {
                             case "cornerRadius" -> radius=values[0];
                             case "smoothCorner" -> smooth=values[0];
                             case "saturationAmount" -> saturation=values[0];
+                            case "brightnessBoost" -> brightnessBoost=values[0];
                             case "shapeSize" -> {width=values[0];height=values[1];}
                             case "shapeClip" -> {System.arraycopy(values,0,clip,0,4);hasClip=true;}
                             case "clipHole" -> System.arraycopy(values,0,hole,0,4);
@@ -209,21 +214,22 @@ final class TileBackdropBatch {
                 .replace("cornerRadius","shape.x").replace("smoothCorner","shape.y");
         StringBuilder shader=new StringBuilder("uniform shader sksl_layer; uniform shader sksl_background;\n")
                 .append("uniform float sksl_left, sksl_top, sksl_right, sksl_bottom, sksl_alpha;\n")
-                .append("uniform float tileCount, maximumSaturation;\n");
+                .append("uniform float tileCount, maximumSaturation, maximumBrightnessBoost;\n");
         for(int i=0;i<capacity;i++) for(int j=0;j<10;j++) shader.append("uniform float4 tile").append(i).append('_').append(j).append(";\n");
         shader.append(functions).append("bool inside(float2 p,float4 b) { return p.x>=b.x-1.0 && p.y>=b.y-1.0 && p.x<=b.z+1.0 && p.y<=b.w+1.0; }\n")
-                .append("half4 main(float2 p) { half4 layer=sksl_layer.eval(p); if(layer.a>=1.0) return layer; float coverage=0.0, amount=0.0;\n");
+                .append("half4 main(float2 p) { half4 layer=sksl_layer.eval(p); if(layer.a>=1.0) return layer; float coverage=0.0, amount=0.0, boost=0.0;\n");
         for(int i=0;i<capacity;i++) {
             String t="tile"+i+"_";
             // No later tile can exceed full coverage or this batch's largest
             // saturation. Avoid testing every other tile for each covered pixel.
-            shader.append("if((coverage<1.0 || amount<maximumSaturation) && tileCount>")
+            shader.append("if((coverage<1.0 || amount<maximumSaturation || boost<maximumBrightnessBoost) && tileCount>")
                     .append(i).append(".0 && inside(p,").append(t).append("0)) { float c=clamp(mask(p,");
             for(int j=0;j<10;j++) shader.append(j==0?"":",").append(t).append(j);
-            shader.append(")*").append(t).append("5.z,0.0,1.0); coverage=max(coverage,c); amount=max(amount,c*").append(t).append("8.w); }\n");
+            shader.append(")*").append(t).append("5.z,0.0,1.0); coverage=max(coverage,c); amount=max(amount,c*").append(t)
+                    .append("8.w); boost=max(boost,c*").append(t).append("5.w); }\n");
         }
         return shader.append("if(coverage<=0.0) return layer; half4 bg=sksl_background.eval(p); half lum=dot(bg.rgb,half3(0.2126,0.7152,0.0722));")
-                .append("half3 rgb=min(clamp(half3(lum)+(bg.rgb-half3(lum))*(1.0+amount/coverage),0.0,bg.a)*1.1,half3(bg.a));")
+                .append("half3 rgb=min(clamp(half3(lum)+(bg.rgb-half3(lum))*(1.0+amount/coverage),0.0,bg.a)*(1.0+boost/coverage),half3(bg.a));")
                 .append("return layer+half4(rgb,bg.a)*(1.0-layer.a)*coverage; }").toString();
     }
 }

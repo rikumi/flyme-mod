@@ -1,5 +1,6 @@
 package dev.rikumi.flymemod
 
+import android.content.SharedPreferences
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -14,8 +15,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -24,6 +27,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+// Initialize/migrate preferences once per Activity, not while each lazy row is composed.
+internal val LocalModulePreferences = staticCompositionLocalOf<SharedPreferences> {
+    error("Module preferences must be provided by MainActivity")
+}
 
 internal sealed interface SettingsItem {
     val key: String
@@ -141,9 +149,9 @@ private fun SwitchSettingRow(
     onChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
-    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    val preferences = LocalModulePreferences.current
     var checked by remember(preferences, item.key) { mutableStateOf(preferences.getBoolean(item.key, item.defaultEnabled)) }
-    var expanded by remember(item.key) { mutableStateOf(false) }
+    var expanded by rememberSaveable(item.key) { mutableStateOf(false) }
     val slider = item.slider
     var value by remember(preferences, slider?.key) {
         mutableStateOf(if (slider == null) 0 else
@@ -198,7 +206,7 @@ private fun SwitchSettingRow(
 @Composable
 private fun SelectSettingRow(item: SelectItem) {
     val context = LocalContext.current
-    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    val preferences = LocalModulePreferences.current
     var selected by remember(preferences, item.key) {
         val value = preferences.getInt(item.key, item.defaultValue)
         // 顺序型选项沿用原来的边界截断；字重等非连续取值回退到首项。

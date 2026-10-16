@@ -22,6 +22,7 @@ final class NotificationForegroundHooks {
     private final Class<?> row, stack, landscape, media;
     private final Field expanded, status;
     private final Predicate<Context> darken;
+    private final Predicate<View> controlCenter;
     private final Map<TextView,ColorStateList> textColors=new WeakHashMap<>();
     private final Map<ImageView,ColorStateList> iconColors=new WeakHashMap<>();
     private final Map<Drawable,ColorFilter> drawableColors=new WeakHashMap<>();
@@ -31,8 +32,8 @@ final class NotificationForegroundHooks {
     private static final ColorStateList BLACK=ColorStateList.valueOf(Color.BLACK);
     private static final ColorStateList WHITE=ColorStateList.valueOf(Color.WHITE);
 
-    NotificationForegroundHooks(ClassLoader loader, Predicate<Context> darken) throws ReflectiveOperationException {
-        this.darken=darken;
+    NotificationForegroundHooks(ClassLoader loader, Predicate<Context> darken, Predicate<View> controlCenter) throws ReflectiveOperationException {
+        this.darken=darken; this.controlCenter=controlCenter;
         row=loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow");
         landscape=loader.loadClass("com.flyme.notification.view.LandscapeHeadsUpNotificationView");
         media=loader.loadClass("com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout");
@@ -40,6 +41,7 @@ final class NotificationForegroundHooks {
         expanded=stack.getField("mIsExpanded"); status=stack.getField("mStatusBarState");
     }
     private ColorStateList foreground(View view) throws IllegalAccessException {
+        if(controlCenter.test(view))return null;
         boolean night=(view.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
         boolean notification=false;

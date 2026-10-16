@@ -86,7 +86,7 @@ private fun readLauncherApps(context: Context, allApplications: Boolean): List<H
 @Composable
 internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
     navigationApplications: Boolean = false, landscapeGames: Boolean = false) {
-    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    val preferences = LocalModulePreferences.current
     val packagesKey = if (landscapeGames) ModuleSettings.LANDSCAPE_GAME_PACKAGES else if (navigationApplications) ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES else ModuleSettings.HIDDEN_LAUNCHER_APPS
     var hidden by remember(packagesKey) { mutableStateOf(preferences.getStringSet(packagesKey, emptySet()).orEmpty().toSet()) }
     var savedOrder by remember { mutableStateOf(preferences.getString(ModuleSettings.HIDDEN_LAUNCHER_APP_ORDER, "").orEmpty()) }
@@ -132,7 +132,6 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
     Scaffold(topBar = {
         FluixTopAppBar(
             title = if (picking) "选择应用" else if (landscapeGames) "横屏游戏宽度适配" else if (navigationApplications) "应用列表" else "隐藏应用",
-            dividerProgress = fluixTopBarDividerProgress(listState, overscroll),
             navigationIcon = {
                 IconButton(onClick = { if (picking) picking = false else onBack() }) {
                     Icon(MiuixIcons.Back, "返回", tint = MiuixTheme.colorScheme.onSurface, modifier = Modifier.size(FLUIX_BACK_ICON))
@@ -201,7 +200,7 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
 private fun HiddenAppPages(context: Context, entries: List<HiddenAppEntry>, modifier: Modifier,
     onRemove: (String) -> Unit, onOrder: (List<String>) -> Unit) {
     val pages = rememberPagerState(pageCount = { ((entries.size + 11) / 12).coerceAtLeast(1) })
-    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    val preferences = LocalModulePreferences.current
     var metricsVersion by remember { mutableIntStateOf(0) }
     DisposableEffect(preferences) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->

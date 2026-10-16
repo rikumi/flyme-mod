@@ -110,7 +110,7 @@ private fun SmoothColorPicker(color: Color, opaque: Boolean, onColorChanged: (Co
 @Composable
 internal fun ColorSettingRow(item: ColorItem) {
     val context = LocalContext.current
-    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    val preferences = LocalModulePreferences.current
     var enabled by remember(item.key) { mutableStateOf(preferences.getBoolean(item.key, false)) }
     var color by remember(item.colorKey) { mutableIntStateOf(preferences.getInt(item.colorKey, item.defaultColor)) }
     var expanded by remember(item.key) { mutableStateOf(false) }

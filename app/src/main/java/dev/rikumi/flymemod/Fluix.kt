@@ -61,7 +61,6 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.MutableState
@@ -81,14 +80,13 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -217,9 +215,6 @@ internal val FLUIX_TEXT_DARK = Color(0xFFEEEEEE)
 internal val FLUIX_SUMMARY_LIGHT = Color(0x993C3C43)
 internal val FLUIX_SUMMARY_DARK = Color(0x73EBEBF5)
 
-// 标题栏底部分割线: 界面上滑时出现, 初始两端各内缩 16dp, 随滚动量在该距离内逐渐延长至通栏。
-private val TOP_BAR_DIVIDER_EXTEND_SCROLL = 48.dp
-
 // 子页面返回按钮图标尺寸: miuix 图标固有尺寸为 24dp, 此处略微放大。
 internal val FLUIX_BACK_ICON = 26.dp
 
@@ -295,13 +290,12 @@ private fun fluixTopBarTitleStyle(): TextStyle =
         fontWeight = FontWeight.Medium,
     )
 
-// 标题栏外框: 首页大标题与子页面标题共用, 统一状态栏 inset、垂直内边距与底部分割线,
+// 标题栏外框: 首页大标题与子页面标题共用, 统一状态栏 inset 和垂直内边距,
 // 从而保证两种页面的标题栏高度完全相同。startPadding 因首页无返回按钮而不同, 但只影响水平位置。
 @Composable
 private fun FluixTopBarFrame(
     startPadding: Dp,
     modifier: Modifier = Modifier,
-    dividerProgress: Float = 0f,
     content: @Composable RowScope.() -> Unit,
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
@@ -317,7 +311,6 @@ private fun FluixTopBarFrame(
                 ),
             verticalAlignment = Alignment.CenterVertically,
         ) { content() }
-        FluixTopBarDivider(progress = dividerProgress)
     }
 }
 
@@ -328,13 +321,11 @@ fun FluixLargeTitle(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    dividerProgress: Float = 0f,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     FluixTopBarFrame(
         startPadding = FLUIX_LARGE_TITLE_START,
         modifier = modifier,
-        dividerProgress = dividerProgress,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             BasicText(text = title, style = fluixTopBarTitleStyle())
@@ -350,31 +341,6 @@ fun FluixLargeTitle(
         }
         actions()
     }
-}
-
-// 依据列表滚动状态计算标题栏分割线进度:
-// 首项仍在屏幕内时按真实滚动偏移延长, 首项离开后保持通栏。
-// overscrollOffset 不为空时, 一并参考回弹位移(上滑为负), 让不可滚动页面在上滑回弹时也显示分割线。
-@Composable
-internal fun fluixTopBarDividerProgress(
-    listState: LazyListState,
-    overscrollOffset: MutableState<Float>? = null,
-): Float {
-    val density = LocalDensity.current
-    val extendPx = with(density) { TOP_BAR_DIVIDER_EXTEND_SCROLL.toPx() }
-    return remember(listState, density) {
-        derivedStateOf {
-            if (listState.firstVisibleItemIndex > 0) {
-                1f
-            } else {
-                val scrollPx = listState.firstVisibleItemScrollOffset.toFloat()
-                // 上滑回弹时 offsetPx < 0, 取绝对值作为额外的"已上移距离"。
-                val ov = overscrollOffset?.value ?: 0f
-                val total = if (ov < 0f) scrollPx - ov else scrollPx
-                (total / extendPx).coerceIn(0f, 1f)
-            }
-        }
-    }.value
 }
 
 /**
@@ -456,7 +422,7 @@ fun Modifier.fluixOverscroll(
     var offsetPx by offsetState
     var releaseJob by remember { mutableStateOf<Job?>(null) }
 
-    val connection = remember(maxPx, flingPx, scope) {
+    val connection = remember(listState, offsetState, maxPx, flingPx, scope) {
         object : NestedScrollConnection {
             // 已有位移时, 反向拖动先 1:1 原路返回; 归零后剩余增量交还列表(内容不可滚动时无剩余)。
             // delta 与屏幕坐标同向: 上滑为负、下滑为正, 与 offsetPx 同号。
@@ -543,7 +509,7 @@ fun Modifier.fluixOverscroll(
     return this
         // 位移后裁掉溢出部分, 避免上滑时内容盖住标题栏。
         .clipToBounds()
-        .drawWithContent { translate(top = offsetPx) { this@drawWithContent.drawContent() } }
+        .graphicsLayer { translationY = offsetPx }
         .nestedScroll(connection)
 }
 
@@ -574,26 +540,17 @@ private fun fluixOverscrollFlingStep(delta: Float, capPx: Float, current: Float 
     return delta * FLUIX_OVERSCROLL_DRAG_FLING * (remaining / capPx)
 }
 
-/** 标题栏底部分割线: 随 [progress] 从两端内缩逐渐延长至通栏。 */
-@Composable
-internal fun BoxScope.FluixTopBarDivider(progress: Float) {
-    // Flyme 设置列表以背景层次区分分组，不绘制标题栏分割线。
-}
-
 // 子页面标题栏: 左侧返回按钮 + 小标题, 右侧 actions(如重启菜单),
-// 底部同样带随列表滚动延长的分割线。
 @Composable
 fun FluixTopAppBar(
     title: String,
     modifier: Modifier = Modifier,
-    dividerProgress: Float = 0f,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     FluixTopBarFrame(
         startPadding = FLUIX_TOP_BAR_START,
         modifier = modifier,
-        dividerProgress = dividerProgress,
     ) {
         navigationIcon()
         BasicText(

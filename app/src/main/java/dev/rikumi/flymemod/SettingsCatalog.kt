@@ -63,7 +63,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.LIGHT, "控制中心磁贴亮色背景",
                 slider = SliderSpec(
                     ModuleSettings.LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT, 0, ModuleSettings.LIGHT_OPACITY_MAX,
-                    unit = "%",
+                    unit = "%", step = 5,
                 ),
             ),
             SwitchItem(ModuleSettings.TILE_BACKGROUND_COLOR, "控制中心磁贴背景增色", subtitle = "可能影响功耗",
@@ -143,7 +143,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.NOTIFICATION_LIGHT, "通知亮色背景",
                 slider = SliderSpec(
                     ModuleSettings.NOTIFICATION_LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT, 0, ModuleSettings.LIGHT_OPACITY_MAX,
-                    unit = "%",
+                    unit = "%", step = 5,
                 ),
             ),
             SwitchItem(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR, "通知背景增色", subtitle = "可能影响功耗",

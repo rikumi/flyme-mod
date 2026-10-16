@@ -3,17 +3,13 @@ package dev.rikumi.flymemod;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.View;
 import android.widget.ImageView;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.Rect;
-import android.graphics.RectF;
 import android.graphics.ColorFilter;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -35,7 +31,6 @@ import java.util.function.IntSupplier;
 final class NotificationAppearanceHooks {
     // Flyme's native night-mode blur tint and opaque heads-up fallback.
     private static final int DARK_BLUR_COLOR = 0xB21A1A1A;
-    private static final int LIGHT_FLOATING_COLOR = 0xCCFFFFFF;
     private static final int DARK_SOLID_COLOR = 0xFF1A1A1A;
     private final Consumer<Context> settings;
     private final BooleanSupplier light, corners;
@@ -46,9 +41,7 @@ final class NotificationAppearanceHooks {
     private final Field stackExpanded;
     private final Method pinned, animatingAway;
     private final Field clipRadius, roundable, maxRadius, mediaRadius, pushBackground, flymeBackground, nativeBackground;
-    private final Method rowBackground, mediaBackground, applyRoundness, tintNoBlur, rowClipPath;
-    private final Field landscapeRadius;
-    private final Paint lightFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Method rowBackground, mediaBackground, landscapeBackground, applyRoundness, tintNoBlur;
     private final ColorFilter dismissFilter = new PorterDuffColorFilter(0xFF808080, PorterDuff.Mode.SRC_ATOP);
     private final Map<Resources, SparseBooleanArray> dismissIds = new WeakHashMap<>();
     private final Map<ImageView, ColorFilter> dismissOriginals = new WeakHashMap<>();
@@ -75,11 +68,9 @@ final class NotificationAppearanceHooks {
         pushBackground=rowClass.getField("mPushNotificationBg"); flymeBackground=rowClass.getField("mBackgroundFlyme");
         nativeBackground=backgroundClass.getField("mBackground");
         rowBackground=rowClass.getMethod("setBackground"); mediaBackground=mediaClass.getMethod("setBackground");
+        landscapeBackground=landscapeClass.getMethod("setBackground");
         applyRoundness=rowClass.getMethod("applyRoundnessAndInvalidate");
         tintNoBlur=backgroundClass.getMethod("setTintForNoBlur",int.class);
-        rowClipPath=rowClass.getMethod("getClipPath",boolean.class);
-        landscapeRadius=landscapeClass.getField("mClipCornerRadius");
-        lightFill.setColor(LIGHT_FLOATING_COLOR);
     }
     private int color() {
         return Color.argb(Math.round(Math.max(0,Math.min(ModuleSettings.LIGHT_OPACITY_MAX,opacity.getAsInt()))*255f/100f),255,255,255);
@@ -107,45 +98,14 @@ final class NotificationAppearanceHooks {
         return (view.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
     }
-    private int floatingColor(View view, boolean blur) {
-        return night(view) ? (blur ? DARK_BLUR_COLOR : DARK_SOLID_COLOR) : LIGHT_FLOATING_COLOR;
-    }
     private int backgroundColor(View view,int nativeColor,boolean blur) throws ReflectiveOperationException {
-        if(floating(view))return floatingColor(view,blur);
-        return light.getAsBoolean()?color():nativeColor;
+        // With the switch off, preserve the exact native tint, including live notifications.
+        if (!light.getAsBoolean()) return nativeColor;
+        // Keep dark floating notifications readable; light-mode surfaces all use the slider.
+        if (night(view) && floating(view)) return blur ? DARK_BLUR_COLOR : DARK_SOLID_COLOR;
+        return color();
     }
     void install(SignalHooks.Installer installer) {
-        installer.hook("android.view.ViewGroup","dispatchDraw",chain -> {
-            View view=(View)chain.getThisObject();
-            if((landscapeClass.isInstance(view) || mediaClass.isInstance(view)) && !night(view)) {
-                float radius=landscapeClass.isInstance(view)
-                        ?landscapeRadius.getFloat(view):mediaRadius.getFloat(view);
-                ((Canvas)chain.getArg(0)).drawRoundRect(0,0,view.getWidth(),view.getHeight(),radius,radius,lightFill);
-            }
-            return chain.proceed();
-        },Canvas.class);
-        Map<Object,Boolean> whiteRows=new WeakHashMap<>();
-        installer.hook(rowClass.getName(),"dispatchDraw",chain -> {
-            Object owner=chain.getThisObject();whiteRows.remove(owner);
-            try { return chain.proceed(); }
-            finally { whiteRows.remove(owner); }
-        },Canvas.class);
-        installer.hook("com.android.systemui.statusbar.notification.row.ExpandableOutlineView","drawChild",chain -> {
-            View view=(View)chain.getThisObject();
-            View child=(View)chain.getArg(1);
-            String name=child.getClass().getName();
-            boolean content=name.equals("com.android.systemui.statusbar.notification.row.NotificationContentView")
-                    || name.equals("com.android.systemui.statusbar.notification.stack.NotificationChildrenContainer");
-            if(rowClass.isInstance(view) && !night(view) && content && !whiteRows.containsKey(view)) {
-                whiteRows.put(view,Boolean.TRUE);
-                Canvas canvas=(Canvas)chain.getArg(0);
-                Path path=(Path)rowClipPath.invoke(view,false);
-                int save=canvas.save();
-                try { canvas.clipPath(path);canvas.drawColor(0xCCFFFFFF); }
-                finally { canvas.restoreToCount(save); }
-            }
-            return chain.proceed();
-        },Canvas.class,View.class,long.class);
         installer.hook("android.widget.ImageView", "onDraw", chain -> {
             ImageView icon=(ImageView)chain.getThisObject();
             if(isDismissIcon(icon) && !night(icon)) {
@@ -177,12 +137,10 @@ final class NotificationAppearanceHooks {
             return chain.proceed(new Object[]{backgroundColor(view,(Integer)chain.getArg(0),false)});
         },int.class);
         installer.hook(landscapeClass.getName(), "setBackground", chain -> {
-            View view=(View)chain.getThisObject();
-            Object result=chain.proceed();
-            Drawable drawable=view.getBackground();
-            if(drawable!=null && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable"))
-                drawable.mutate().setTint(floatingColor(view,false));
-            return result;
+            View view=(View)chain.getThisObject(); settings.accept(view.getContext());
+            State state=observe(view);
+            state.restoreLandscapeTint();
+            Object result=chain.proceed(); state.finish(); return result;
         });
         installer.hook(mediaClass.getName(), "setBackground", chain -> {
             View view=(View)chain.getThisObject(); settings.accept(view.getContext());
@@ -283,12 +241,14 @@ final class NotificationAppearanceHooks {
     }
     private final class State implements View.OnAttachStateChangeListener, ViewTreeObserver.OnPreDrawListener {
         final WeakReference<View> owner;
-        final boolean media;
+        final boolean media, landscape;
         boolean saved, running, failed;
         float originalRadius, originalMax;
         int lastColor=Integer.MIN_VALUE;
         float lastRadius=-1;
         boolean lastLight, lastCorners, lastFloating;
+        Drawable tintedLandscape;
+        ColorFilter originalLandscapeFilter;
         ViewTreeObserver observer;
         ViewOutlineProvider originalOutline;
         boolean originalClip;
@@ -297,7 +257,10 @@ final class NotificationAppearanceHooks {
                 result.setRoundRect(0,0,view.getWidth(),view.getHeight(),radius(view));
             }
         };
-        State(View view) { owner=new WeakReference<>(view); media=mediaClass.isInstance(view); }
+        State(View view) {
+            owner=new WeakReference<>(view); media=mediaClass.isInstance(view);
+            landscape=landscapeClass.isInstance(view);
+        }
         @Override public void onViewAttachedToWindow(View view) {
             if(observer==view.getViewTreeObserver() && observer.isAlive())return;
             observer=view.getViewTreeObserver(); observer.addOnPreDrawListener(this);
@@ -335,24 +298,40 @@ final class NotificationAppearanceHooks {
             }
         }
         boolean lastNight;
+        void restoreLandscapeTint() {
+            // setBackgroundResource may reuse the same drawable, so a native call
+            // alone does not necessarily clear our previous solid-background tint.
+            if (tintedLandscape != null) {
+                tintedLandscape.setColorFilter(originalLandscapeFilter);
+                tintedLandscape = null;
+                originalLandscapeFilter = null;
+            }
+        }
         void finish() throws ReflectiveOperationException {
             View view=owner.get(); if(view==null)return;
-            if(corners.getAsBoolean() || lastCorners) {
+            if(!landscape && (corners.getAsBoolean() || lastCorners)) {
                 if(media) view.invalidateOutline();
                 else if(flymeBackground.get(view)!=null)applyRoundness.invoke(view);
             }
             boolean isFloating=floating(view);
-            if(light.getAsBoolean() || isFloating) {
-                if(media) {
+            if(light.getAsBoolean()) {
+                if(media || landscape) {
                     Drawable drawable=view.getBackground();
                     if(drawable!=null && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable")
-                            && !drawable.getClass().getName().endsWith("WallpaperBlurDrawable")) drawable.mutate().setTint(color());
+                            && !drawable.getClass().getName().endsWith("WallpaperBlurDrawable")) {
+                        int tint=backgroundColor(view,color(),false);
+                        if(landscape) {
+                            tintedLandscape=drawable.mutate();
+                            originalLandscapeFilter=tintedLandscape.getColorFilter();
+                            tintedLandscape.setColorFilter(new PorterDuffColorFilter(tint,PorterDuff.Mode.SRC_IN));
+                        } else drawable.mutate().setTint(tint);
+                    }
                 } else if(isFloating || pushBackground.get(view)==null) {
                     Object background=flymeBackground.get(view);
                     if(background!=null && nativeBackground.get(background) instanceof Drawable drawable
                             && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable")
                             && !drawable.getClass().getName().endsWith("WallpaperBlurDrawable"))
-                        tintNoBlur.invoke(background,isFloating?floatingColor(view,false):color());
+                        tintNoBlur.invoke(background,backgroundColor(view,color(),false));
                 }
             }
             lastColor=color(); lastLight=light.getAsBoolean(); lastCorners=corners.getAsBoolean();
@@ -367,11 +346,16 @@ final class NotificationAppearanceHooks {
             catch(ReflectiveOperationException error) {
                 failed=true; log.accept("Cannot resolve floating notification state",error); return;
             }
-            boolean changed=(currentFloating && night(view)!=lastNight) || currentFloating!=lastFloating || currentCorners!=lastCorners || currentLight!=lastLight
+            boolean changed=night(view)!=lastNight || currentFloating!=lastFloating || currentCorners!=lastCorners || currentLight!=lastLight
                     || (currentLight && color()!=lastColor) || (currentCorners && radius(view)!=lastRadius);
             if(!changed)return;
             running=true;
-            try { if(media)mediaBackground.invoke(view); else rowBackground.invoke(view); view.requestLayout(); }
+            try {
+                if(media)mediaBackground.invoke(view);
+                else if(landscape)landscapeBackground.invoke(view);
+                else rowBackground.invoke(view);
+                view.requestLayout();
+            }
             catch(ReflectiveOperationException | RuntimeException error) {
                 failed=true; log.accept("Cannot update notification appearance",error);
             } finally { running=false; }

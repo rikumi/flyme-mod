@@ -18,7 +18,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 internal fun BackGestureWidthPreference() {
     val context = LocalContext.current
-    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    val preferences = LocalModulePreferences.current
     val maximum = ModuleSettings.BACK_GESTURE_WIDTH_MAX_DEFAULT
     var enabled by remember { mutableStateOf(preferences.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false)) }
     var amount by remember { mutableStateOf(preferences.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP,

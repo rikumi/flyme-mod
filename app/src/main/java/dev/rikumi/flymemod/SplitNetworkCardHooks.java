@@ -34,8 +34,6 @@ final class SplitNetworkCardHooks {
     private final Object companion;
     private final java.lang.reflect.Constructor<?> smoothDrawable;
     private final Method smoothRadius, smoothOutline;
-    private java.util.function.Predicate<Context> lightSurface = context -> false;
-    void setLightSurfacePolicy(java.util.function.Predicate<Context> policy) { lightSurface=policy; }
     private Consumer<View> contourListener;
     void setContourListener(Consumer<View> listener) { contourListener = listener; }
     private void updateContours(View card) { if (contourListener != null) contourListener.accept(card); }
@@ -106,8 +104,8 @@ final class SplitNetworkCardHooks {
             String prefix = "wifi".equals(spec) ? "wifi" : "bt".equals(spec) ? "bluetooth" : null;
             if (style.getAsInt() == 0 || prefix == null) return chain.proceed();
             Object[] args = chain.getArgs().toArray();
-            args[1] = lightSurface.test(card.getContext()) ? Color.BLACK : card.getClass().getMethod("getLabelColorForState", int.class).invoke(card, state(card,prefix));
-            args[2] = lightSurface.test(card.getContext()) ? Color.BLACK : card.getClass().getMethod("getSecondaryLabelColorForState", int.class).invoke(card, state(card,prefix));
+            args[1] = card.getClass().getMethod("getLabelColorForState", int.class).invoke(card, state(card,prefix));
+            args[2] = card.getClass().getMethod("getSecondaryLabelColorForState", int.class).invoke(card, state(card,prefix));
             Object result = chain.proceed(args);
             tintRow(card, prefix);
             return result;
@@ -283,7 +281,7 @@ final class SplitNetworkCardHooks {
 
     private void restoreIconColor(View icon, int state) throws ReflectiveOperationException {
         ImageView glyph = (ImageView) field(icon, "mIcon");
-        if (glyph != null) iconTint.apply(glyph, lightSurface.test(icon.getContext()) ? Color.BLACK : (Integer) iconColor.invoke(icon, state));
+        if (glyph != null) iconTint.apply(glyph, (Integer) iconColor.invoke(icon, state));
     }
 
     private void tintRow(View card, String prefix) throws ReflectiveOperationException {

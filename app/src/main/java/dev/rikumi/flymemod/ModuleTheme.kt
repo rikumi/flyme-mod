@@ -7,15 +7,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 
 internal data class ModuleThemeSettings(val blackBackground: Boolean)
 
 /** Local UI observes the same setting without requiring an injected module process. */
 @Composable
 internal fun rememberModuleThemeSettings(): ModuleThemeSettings {
-    val context = LocalContext.current
-    val preferences = remember(context) { ModuleSettings.preferences(context) }
+    val preferences = LocalModulePreferences.current
     fun read(): ModuleThemeSettings {
         return ModuleThemeSettings(preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false))
     }

@@ -134,7 +134,7 @@ public final class ModuleSettings {
     public static final String LIGHT = "light_tile_background";
     public static final String LIGHT_OPACITY = "light_tile_background_opacity";
     public static final int LIGHT_OPACITY_DEFAULT = 12;
-    public static final int LIGHT_OPACITY_MAX = 24;
+    public static final int LIGHT_OPACITY_MAX = 100;
     public static final String TILE_CORNERS = "control_center_tile_corners";
     public static final String TILE_CORNER_PERCENT = "control_center_tile_corner_percent";
     public static final int TILE_CORNER_PERCENT_DEFAULT = 30;
