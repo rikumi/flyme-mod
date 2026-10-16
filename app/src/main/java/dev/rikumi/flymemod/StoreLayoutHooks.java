@@ -173,13 +173,29 @@ final class StoreLayoutHooks {
             }
             if (options[6] && isDownloadRecommendationRequest(request.getDeclaringClass().getName(), request.getName()))
                 return empty.invoke(null);
-            if ((options[7] && request.getDeclaringClass().getName().equals("com.meizu.mstore.data.net.api.UpdateApi")
+            if (options[7] && request.getDeclaringClass().getName().equals("com.meizu.mstore.data.net.api.UpdateApi")
                     && request.getName().equals("getUpdateRecommendApps"))
-                    || (options[5] && request.getDeclaringClass().getName().equals("com.meizu.mstore.data.net.api.AppDetailApi")
-                    && request.getName().equals("getRecommendAppData"))) return empty.invoke(null);
+                return emptyUpdateRecommendations(loader);
+            if (options[5] && request.getDeclaringClass().getName().equals("com.meizu.mstore.data.net.api.AppDetailApi")
+                    && request.getName().equals("getRecommendAppData")) return empty.invoke(null);
             return chain.proceed();
         }, Object.class, Method.class, Object[].class);
 
+    }
+
+    static Object emptyUpdateRecommendations(ClassLoader loader) throws ReflectiveOperationException {
+        // Store 12.5.1 UpdatePresenter.H zips installed updates with recommendations.
+        // empty() completes that zip without emitting the installed-app list. Emit
+        // one successful empty block instead, including the non-null list required
+        // by the downstream mapper (also present in Store 11.1.5).
+        Class<?> resultType = loader.loadClass("com.meizu.mstore.data.net.requestitem.base.ResultModel");
+        Class<?> valueType = loader.loadClass("com.meizu.mstore.data.net.requestitem.base.ValueBlock");
+        Object value = valueType.getConstructor().newInstance();
+        valueType.getField("blocks").set(value, new ArrayList<>());
+        Object result = resultType.getConstructor().newInstance();
+        resultType.getField("code").setInt(result, 200);
+        resultType.getField("value").set(result, value);
+        return loader.loadClass("io.reactivex.Observable").getMethod("just", Object.class).invoke(null, result);
     }
 
     private void installSearchLanding(ClassLoader loader, SignalHooks.Installer installer)
