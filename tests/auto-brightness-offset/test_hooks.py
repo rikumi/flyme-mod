@@ -48,6 +48,8 @@ public class AutoBrightnessOffsetTest {
    Object strategy=Class.forName(entry.getKey()).getConstructor().newInstance();
    var field=strategy.getClass().getDeclaredField("mAutomaticBrightnessController");
    AutomaticBrightnessController controller=(AutomaticBrightnessController)field.get(strategy);
+   var active=strategy.getClass().getDeclaredField("mIsAutoBrightnessEnabled");
+   var temporary=strategy.getClass().getDeclaredField("mTemporaryAutoBrightnessAdjustment");
    int[] calls={0}; float[] raw={0.3f};
    XposedInterface.Chain chain=new XposedInterface.Chain(){
     public Object proceed(){calls[0]++;return raw[0];} public Object getThisObject(){return strategy;}
@@ -55,6 +57,17 @@ public class AutoBrightnessOffsetTest {
    enabled=false; equal((Float)entry.getValue().intercept(chain),0.3f);
    enabled=true; percent=20; equal((Float)entry.getValue().intercept(chain),0.5f);
    equal((Float)entry.getValue().intercept(chain),0.5f); check(calls[0]==3);
+   // A cached automatic target must not be shifted while automatic mode is disabled.
+   active.setBoolean(strategy,false);
+   equal((Float)entry.getValue().intercept(chain),0.3f);
+   active.setBoolean(strategy,true);
+   // Native temporary adjustments include zero and both slider directions.
+   for(float adjustment:new float[]{-0.5f,0f,0.5f}) {
+    temporary.setFloat(strategy,adjustment);
+    equal((Float)entry.getValue().intercept(chain),0.3f);
+   }
+   temporary.setFloat(strategy,Float.NaN);
+   equal((Float)entry.getValue().intercept(chain),0.5f);
    percent=50; equal((Float)entry.getValue().intercept(chain),0.8f);
    percent=-30; equal((Float)entry.getValue().intercept(chain),0f);
    percent=10; equal((Float)entry.getValue().intercept(chain),0.4f);
@@ -81,10 +94,15 @@ public class AutoBrightnessOffsetTest {
 }
 for suffix, params in [('2', 'BrightnessEvent event'), ('', 'BrightnessEvent event, boolean update')]:
     name = 'AutomaticBrightnessStrategy' + suffix
+    parent = ' extends AutomaticBrightnessStrategy2' if not suffix else ''
+    constructor = 'public AutomaticBrightnessStrategy(){super.mIsAutoBrightnessEnabled=false;super.mTemporaryAutoBrightnessAdjustment=0.5f;}' if not suffix else ''
     STUBS[f'com/android/server/display/brightness/strategy/{name}.java'] = f'''package com.android.server.display.brightness.strategy;
 import com.android.server.display.AutomaticBrightnessController;
 import com.android.server.display.brightness.*;
-public class {name} {{
+public class {name}{parent} {{
+ {constructor}
+ public boolean mIsAutoBrightnessEnabled=true;
+ public float mTemporaryAutoBrightnessAdjustment=Float.NaN;
  public AutomaticBrightnessController mAutomaticBrightnessController=new AutomaticBrightnessController();
  public float getAutomaticScreenBrightness({params}) {{return 0.3f;}}
  public boolean isAutoBrightnessValid() {{return true;}}

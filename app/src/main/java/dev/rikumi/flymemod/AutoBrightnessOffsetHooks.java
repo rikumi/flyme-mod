@@ -5,7 +5,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.function.Consumer;
 
-/** Adjust the automatic target after Flyme's temporary adjustment, before native range limits. */
+/** Adjust automatic targets only, preserving native manual and temporary adjustments. */
 final class AutoBrightnessOffsetHooks {
     static void install(ClassLoader loader, SharedPreferences preferences, SignalHooks.Installer installer,
                         Consumer<Method> deoptimize) throws ReflectiveOperationException {
@@ -34,11 +34,20 @@ final class AutoBrightnessOffsetHooks {
     }
 
     private static void hook(Method target, Field controllerField, Field state, Field policy,
-                             SharedPreferences preferences, SignalHooks.Installer installer) {
+                             SharedPreferences preferences, SignalHooks.Installer installer) throws ReflectiveOperationException {
+        Class<?> strategy = target.getDeclaringClass();
+        // The modern strategy shadows these fields, so resolve each declaring class separately.
+        Field enabled = strategy.getDeclaredField("mIsAutoBrightnessEnabled");
+        Field temporary = strategy.getDeclaredField("mTemporaryAutoBrightnessAdjustment");
+        enabled.setAccessible(true);
+        temporary.setAccessible(true);
         installer.hook(target.getDeclaringClass().getName(), target.getName(), chain -> {
             Object result = chain.proceed();
             if (!preferences.getBoolean(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED, false)) return result;
-            Object controller = controllerField.get(chain.getThisObject());
+            Object strategyInstance = chain.getThisObject();
+            if (!enabled.getBoolean(strategyInstance)
+                    || !Float.isNaN(temporary.getFloat(strategyInstance))) return result;
+            Object controller = controllerField.get(strategyInstance);
             // STATE_ON only: do not brighten AOD, suspended displays, or screen-off transitions.
             if (controller == null || state.getInt(controller) != 2 || policy.getInt(controller) == 1) return result;
             return offset((Float) result, preferences.getInt(ModuleSettings.AUTO_BRIGHTNESS_OFFSET,

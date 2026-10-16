@@ -4,11 +4,15 @@
 
 - 旧路径：`DisplayPowerController.updatePowerState()` 调用
   `AutomaticBrightnessStrategy2.getAutomaticScreenBrightness(BrightnessEvent)`。
-  此方法先读取自动亮度，再应用 Flyme 临时自动亮度调整。
+  此方法先读取自动亮度，再应用 Flyme 临时自动亮度调整；存在临时调整时不追加模块偏移。
 - 重构路径：`AutomaticBrightnessStrategy.updateBrightness(StrategyExecutionRequest)` 调用
   `getAutomaticScreenBrightness(BrightnessEvent, boolean)`；有效性检查也调用该方法。
 - 两条路径分别持有 `mAutomaticBrightnessController`；通过其 `mDisplayState` 和
   `mDisplayPolicy` 排除息屏、关闭及挂起状态。
+- 分别读取两条策略自身的 `mIsAutoBrightnessEnabled` 和
+  `mTemporaryAutoBrightnessAdjustment`（重构策略重新声明了同名字段）。
+  仅自动亮度已启用且临时调整为 NaN 时应用偏移；手动模式、拖动滑块产生的
+  正负临时调整及有效零调整均保持系统返回值，临时调整清除后恢复自动偏移。
 - 在策略返回值上加 `偏移 / 100`，不写入自动亮度控制器缓存，不累积偏移；
   限制到 0.0–1.0，后续仍执行系统的亮度范围、温控和省电处理。
   NaN、无穷、负数哨兵及超出正常范围的原生值保持不变。
