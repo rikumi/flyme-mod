@@ -10,16 +10,13 @@ import java.util.function.BiConsumer;
 /** SystemUI client; no HeyMelody code or Bluetooth transport is loaded here. */
 final class HeyMelodyNoiseController {
     private final BiConsumer<String, Throwable> log;
-    private volatile boolean active;
     private IBinder activity;
     private long retryAt;
     HeyMelodyNoiseController(BiConsumer<String, Throwable> log) { this.log = log; }
-    void activate() { active = true; }
-    void close() { active = false; }
     int read(Context context, String address) { return request(address, 0); }
     boolean set(String address, int mode) { return (mode == 2 || mode == 3) && request(address, mode) == 1; }
     private int request(String address, int target) {
-        if (!active || !BluetoothAdapter.checkBluetoothAddress(address)
+        if (!BluetoothAdapter.checkBluetoothAddress(address)
                 || SystemClock.elapsedRealtime() < retryAt) return 0;
         Parcel data = Parcel.obtain(), reply = Parcel.obtain();
         try {

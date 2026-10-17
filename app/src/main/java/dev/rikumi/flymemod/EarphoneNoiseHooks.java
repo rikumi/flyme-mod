@@ -7,6 +7,7 @@ import android.content.ServiceConnection;
 import android.graphics.drawable.Drawable;
 import android.graphics.Rect;
 import android.media.AudioDeviceInfo;
+import android.media.AudioDeviceCallback;
 import android.media.AudioManager;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -18,7 +19,6 @@ import android.os.Parcel;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.MotionEvent;
-import android.view.TouchDelegate;
 import android.widget.ImageView;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
@@ -33,17 +33,19 @@ import java.util.function.BiConsumer;
 final class EarphoneNoiseHooks {
     private static final String OWNER="com.flyme.systemui.volume.QSVolumeControllerImpl";
     private static final String SDK="com.meizu.bluetooth.sdk.IMzBluetooth";
-    private final BooleanSupplier enabled;
+    private final BooleanSupplier enabled, melodyEnabled;
     private final BiConsumer<String,Throwable> log;
-    private final Field iconField,streamField;
+    private final Field iconField,streamField,seekBarField;
     private final Handler main=new Handler(Looper.getMainLooper());
     private final Handler worker;
     private final Map<ImageView,WeakReference<Object>> icons=new WeakHashMap<>();
     private final Map<ImageView,Drawable> originals=new WeakHashMap<>();
     private final Map<ImageView,Drawable> replacements=new WeakHashMap<>();
     private final Map<ImageView,Boolean> clickable=new WeakHashMap<>();
-    private final Map<ViewGroup,TouchDelegate> touchGestures=new WeakHashMap<>();
+    private final Map<ViewGroup,EarphoneNoiseTouchGesture> touchGestures=new WeakHashMap<>();
     private final EarphoneNoiseState noiseState=new EarphoneNoiseState();
+    private final EarphoneNoisePreview preview=new EarphoneNoisePreview();
+    private boolean audioCallbackRegistered;
     private final HeyMelodyNoiseController melody;
     private final Map<ImageView,Drawable> foregrounds=new WeakHashMap<>();
     private String initializedDevice;
@@ -96,11 +98,12 @@ final class EarphoneNoiseHooks {
         }catch(Exception error){log.accept("Cannot connect system earphone service",error);}
         finally{data.recycle();reply.recycle();}
     }
-    EarphoneNoiseHooks(ClassLoader loader,BooleanSupplier enabled,BiConsumer<String,Throwable> log) throws ReflectiveOperationException {
-        this.enabled=enabled;this.log=log;
+    EarphoneNoiseHooks(ClassLoader loader,BooleanSupplier enabled,BooleanSupplier melodyEnabled,BiConsumer<String,Throwable> log) throws ReflectiveOperationException {
+        this.enabled=enabled;this.melodyEnabled=melodyEnabled;this.log=log;
         melody=new HeyMelodyNoiseController(log);
         Class<?> owner=loader.loadClass(OWNER);
         iconField=owner.getField("mIcon");streamField=owner.getField("mCurrentStreamType");
+        seekBarField=owner.getField("mSeekBar");
         owner.getDeclaredMethod("changeIconResource",int.class);
         owner.getDeclaredMethod("setUpIconFrame",int.class,int.class,int.class);
         HandlerThread thread=new HandlerThread("FlymeModEarphone");thread.start();worker=new Handler(thread.getLooper());
@@ -138,6 +141,7 @@ final class EarphoneNoiseHooks {
                     try{
                         if(!enabled.getAsBoolean()||!id.equals(deviceId))return;
                         if(id.startsWith("melody:")){
+                            if(!melodyEnabled.getAsBoolean())return;
                             int target=mode==3?2:3;
                             if(!melody.set(id.substring(7),target))status("HeyMelody noise mode request rejected");
                             return;
@@ -173,19 +177,19 @@ final class EarphoneNoiseHooks {
                         int x=bounds.centerX(),y=bounds.centerY();
                         bounds.set(x-size/2,y-size/2,x+(size+1)/2,y+(size+1)/2);
                         if(bounds.contains((int)event.getX(),(int)event.getY())){
-                            touchGestures.put(parent,new TouchDelegate(bounds,icon));
+                            Object owner=icons.get(icon).get();
+                            View slider=owner==null?null:(View)seekBarField.get(owner);
+                            if(slider==null)continue;
+                            touchGestures.put(parent,new EarphoneNoiseTouchGesture(parent,icon,slider,bounds,event));
                             break;
                         }
                     }
             }
-            TouchDelegate delegate=touchGestures.get(parent);
-            if(delegate==null)return chain.proceed();
-            MotionEvent copy=MotionEvent.obtain(event);
+            EarphoneNoiseTouchGesture gesture=touchGestures.get(parent);
+            if(gesture==null)return chain.proceed();
             try{
-                if(!enabled.getAsBoolean()||deviceId==null||mode<1)copy.setAction(MotionEvent.ACTION_CANCEL);
-                delegate.onTouchEvent(copy);
+                gesture.dispatch(event,enabled.getAsBoolean()&&deviceId!=null&&mode>=1);
             }finally{
-                copy.recycle();
                 if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)touchGestures.remove(parent);
             }
             return true;
@@ -213,11 +217,30 @@ final class EarphoneNoiseHooks {
     }
     void refresh(){
         if(context==null)return;
+        if(!enabled.getAsBoolean())preview.clear();
+        else if(!melodyEnabled.getAsBoolean())preview.disableMelody();
+        if(!melodyEnabled.getAsBoolean()&&deviceId!=null&&deviceId.startsWith("melody:")){
+            deviceId=null;mode=0;apply(0);
+        }
         if(enabled.getAsBoolean())start();
         else{deviceId=null;mode=0;apply(0);release();}
     }
     private void start(){
-        melody.activate();
+        AudioManager audio=context.getSystemService(AudioManager.class);
+        if(audio!=null&&!audioCallbackRegistered){
+            audio.registerAudioDeviceCallback(new AudioDeviceCallback(){
+                @Override public void onAudioDevicesRemoved(AudioDeviceInfo[] removed){
+                    for(AudioDeviceInfo output:removed)if(bluetoothOutput(output))preview.disconnected(output.getAddress());
+                    if(deviceId!=null&&cachedOutput()==null){deviceId=null;mode=0;apply(0);}
+                }
+            },main);
+            audioCallbackRegistered=true;
+        }
+        // Paint synchronously on reopen; service queries remain on the worker.
+        if(!polling){
+            EarphoneNoisePreview.State cached=cachedOutput();
+            if(cached!=null){deviceId=cached.deviceId();mode=cached.mode();apply(cached.mode());}
+        }
         if(!bound){
             try{
                 Intent intent=new Intent().setComponent(new ComponentName("com.meizu.earphone","com.meizu.bluetooth.sdk.MzBluetoothService"));
@@ -236,7 +259,7 @@ final class EarphoneNoiseHooks {
         if(!polling){polling=true;main.post(tick);}
     }
     private void release(){
-        melody.close();releaseMeizu();
+        releaseMeizu();
     }
     private void releaseMeizu(){
         if(bound){try{context.unbindService(connection);}catch(RuntimeException ignored){}bound=false;}
@@ -247,32 +270,35 @@ final class EarphoneNoiseHooks {
         if(!enabled.getAsBoolean()){polling=false;return;}
         boolean visible=false;
         for(ImageView icon:icons.keySet())if(icon.isShown()&&icon.getGlobalVisibleRect(new Rect())&&media(icon)){visible=true;break;}
-        if(!visible){polling=false;deviceId=null;mode=0;apply(0);melody.close();return;}
+        if(!visible){polling=false;deviceId=null;mode=0;apply(0);return;}
         worker.post(()->{
             try{read();}catch(Exception error){
                 status("State query failed: "+error.getClass().getSimpleName()+": "+error.getMessage());
-                deviceId=null;mode=0;main.post(()->apply(0));
+                if(!showCachedOutput()){deviceId=null;mode=0;main.post(()->apply(0));}
             }
             main.postDelayed(this,1500);
         });
     }};
     private void read() throws Exception {
-        if(!enabled.getAsBoolean()||!polling){melody.close();return;}
+        if(!enabled.getAsBoolean()||!polling)return;
         IBinder service=binder;
         String id=null;int current=0;
         AudioManager audio=context.getSystemService(AudioManager.class);
-        if(audio!=null){
+        if(melodyEnabled.getAsBoolean()&&audio!=null){
             AudioDeviceInfo[] outputs=audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
             for(AudioDeviceInfo output:outputs){
                 if(output.getType()!=AudioDeviceInfo.TYPE_BLUETOOTH_A2DP&&output.getType()!=AudioDeviceInfo.TYPE_BLE_HEADSET)continue;
                 int value=melody.read(context,output.getAddress());
                 if(value!=0){
+                    if(!enabled.getAsBoolean()||!melodyEnabled.getAsBoolean())return;
                     noiseState.clear();deviceId="melody:"+output.getAddress();mode=value;
-                    main.post(()->{if(enabled.getAsBoolean()&&polling)apply(value);});
+                    preview.observed(output.getAddress(),deviceId,value);
+                    main.post(()->{if(enabled.getAsBoolean()&&melodyEnabled.getAsBoolean()&&polling)apply(value);});
                     return;
                 }
             }
         }
+        if(showCachedOutput()&&deviceId!=null&&deviceId.startsWith("melody:"))return;
         if(service!=null&&audio!=null){
             // The SDK resolves only recognized earphones; do not guess by Bluetooth name.
             for(AudioDeviceInfo output:audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)){
@@ -305,13 +331,42 @@ final class EarphoneNoiseHooks {
                 String model=string(56,candidate);
                 if(model==null||model.isEmpty())continue;
                 int value=integer(18,candidate,null);
-                if(value>=1&&value<=3){id=candidate;current=noiseState.observed(candidate,value);status("Noise mode available: "+value);break;}
+                if(value>=1&&value<=3){
+                    id=candidate;current=noiseState.observed(candidate,value);
+                    if(enabled.getAsBoolean())preview.observed(output.getAddress(),candidate,value);
+                    status("Noise mode available: "+value);break;
+                }
                 status("Unsupported or pending noise mode: "+value);
             }
         }
+        if(id==null&&showCachedOutput())return;
         if(id==null)noiseState.clear();
         deviceId=id;mode=current;
         int next=current;main.post(()->apply(next));
+    }
+    private static boolean bluetoothOutput(AudioDeviceInfo output){
+        return output.isSink()&&(output.getType()==AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                ||output.getType()==AudioDeviceInfo.TYPE_BLE_HEADSET);
+    }
+    private EarphoneNoisePreview.State cachedOutput(){
+        if(!enabled.getAsBoolean())return null;
+        AudioManager audio=context.getSystemService(AudioManager.class);
+        if(audio!=null)for(AudioDeviceInfo output:audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)){
+            if(!bluetoothOutput(output))continue;
+            EarphoneNoisePreview.State cached=preview.forOutput(output.getAddress(),melodyEnabled.getAsBoolean());
+            if(cached!=null)return cached;
+        }
+        preview.clear();
+        return null;
+    }
+    private boolean showCachedOutput(){
+        EarphoneNoisePreview.State cached=cachedOutput();
+        if(cached==null)return false;
+        deviceId=cached.deviceId();mode=cached.mode();
+        main.post(()->{
+            if(polling&&cached.equals(cachedOutput()))apply(cached.mode());
+        });
+        return true;
     }
     private void initializeDevice(String id) throws Exception {
         Parcel reply=appRequest(4,id,null);

@@ -135,6 +135,7 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.FOLD_IDLE_MEDIA);
         columns.add(ModuleSettings.FIX_MEDIA_SWIPE);
         columns.add(ModuleSettings.EARPHONE_NOISE_CONTROL);
+        columns.add(ModuleSettings.HEYMELODY_NOISE_CONTROL);
         columns.add(ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS);
         columns.add(ModuleSettings.NETWORK_SPLIT_STYLE);
         columns.add(ModuleSettings.OPTIMIZE_2X1_TEXT);
@@ -300,6 +301,7 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.FOLD_IDLE_MEDIA, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.FIX_MEDIA_SWIPE, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.EARPHONE_NOISE_CONTROL, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.HEYMELODY_NOISE_CONTROL, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS, false) ? 1 : 0);
         values.add(ModuleSettings.networkSplitStyle(prefs));
         values.add(prefs.getBoolean(ModuleSettings.OPTIMIZE_2X1_TEXT, false) ? 1 : 0);

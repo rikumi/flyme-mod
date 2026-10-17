@@ -10,6 +10,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.media.AudioDeviceInfo;
+import android.media.AudioDeviceCallback;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Binder;
@@ -21,7 +22,6 @@ import android.os.Message;
 import android.os.Messenger;
 import android.os.Parcel;
 import android.os.Process;
-import android.os.SystemClock;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.lang.reflect.Field;
@@ -42,14 +42,15 @@ final class HeyMelodyNoiseBridge {
     private static final String PACKAGE = "com.heytap.headset";
     private static final String SERVICE = "com.oplus.melody.alive.service.MelodyAliveService";
     private static final String CERT = "159e6f37c336f2f41272542dbc1dc85721dd567ed4ac68ac13f2e43003ce0dce";
-    private static final long TTL = 5000;
+    private static final long POLL_INTERVAL = 3000;
     private final SharedPreferences preferences;
     private final BiConsumer<String, Throwable> log;
     private final ConcurrentHashMap<String, Snapshot> snapshots = new ConcurrentHashMap<>();
     private final AtomicBoolean busy = new AtomicBoolean();
-    private volatile long lastRequest;
     private Context context;
-    private Handler worker;
+    private Object cachedAppOptimizer;
+    private Method unfreezeUid;
+    private volatile Handler worker;
     private Messenger remote, responses;
     private boolean bound, bindingRegistered;
     // LoadedApk retains the dispatcher even when bindService returns false.
@@ -57,13 +58,12 @@ final class HeyMelodyNoiseBridge {
     private final java.util.concurrent.Executor connectionExecutor = command -> worker.post(command);
     private int sequence;
     private String lastError;
-    private record Snapshot(int mode, HeyMelodyNoiseModes modes, long at) {}
+    private record Snapshot(int mode, HeyMelodyNoiseModes modes) {}
     private final SharedPreferences.OnSharedPreferenceChangeListener changes = (prefs, key) -> {
-        if (key == null || ModuleSettings.EARPHONE_NOISE_CONTROL.equals(key)) {
-            if (!enabled()) {
-                snapshots.clear();
-                synchronized (this) { if (worker != null) worker.post(this::release); }
-            }
+        if (key == null || ModuleSettings.EARPHONE_NOISE_CONTROL.equals(key)
+                || ModuleSettings.HEYMELODY_NOISE_CONTROL.equals(key)) {
+            if (!enabled()) snapshots.clear();
+            scheduleReconcile();
         }
     };
     HeyMelodyNoiseBridge(SharedPreferences preferences, BiConsumer<String, Throwable> log) {
@@ -75,6 +75,13 @@ final class HeyMelodyNoiseBridge {
         Method transact = ams.getDeclaredMethod("onTransact", int.class, Parcel.class, Parcel.class, int.class);
         Field contextField = ams.getDeclaredField("mContext");
         contextField.setAccessible(true);
+        Field oomAdjuster = ams.getDeclaredField("mOomAdjuster");
+        oomAdjuster.setAccessible(true);
+        Field optimizer = loader.loadClass("com.android.server.am.OomAdjuster").getDeclaredField("mCachedAppOptimizer");
+        optimizer.setAccessible(true);
+        Method unfreeze = loader.loadClass("com.android.server.am.CachedAppOptimizer")
+                .getDeclaredMethod("unfreezeTemporarily", int.class);
+        unfreeze.setAccessible(true);
         installer.hook(ams.getName(), "onTransact", chain -> {
             if ((int) chain.getArg(0) != TRANSACTION) return chain.proceed();
             Parcel data = (Parcel) chain.getArg(1), reply = (Parcel) chain.getArg(2);
@@ -90,38 +97,105 @@ final class HeyMelodyNoiseBridge {
                     || (target != 0 && target != 2 && target != 3)) throw new IllegalArgumentException("Noise request");
             if (reply == null) return true;
             int result = 0;
-            if (enabled()) {
-                long identity = Binder.clearCallingIdentity();
-                try {
-                    initialize(ctx);
-                    long now = SystemClock.elapsedRealtime();
-                    lastRequest = now;
-                    Snapshot old = snapshots.get(address);
-                    if (target == 0 && old != null && now - old.at() < TTL) result = old.mode();
-                    // At most one provider query or control request can be queued/in flight.
-                    if (busy.compareAndSet(false, true)) {
-                        worker.post(() -> refresh(address, target));
-                        if (target != 0) result = 1; // queued, not an acknowledgement from the earphone
-                    }
-                } finally { Binder.restoreCallingIdentity(identity); }
+            if (enabled() && worker != null) {
+                Snapshot state = snapshots.get(address);
+                if (target == 0 && state != null) result = state.mode();
+                // Display reads never initialize, bind, refresh or release the service.
+                // Keep at most one user command queued while provider work is running.
+                if (target != 0 && state != null && busy.compareAndSet(false, true)) {
+                    worker.post(() -> control(address, target));
+                    result = 1;
+                }
             }
             reply.writeNoException(); reply.writeInt(result);
             return true;
         }, int.class, Parcel.class, Parcel.class, int.class);
+        Class<?> trace = loader.loadClass("com.android.server.utils.TimingsTraceAndSlog");
+        Method ready = ams.getDeclaredMethod("systemReady", Runnable.class, trace);
+        installer.hook(ams.getName(), "systemReady", chain -> {
+            Object result = chain.proceed();
+            try {
+                initialize((Context) contextField.get(chain.getThisObject()),
+                        optimizer.get(oomAdjuster.get(chain.getThisObject())), unfreeze);
+            } catch (Exception error) {
+                log.accept("Cannot initialize HeyMelody system session", error);
+            }
+            return result;
+        }, Runnable.class, trace);
+        deoptimize.accept(ready);
         deoptimize.accept(transact);
         preferences.registerOnSharedPreferenceChangeListener(changes);
         log.accept("HeyMelody system broker registered", null);
     }
-    private boolean enabled() { return preferences.getBoolean(ModuleSettings.EARPHONE_NOISE_CONTROL, false); }
-    private synchronized void initialize(Context ctx) {
+    private boolean enabled() {
+        return preferences.getBoolean(ModuleSettings.EARPHONE_NOISE_CONTROL, false)
+                && preferences.getBoolean(ModuleSettings.HEYMELODY_NOISE_CONTROL, false);
+    }
+    private synchronized void initialize(Context ctx, Object optimizer, Method unfreeze) {
         if (worker != null) return;
         context = ctx;
+        cachedAppOptimizer = optimizer;
+        unfreezeUid = unfreeze;
         HandlerThread thread = new HandlerThread("FlymeModHeyMelody"); thread.start();
         worker = new Handler(thread.getLooper());
         responses = new Messenger(new Handler(thread.getLooper(), message -> {
             // Real state is always read back from the provider; never treat a send as success.
             return true;
         }));
+        worker.post(() -> {
+            AudioManager audio = context.getSystemService(AudioManager.class);
+            if (audio != null) audio.registerAudioDeviceCallback(new AudioDeviceCallback() {
+                @Override public void onAudioDevicesAdded(AudioDeviceInfo[] devices) { scheduleReconcile(); }
+                @Override public void onAudioDevicesRemoved(AudioDeviceInfo[] devices) {
+                    for (AudioDeviceInfo device : devices) snapshots.remove(device.getAddress());
+                    scheduleReconcile();
+                }
+            }, worker);
+            reconcile();
+        });
+    }
+    private void scheduleReconcile() {
+        Handler handler = worker;
+        if (handler == null) return;
+        handler.removeCallbacks(poll);
+        handler.post(poll);
+    }
+    private final Runnable poll = this::reconcile;
+    private List<String> connectedOutputs() {
+        List<String> addresses = new ArrayList<>();
+        AudioManager audio = context.getSystemService(AudioManager.class);
+        if (audio != null) for (AudioDeviceInfo device : audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+            if ((device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                    || device.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET)
+                    && BluetoothAdapter.checkBluetoothAddress(device.getAddress())
+                    && !addresses.contains(device.getAddress())) addresses.add(device.getAddress());
+        }
+        return addresses;
+    }
+    private void reconcile() {
+        worker.removeCallbacks(poll);
+        if (!enabled()) { release(); return; }
+        List<String> addresses = connectedOutputs();
+        snapshots.keySet().retainAll(addresses);
+        if (addresses.isEmpty()) { release(); return; }
+        for (String address : addresses) refresh(address);
+        if (enabled()) worker.postDelayed(poll, POLL_INTERVAL);
+    }
+    private void control(String address, int target) {
+        try {
+            Snapshot state = snapshots.get(address);
+            if (!enabled() || !audioOutput(address) || state == null || remote == null || !trusted()) return;
+            int index = state.modes().target(target);
+            if (index < 0) return;
+            Bundle args = new Bundle(); args.putString("macAddress", address); args.putInt("value", index);
+            Message command = Message.obtain();
+            command.what = 3058; command.arg1 = Process.myPid(); command.arg2 = ++sequence;
+            command.setData(args); command.replyTo = responses;
+            remote.send(command);
+            // Sending is not confirmation: only the periodic provider read updates state.
+        } catch (Exception error) {
+            log.accept("HeyMelody control request failed", error);
+        } finally { busy.set(false); }
     }
     private boolean trusted() throws Exception {
         PackageInfo info = context.getPackageManager().getPackageInfo(PACKAGE, PackageManager.GET_SIGNING_CERTIFICATES);
@@ -163,11 +237,10 @@ final class HeyMelodyNoiseBridge {
         }
         return false;
     }
-    private void refresh(String address, int target) {
-        long started = SystemClock.elapsedRealtime();
+    private void refresh(String address) {
         try {
             if (!enabled() || !audioOutput(address) || !trusted()) { release(); return; }
-            bind();
+            bindForOutput(address);
             if (!bound || remote == null) { snapshots.remove(address); return; }
             JSONObject device = query("RepositoryProvider", "3060", "value", address);
             if (device == null || !address.equalsIgnoreCase(device.optString("macAddress"))
@@ -179,16 +252,7 @@ final class HeyMelodyNoiseBridge {
             int mode = modes.mode(device.optInt("noiseReductionModeIndex", -1));
             if (mode == 0 || !enabled() || !audioOutput(address)) { snapshots.remove(address); return; }
             if (snapshots.size() >= 8) snapshots.clear();
-            snapshots.put(address, new Snapshot(mode, modes, started));
-            if (target != 0 && remote != null && SystemClock.elapsedRealtime() - started < TTL) {
-                int index = modes.target(target);
-                if (index < 0) return;
-                Bundle args = new Bundle(); args.putString("macAddress", address); args.putInt("value", index);
-                Message command = Message.obtain();
-                command.what = 3058; command.arg1 = Process.myPid(); command.arg2 = ++sequence;
-                command.setData(args); command.replyTo = responses;
-                remote.send(command);
-            }
+            snapshots.put(address, new Snapshot(mode, modes));
             lastError = null;
         } catch (PackageManager.NameNotFoundException absent) {
             release();
@@ -197,10 +261,6 @@ final class HeyMelodyNoiseBridge {
             release();
             String text = error.getClass().getSimpleName() + ": " + error.getMessage();
             if (!text.equals(lastError)) { lastError = text; log.accept("HeyMelody broker request failed", error); }
-        } finally {
-            busy.set(false);
-            worker.removeCallbacks(expire);
-            worker.postDelayed(expire, TTL + 1000);
         }
     }
     private JSONObject query(String provider, String path, String column, String address) throws Exception {
@@ -228,11 +288,22 @@ final class HeyMelodyNoiseBridge {
         return result;
     }
     private final ServiceConnection connection = new ServiceConnection() {
-        @Override public void onServiceConnected(ComponentName name, IBinder binder) { remote = new Messenger(binder); }
+        @Override public void onServiceConnected(ComponentName name, IBinder binder) { remote = new Messenger(binder); scheduleReconcile(); }
         @Override public void onServiceDisconnected(ComponentName name) { remote = null; snapshots.clear(); }
         @Override public void onBindingDied(ComponentName name) { release(); }
         @Override public void onNullBinding(ComponentName name) { release(); }
     };
+    private void bindForOutput(String address) throws Exception {
+        bind();
+        if (!bound && enabled() && audioOutput(address) && trusted()) {
+            // Flyme rejects binds to frozen apps before BIND_AUTO_CREATE can wake
+            // them. Use its own temporary UID thaw, only for this verified app
+            // and a live earphone request; do not disable freezing globally.
+            int uid = context.getPackageManager().getPackageUid(PACKAGE, 0);
+            unfreezeUid.invoke(cachedAppOptimizer, uid);
+            bind();
+        }
+    }
     private void bind() {
         if (bound) return;
         Intent intent = new Intent(PACKAGE + ".alive.action.SEND_COMMAND").setComponent(new ComponentName(PACKAGE, SERVICE));
@@ -249,9 +320,6 @@ final class HeyMelodyNoiseBridge {
             throw error;
         }
     }
-    private final Runnable expire = () -> {
-        if (!enabled() || SystemClock.elapsedRealtime() - lastRequest >= TTL) release();
-    };
     private void release() {
         snapshots.clear(); remote = null;
         bound = false;

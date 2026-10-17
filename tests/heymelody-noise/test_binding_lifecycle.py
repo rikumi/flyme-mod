@@ -27,6 +27,7 @@ public class BindingTest {
         Executor retained, first;
         boolean success, fail;
         int binds, unbinds;
+        PackageManager getPackageManager() { return new PackageManager(); }
         boolean bindService(Intent i, int flags, Executor executor, Object connection) {
             binds++;
             if (retained != null && retained != executor) throw new AssertionError("differing executor");
@@ -42,6 +43,17 @@ public class BindingTest {
             retained=null;
         }
     }
+    static class PackageManager { int getPackageUid(String pkg, int flags) { check(pkg.equals(PACKAGE)); return 10285; } }
+    public class Optimizer {
+        int thaws;
+        public void unfreezeTemporarily(int uid) { check(uid==10285); thaws++; context.success=true; }
+    }
+    Optimizer cachedAppOptimizer = new Optimizer();
+    java.lang.reflect.Method unfreezeUid;
+    boolean enabled=true, audio=true, trusted=true;
+    boolean enabled() { return enabled; }
+    boolean audioOutput(String address) { return audio; }
+    boolean trusted() { return trusted; }
     Context context=new Context(); Worker worker=new Worker();
     Object connection=new Object(), remote;
     boolean bound, bindingRegistered;
@@ -50,7 +62,8 @@ public class BindingTest {
     EXECUTOR
     METHODS
     static void check(boolean condition) { if (!condition) throw new AssertionError(); }
-    void run() {
+    void run() throws Exception {
+        unfreezeUid=Optimizer.class.getMethod("unfreezeTemporarily", int.class);
         for (int n=0;n<3;n++) {
             bind(); check(!bound && !bindingRegistered && context.retained==null);
         }
@@ -64,11 +77,18 @@ public class BindingTest {
         release(); check(!bound && !bindingRegistered && remote==null && snapshots.isEmpty());
         int unbinds=context.unbinds; release(); check(context.unbinds==unbinds);
         bind(); check(bound); release();
+        context.success=false;
+        enabled=false; bindForOutput("earphone"); check(cachedAppOptimizer.thaws==0);
+        enabled=true; audio=false; bindForOutput("earphone"); check(cachedAppOptimizer.thaws==0);
+        audio=true; trusted=false; bindForOutput("earphone"); check(cachedAppOptimizer.thaws==0);
+        trusted=true; bindForOutput("earphone"); check(bound && cachedAppOptimizer.thaws==1);
+        bindForOutput("earphone"); check(cachedAppOptimizer.thaws==1);
+        release();
         System.out.println("PASS: failed bind, exception, retry, repeated bind and release lifecycle");
     }
-    public static void main(String[] args) { new BindingTest().run(); }
+    public static void main(String[] args) throws Exception { new BindingTest().run(); }
 }
-'''.replace('EXECUTOR', executor).replace('METHODS', method('bind')+'\n'+method('release'))
+'''.replace('EXECUTOR', executor).replace('METHODS', method('bind')+'\n'+method('release')+'\n'+method('bindForOutput'))
 with tempfile.TemporaryDirectory(dir='/private/tmp', prefix='melody-binding-') as tmp:
     path = Path(tmp) / 'BindingTest.java'
     path.write_text(java)

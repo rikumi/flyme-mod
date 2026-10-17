@@ -132,6 +132,8 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
         )),
         SettingsGroup("音量调节设置", listOf(
             SwitchItem(ModuleSettings.EARPHONE_NOISE_CONTROL, "音量条显示切换降噪模式图标"),
+            SwitchItem(ModuleSettings.HEYMELODY_NOISE_CONTROL, "支持 OPPO/一加耳机降噪控制",
+                enabledSubtitle = "需安装欢律并完成绑定"),
             SelectItem(ModuleSettings.VOLUME_FIRST_FOUR, "修改音量调节前四小格", listOf("不修改", "合并为两中格", "合并为一大格")),
         )),
     ),

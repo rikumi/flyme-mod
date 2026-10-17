@@ -96,6 +96,7 @@ public final class ModuleSettings {
     };
     public static final String FILE = "control_center";
     public static final String EARPHONE_NOISE_CONTROL = "earphone_noise_control";
+    public static final String HEYMELODY_NOISE_CONTROL = "heymelody_noise_control";
     public static final String VOLUME_FIRST_FOUR = "volume_first_four_steps";
     public static final String LIMIT_AOD_MOVEMENT = "limit_aod_movement";
     public static final String BLOCK_LOCKSCREEN_LONG_PRESS_EDIT = "block_lockscreen_long_press_edit";

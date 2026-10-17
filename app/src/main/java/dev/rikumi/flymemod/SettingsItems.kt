@@ -63,6 +63,7 @@ internal data class SwitchItem(
     val notifyChange: Boolean = true,
     val defaultEnabled: Boolean = false,
     val children: List<SettingsItem> = emptyList(),
+    val enabledSubtitle: String? = null,
 ) : SettingsItem
 
 internal data class SelectItem(
@@ -159,7 +160,7 @@ private fun SwitchSettingRow(
     }
     FluixSwitchPreference(
         title = item.title,
-        subtitle = item.subtitle,
+        subtitle = if (checked) item.enabledSubtitle ?: item.subtitle else item.subtitle,
         checked = checked,
         onCheckedChange = {
             checked = it

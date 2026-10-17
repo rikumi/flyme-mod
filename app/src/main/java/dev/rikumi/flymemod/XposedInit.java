@@ -103,6 +103,7 @@ public final class XposedInit extends XposedModule {
     private HeadsUpWidthHooks activeHeadsUpWidthHooks;
     private boolean originalNotificationIconsEnabled;
     private volatile boolean earphoneNoiseControlEnabled;
+    private volatile boolean heyMelodyNoiseControlEnabled;
     private EarphoneNoiseHooks activeEarphoneNoiseHooks;
     private boolean monochromeNotificationActionsEnabled;
     private boolean removeNotificationActionBackgroundEnabled;
@@ -1285,7 +1286,7 @@ public final class XposedInit extends XposedModule {
         }, Drawable.class);
         installWhiteActive(loader);
         try {
-            activeEarphoneNoiseHooks=new EarphoneNoiseHooks(loader,()->earphoneNoiseControlEnabled,
+            activeEarphoneNoiseHooks=new EarphoneNoiseHooks(loader,()->earphoneNoiseControlEnabled,()->heyMelodyNoiseControlEnabled,
                     (message,error)->log(error==null?Log.INFO:Log.ERROR,"FlymeMod",message,error));
             activeEarphoneNoiseHooks.install((className, methodName, interceptor, parameterTypes) ->
                     install(loader, className, methodName, interceptor, parameterTypes),loader,this::deoptimize);
@@ -2777,6 +2778,8 @@ public final class XposedInit extends XposedModule {
                 restoreCollapsedCardHeightEnabled = collapsedHeightColumn >= 0 && cursor.getInt(collapsedHeightColumn) != 0;
                 int noiseColumn=cursor.getColumnIndex(ModuleSettings.EARPHONE_NOISE_CONTROL);
                 earphoneNoiseControlEnabled=noiseColumn>=0&&cursor.getInt(noiseColumn)!=0;
+                int melodyColumn=cursor.getColumnIndex(ModuleSettings.HEYMELODY_NOISE_CONTROL);
+                heyMelodyNoiseControlEnabled=melodyColumn>=0&&cursor.getInt(melodyColumn)!=0;
                 int volumeStepsColumn = cursor.getColumnIndex(ModuleSettings.VOLUME_FIRST_FOUR);
                 volumeFirstFourMode = volumeStepsColumn < 0 ? 0 : Math.max(0, Math.min(2, cursor.getInt(volumeStepsColumn)));
                 int aodMovementColumn = cursor.getColumnIndex(ModuleSettings.LIMIT_AOD_MOVEMENT);
@@ -2934,6 +2937,7 @@ public final class XposedInit extends XposedModule {
                         + ", monochromeNotificationActions=" + monochromeNotificationActionsEnabled
                         + ", volumeFirstFour=" + volumeFirstFourMode
                         + ", earphoneNoiseControl=" + earphoneNoiseControlEnabled
+                        + ", heyMelodyNoiseControl=" + heyMelodyNoiseControlEnabled
                         + ", limitAodMovement=" + limitAodMovementEnabled
                         + ", combinedCollapseFix=" + combinedCollapseFixEnabled
                         + ", combinedPullAnimation=" + combinedPullAnimationEnabled
