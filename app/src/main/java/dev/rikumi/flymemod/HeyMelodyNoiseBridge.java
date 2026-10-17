@@ -122,13 +122,35 @@ final class HeyMelodyNoiseBridge {
     }
     private boolean trusted() throws Exception {
         PackageInfo info = context.getPackageManager().getPackageInfo(PACKAGE, PackageManager.GET_SIGNING_CERTIFICATES);
-        // This is a private API. Unknown versions fail closed until their contract is checked.
-        if (!"17.6.5".equals(info.versionName) || info.signingInfo == null
-                || info.signingInfo.getApkContentsSigners().length != 1) return false;
+        if (info.signingInfo == null || info.signingInfo.getApkContentsSigners().length != 1) {
+            rejection("HeyMelody signing information unavailable or ambiguous");
+            return false;
+        }
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(info.signingInfo.getApkContentsSigners()[0].toByteArray());
         StringBuilder hex = new StringBuilder();
         for (byte b : digest) hex.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
-        return CERT.contentEquals(hex);
+        if (!CERT.contentEquals(hex) && !"49bd5f8f3f687aa3c71e79d570034455d68945c3ec45bb5f186169b8503c8e3e".contentEquals(hex)) {
+            rejection("HeyMelody signing certificate mismatch for version " + info.versionName);
+            return false;
+        }
+        PackageManager pm = context.getPackageManager();
+        android.content.pm.ServiceInfo service = pm.getServiceInfo(new ComponentName(PACKAGE, SERVICE), 0);
+        if (!service.enabled || !service.applicationInfo.enabled) {
+            rejection("HeyMelody control service disabled");
+            return false;
+        }
+        for (String provider : new String[]{"RepositoryProvider", "WhitelistProvider"}) {
+            android.content.pm.ProviderInfo resolved = pm.resolveContentProvider(PACKAGE + ".alive." + provider, 0);
+            if (resolved == null || !PACKAGE.equals(resolved.packageName)
+                    || !resolved.enabled || !resolved.applicationInfo.enabled) {
+                rejection("HeyMelody control provider unavailable: " + provider);
+                return false;
+            }
+        }
+        return true;
+    }
+    private void rejection(String reason) {
+        if (!reason.equals(lastError)) { lastError = reason; log.accept(reason, null); }
     }
     private boolean audioOutput(String address) {
         AudioManager audio = context.getSystemService(AudioManager.class);
@@ -167,6 +189,7 @@ final class HeyMelodyNoiseBridge {
             lastError = null;
         } catch (PackageManager.NameNotFoundException absent) {
             release();
+            rejection("HeyMelody package or control service unavailable");
         } catch (Exception error) {
             release();
             String text = error.getClass().getSimpleName() + ": " + error.getMessage();

@@ -24,6 +24,7 @@ public final class CameraSettingsBridge extends Application {
                 || ModuleSettings.STATUS_BATTERY_CAPACITY.equals(key)
                 || ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED.equals(key)
                 || ModuleSettings.AUTO_BRIGHTNESS_OFFSET.equals(key)
+                || ModuleSettings.EARPHONE_NOISE_CONTROL.equals(key)
                 || ModuleSettings.STATUS_BAR_LYRIC_AVOID.equals(key)
                 || ModuleSettings.SYSTEM_ICON_PACK.equals(key)
                 || ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND.equals(key)
@@ -93,6 +94,8 @@ public final class CameraSettingsBridge extends Application {
                                 local.getBoolean(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED, false))
                         .putInt(ModuleSettings.AUTO_BRIGHTNESS_OFFSET,
                                 local.getInt(ModuleSettings.AUTO_BRIGHTNESS_OFFSET, ModuleSettings.AUTO_BRIGHTNESS_OFFSET_DEFAULT))
+                        .putBoolean(ModuleSettings.EARPHONE_NOISE_CONTROL,
+                                local.getBoolean(ModuleSettings.EARPHONE_NOISE_CONTROL, false))
                         .putBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID,
                                 local.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, false))
                         .putBoolean(ModuleSettings.SYSTEM_ICON_PACK,local.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, false))
