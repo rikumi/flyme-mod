@@ -273,6 +273,13 @@ public final class XposedInit extends XposedModule {
     @Override public void onSystemServerStarting(SystemServerStartingParam param) {
         ClassLoader loader = param.getClassLoader();
         try {
+            new HeyMelodyNoiseBridge(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                    (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                    .install(loader, (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot initialize HeyMelody system broker", error);
+        }
+        try {
             AutoBrightnessOffsetHooks.install(loader, getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
                     (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
                     this::deoptimize);
@@ -1334,19 +1341,10 @@ public final class XposedInit extends XposedModule {
             int originalMaxHeight = maxHeight.getInt(content);
             int originalHeadsHeight = headsHeight.getInt(content);
             int extra = notificationAddedVerticalPadding(content);
-            android.view.ViewGroup.LayoutParams[] fixedParams = new android.view.ViewGroup.LayoutParams[2];
-            int[] fixedHeights = new int[2];
             if (extra > 0) {
-                String[] children = {"mExpandedChild", "mHeadsUpChild"};
-                for (int index = 0; index < children.length; index++) {
-                    View child = (View) content.getClass().getField(children[index]).get(content);
-                    if (child != null && child.getLayoutParams().height >= 0) {
-                        fixedParams[index] = child.getLayoutParams();
-                        fixedHeights[index] = fixedParams[index].height;
-                        // Fixed remote-view heights are another cap before padding subtraction.
-                        fixedParams[index].height += extra;
-                    }
-                }
+                // Only enlarge parent caps. getChildMeasureSpec uses a fixed child
+                // LayoutParams.height verbatim, without subtracting parent padding.
+                // Enlarging that height as well would add our insets twice.
                 maxHeight.setInt(content, originalMaxHeight + extra);
                 headsHeight.setInt(content, originalHeadsHeight + extra);
             }
@@ -1365,14 +1363,15 @@ public final class XposedInit extends XposedModule {
                                 (android.view.ViewGroup.MarginLayoutParams) contracted.getLayoutParams();
                         minimum -= margins.topMargin + margins.bottomMargin;
                     }
-                    if (contracted != null && contracted.getMeasuredHeight() < minimum)
+                    if (contracted != null && contracted.getLayoutParams().height < 0
+                            && contracted.getMeasuredHeight() < minimum)
                         contracted.measure(View.MeasureSpec.makeMeasureSpec(contracted.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
                                 View.MeasureSpec.makeMeasureSpec(minimum, View.MeasureSpec.EXACTLY));
                     // Native onMeasure remeasures a shorter expanded child using the
                     // contracted child's height as a parent spec. That fallback subtracts
                     // our outer padding again, unlike the initial expanded measurement.
                     // Restore only our deduction before layout/stack expansion reads it.
-                    if (expanded != null && contracted != null) {
+                    if (expanded != null && expanded.getLayoutParams().height < 0 && contracted != null) {
                         android.view.ViewGroup.MarginLayoutParams margins =
                                 (android.view.ViewGroup.MarginLayoutParams) expanded.getLayoutParams();
                         int height = contracted.getMeasuredHeight() - nativePadding - margins.topMargin - margins.bottomMargin;
@@ -1402,8 +1401,6 @@ public final class XposedInit extends XposedModule {
                 if (extra > 0) {
                     maxHeight.setInt(content, originalMaxHeight);
                     headsHeight.setInt(content, originalHeadsHeight);
-                    for (int index = 0; index < fixedParams.length; index++)
-                        if (fixedParams[index] != null) fixedParams[index].height = fixedHeights[index];
                 }
             }
         }, int.class, int.class);

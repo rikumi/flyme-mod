@@ -60,7 +60,7 @@ public class PublicPaddingTest {
     public static class Content extends View {
         public int mNotificationMaxHeight = 300, mHeadsUpHeight = 120, mMinContractedHeight = 100;
         public View mExpandedChild = new View(), mHeadsUpChild = new View(), mContractedChild = new View();
-        boolean simulate;
+        boolean simulate, fixed;
         int naturalContracted = 70, naturalExpanded = 70;
         public Row mContainingNotification;
         Wrapper wrapper = new Wrapper();
@@ -91,6 +91,19 @@ public class PublicPaddingTest {
         Object proceed() {
             if (owner instanceof Content c) {
                 int extra = notificationAddedVerticalPadding(c);
+                if (c.fixed) {
+                    int padding = c.getPaddingTop() + c.getPaddingBottom();
+                    int maximum = 0;
+                    for (View child : new View[]{c.mExpandedChild, c.mContractedChild, c.mHeadsUpChild}) {
+                        if (child == null) continue;
+                        // Android getChildMeasureSpec: a nonnegative child dimension
+                        // is EXACTLY that dimension, even when the parent cap is smaller.
+                        child.measuredHeight = child.params.height;
+                        maximum = Math.max(maximum, child.measuredHeight);
+                    }
+                    c.measuredHeight = maximum + padding;
+                    return null;
+                }
                 if (c.simulate) {
                     int padding = c.getPaddingTop() + c.getPaddingBottom();
                     // Flyme NotificationContentView.onMeasure: first contracted spec
@@ -112,8 +125,8 @@ public class PublicPaddingTest {
                 // Flyme measureChildWithMargins subtracts the outer padding.
                 check(c.mNotificationMaxHeight - extra == 300);
                 check(c.mHeadsUpHeight - extra == 120);
-                check(c.mExpandedChild.params.height - extra == 100);
-                check(c.mHeadsUpChild.params.height - extra == 100);
+                check(c.mExpandedChild.params.height == 100);
+                check(c.mHeadsUpChild.params.height == 100);
             }
             if (fail) throw new IllegalStateException("native failure");
             return null;
@@ -182,12 +195,13 @@ public class PublicPaddingTest {
                         for (View child : new View[]{template.mContractedChild, template.mExpandedChild}) if (child != null) {
                             var params = (android.view.ViewGroup.MarginLayoutParams) child.params;
                             params.topMargin = params.bottomMargin = margin;
+                            params.height = -2;
                         }
                         int nativeChild = natural < 100 ? 100 - nativePadding - 2*margin : natural;
                         activeNotificationAppearanceHooks.padding = inset;
                         measure(new Chain(template));
                         check(template.mContractedChild.measuredHeight == nativeChild);
-                        check(template.measuredHeight >= nativeChild + nativePadding + 2*margin + 2*inset);
+                        check(template.measuredHeight == Math.max(nativeChild, expanded ? 70 : 0) + nativePadding + 2*margin + 2*inset);
                         if (expanded && inset > 0) check(template.mExpandedChild.measuredHeight >= nativeChild - nativePadding - 2*margin);
                         // Stable repeated measures never accumulate extra height.
                         int stable = template.measuredHeight;
@@ -198,6 +212,36 @@ public class PublicPaddingTest {
                         check(template.measuredHeight == Math.max(nativeChild, expanded ? 70 : 0) + nativePadding + 2*margin);
                         notificationCustomCornersEnabled = true;
                     }
+                }
+            }
+        }
+        // Fixed RemoteViews must grow ONLY by the container insets, including
+        // sizes below the native minimum and short expanded/headsup templates.
+        for (int fixed : new int[]{40, 80, 100, 180}) {
+            for (int inset : new int[]{0, 5, 12, 24, 40}) {
+                for (int variant = 0; variant < 4; variant++) {
+                    Content template = new Row().content;
+                    template.fixed = true;
+                    template.padding = new int[]{0, 0, 0, 0};
+                    template.mContractedChild.params.height = fixed;
+                    template.mExpandedChild.params.height = fixed / 2;
+                    template.mHeadsUpChild.params.height = fixed + 20;
+                    if (variant == 0) { template.mExpandedChild = null; template.mHeadsUpChild = null; }
+                    if (variant == 1) template.mHeadsUpChild = null;
+                    if (variant == 2) template.mExpandedChild = null;
+                    int nativeHeight = variant >= 2 ? fixed + 20 : fixed;
+                    activeNotificationAppearanceHooks.padding = inset;
+                    for (int repeat = 0; repeat < 3; repeat++) {
+                        measure(new Chain(template));
+                        check(template.measuredHeight == nativeHeight + 2 * inset);
+                        check(template.mContractedChild.measuredHeight == fixed);
+                        if (template.mExpandedChild != null) check(template.mExpandedChild.measuredHeight == fixed / 2);
+                        if (template.mHeadsUpChild != null) check(template.mHeadsUpChild.measuredHeight == fixed + 20);
+                    }
+                    notificationCustomCornersEnabled = false;
+                    measure(new Chain(template));
+                    check(template.measuredHeight == nativeHeight);
+                    notificationCustomCornersEnabled = true;
                 }
             }
         }

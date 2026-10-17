@@ -44,6 +44,7 @@ final class EarphoneNoiseHooks {
     private final Map<ImageView,Boolean> clickable=new WeakHashMap<>();
     private final Map<ViewGroup,TouchDelegate> touchGestures=new WeakHashMap<>();
     private final EarphoneNoiseState noiseState=new EarphoneNoiseState();
+    private final HeyMelodyNoiseController melody;
     private final Map<ImageView,Drawable> foregrounds=new WeakHashMap<>();
     private String initializedDevice;
     private long initializationRequestedAt;
@@ -51,7 +52,8 @@ final class EarphoneNoiseHooks {
     private boolean appBound;
     private volatile IBinder binder;
     private Context context;
-    private boolean bound,polling;
+    private boolean bound;
+    private volatile boolean polling;
     private volatile String deviceId;
     private volatile int mode;
     private int appliedMode;
@@ -75,9 +77,12 @@ final class EarphoneNoiseHooks {
         }
         public void onServiceDisconnected(ComponentName name){
             if(name.getClassName().endsWith("RemotePrefService"))appBinder=null;else binder=null;
-            initializedDevice=null;deviceId=null;mode=0;noiseState.clear();main.post(()->apply(0));
+            initializedDevice=null;noiseState.clear();
+            if(deviceId==null||!deviceId.startsWith("melody:")){
+                deviceId=null;mode=0;main.post(()->apply(0));
+            }
         }
-        public void onBindingDied(ComponentName name){onServiceDisconnected(name);release();}
+        public void onBindingDied(ComponentName name){onServiceDisconnected(name);releaseMeizu();}
         public void onNullBinding(ComponentName name){onBindingDied(name);}
     };
     private void connectSystemService(IBinder service){
@@ -93,6 +98,7 @@ final class EarphoneNoiseHooks {
     }
     EarphoneNoiseHooks(ClassLoader loader,BooleanSupplier enabled,BiConsumer<String,Throwable> log) throws ReflectiveOperationException {
         this.enabled=enabled;this.log=log;
+        melody=new HeyMelodyNoiseController(log);
         Class<?> owner=loader.loadClass(OWNER);
         iconField=owner.getField("mIcon");streamField=owner.getField("mCurrentStreamType");
         owner.getDeclaredMethod("changeIconResource",int.class);
@@ -130,7 +136,13 @@ final class EarphoneNoiseHooks {
                 String id=deviceId;
                 worker.post(()->{
                     try{
-                        if(!enabled.getAsBoolean()||!id.equals(deviceId)||binder==null)return;
+                        if(!enabled.getAsBoolean()||!id.equals(deviceId))return;
+                        if(id.startsWith("melody:")){
+                            int target=mode==3?2:3;
+                            if(!melody.set(id.substring(7),target))status("HeyMelody noise mode request rejected");
+                            return;
+                        }
+                        if(binder==null)return;
                         int target=noiseState.target(id,mode);
                         // The app wrapper skips requests matching its stale SDK cache.
                         // Use the same SDK setter directly, after read() has validated the device.
@@ -205,6 +217,7 @@ final class EarphoneNoiseHooks {
         else{deviceId=null;mode=0;apply(0);release();}
     }
     private void start(){
+        melody.activate();
         if(!bound){
             try{
                 Intent intent=new Intent().setComponent(new ComponentName("com.meizu.earphone","com.meizu.bluetooth.sdk.MzBluetoothService"));
@@ -223,6 +236,9 @@ final class EarphoneNoiseHooks {
         if(!polling){polling=true;main.post(tick);}
     }
     private void release(){
+        melody.close();releaseMeizu();
+    }
+    private void releaseMeizu(){
         if(bound){try{context.unbindService(connection);}catch(RuntimeException ignored){}bound=false;}
         if(appBound){try{context.unbindService(connection);}catch(RuntimeException ignored){}appBound=false;}
         binder=null;appBinder=null;initializedDevice=null;noiseState.clear();
@@ -230,8 +246,8 @@ final class EarphoneNoiseHooks {
     private final Runnable tick=new Runnable(){public void run(){
         if(!enabled.getAsBoolean()){polling=false;return;}
         boolean visible=false;
-        for(ImageView icon:icons.keySet())if(icon.isShown()&&media(icon)){visible=true;break;}
-        if(!visible){polling=false;deviceId=null;mode=0;apply(0);return;}
+        for(ImageView icon:icons.keySet())if(icon.isShown()&&icon.getGlobalVisibleRect(new Rect())&&media(icon)){visible=true;break;}
+        if(!visible){polling=false;deviceId=null;mode=0;apply(0);melody.close();return;}
         worker.post(()->{
             try{read();}catch(Exception error){
                 status("State query failed: "+error.getClass().getSimpleName()+": "+error.getMessage());
@@ -241,9 +257,22 @@ final class EarphoneNoiseHooks {
         });
     }};
     private void read() throws Exception {
+        if(!enabled.getAsBoolean()||!polling){melody.close();return;}
         IBinder service=binder;
         String id=null;int current=0;
         AudioManager audio=context.getSystemService(AudioManager.class);
+        if(audio!=null){
+            AudioDeviceInfo[] outputs=audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+            for(AudioDeviceInfo output:outputs){
+                if(output.getType()!=AudioDeviceInfo.TYPE_BLUETOOTH_A2DP&&output.getType()!=AudioDeviceInfo.TYPE_BLE_HEADSET)continue;
+                int value=melody.read(context,output.getAddress());
+                if(value!=0){
+                    noiseState.clear();deviceId="melody:"+output.getAddress();mode=value;
+                    main.post(()->{if(enabled.getAsBoolean()&&polling)apply(value);});
+                    return;
+                }
+            }
+        }
         if(service!=null&&audio!=null){
             // The SDK resolves only recognized earphones; do not guess by Bluetooth name.
             for(AudioDeviceInfo output:audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)){
