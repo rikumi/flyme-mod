@@ -51,7 +51,10 @@ final class HeyMelodyNoiseBridge {
     private Context context;
     private Handler worker;
     private Messenger remote, responses;
-    private boolean bound;
+    private boolean bound, bindingRegistered;
+    // LoadedApk retains the dispatcher even when bindService returns false.
+    // A ServiceConnection must always be paired with the same Executor instance.
+    private final java.util.concurrent.Executor connectionExecutor = command -> worker.post(command);
     private int sequence;
     private String lastError;
     private record Snapshot(int mode, HeyMelodyNoiseModes modes, long at) {}
@@ -234,15 +237,26 @@ final class HeyMelodyNoiseBridge {
         if (bound) return;
         Intent intent = new Intent(PACKAGE + ".alive.action.SEND_COMMAND").setComponent(new ComponentName(PACKAGE, SERVICE));
         // Deliver connection callbacks on the same worker as all provider/control operations.
-        bound = context.bindService(intent, Context.BIND_AUTO_CREATE, command -> worker.post(command), connection);
+        bindingRegistered = true;
+        try {
+            bound = context.bindService(intent, Context.BIND_AUTO_CREATE, connectionExecutor, connection);
+            if (!bound) {
+                release();
+                rejection("HeyMelody control service binding returned false");
+            }
+        } catch (RuntimeException error) {
+            release();
+            throw error;
+        }
     }
     private final Runnable expire = () -> {
         if (!enabled() || SystemClock.elapsedRealtime() - lastRequest >= TTL) release();
     };
     private void release() {
         snapshots.clear(); remote = null;
-        if (bound) {
-            bound = false;
+        bound = false;
+        if (bindingRegistered) {
+            bindingRegistered = false;
             try { context.unbindService(connection); } catch (RuntimeException ignored) { }
         }
     }
