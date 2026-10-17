@@ -75,5 +75,33 @@ final class StackedRecentsGeometry {
         return current != removed ? current : removed == count - 1 ? removed - 1 : removed + 1;
     }
 
+    /** Per-card cache: native writers can change inputs even within one frame. */
+    static final class Projection {
+        private boolean valid;
+        private float distance, size, anchor, inset;
+        float scale, offset, opacity, title, blur;
+
+        boolean update(float distance, float size, float anchor, float inset) {
+            if (valid && this.distance == distance && this.size == size
+                    && this.anchor == anchor && this.inset == inset) return false;
+            this.distance = distance;
+            this.size = size;
+            this.anchor = anchor;
+            this.inset = inset;
+            float amount = curve(distance);
+            scale = distance < 0f ? Math.max(.72f, 1f - .065f * amount)
+                    : Math.min(1.22f, 1f + .08f * amount);
+            offset = distance < 0f ? -(anchor + inset) * (amount / (amount + 3f))
+                    : size * .425f * distance * (1f + amount);
+            float fade = distance < -LEFT_EFFECT_START ? curve(distance + LEFT_EFFECT_START) : 0f;
+            opacity = (distance < -LEFT_EFFECT_START ? Math.max(.25f, 1f - .28f * fade) : 1f)
+                    * leftEdgeVisibility(distance);
+            blur = distance < -LEFT_EFFECT_START ? Math.min(6f, 3f * fade) : 0f;
+            title = titleVisibility(distance);
+            valid = true;
+            return true;
+        }
+    }
+
     private StackedRecentsGeometry() {}
 }

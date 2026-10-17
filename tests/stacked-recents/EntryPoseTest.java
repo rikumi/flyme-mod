@@ -10,6 +10,11 @@ public final class EntryPoseTest {
         if (Math.abs(actual - expected) > .004f)
             throw new AssertionError(actual + " != " + expected);
     }
+    private static void exact(float actual, float expected) {
+        checks++;
+        if (Float.floatToIntBits(actual) != Float.floatToIntBits(expected))
+            throw new AssertionError(actual + " != " + expected);
+    }
     private static float center(float origin, float scroll, float translation,
             float size, float pivot, float scale) {
         return origin - scroll + translation + pivot + (size / 2 - pivot) * scale;
@@ -52,6 +57,25 @@ public final class EntryPoseTest {
                     near(center(left, scrolled + 200, resubmitted, extent, anchor + 30, zoom), actual);
                 }
             }
+        }
+        // Exact equivalence across culling/fade boundaries, both scroll directions,
+        // and repeated animation/draw callbacks. Changes are not gated by frame time.
+        StackedRecentsGeometry.Projection cached = new StackedRecentsGeometry.Projection();
+        for (int i = -10000; i <= 10000; i++) {
+            float d = i / 1000f;
+            if (!cached.update(d, 700f, 540f, 72f)) throw new AssertionError("missed distance change");
+            exact(cached.scale, StackedRecentsGeometry.scale(d));
+            exact(cached.offset, StackedRecentsGeometry.offset(d, 700f, 540f, 72f));
+            exact(cached.opacity, StackedRecentsGeometry.alpha(d) * StackedRecentsGeometry.leftEdgeVisibility(d));
+            exact(cached.title, StackedRecentsGeometry.titleVisibility(d));
+            exact(cached.blur, StackedRecentsGeometry.blurDp(d));
+            if (cached.update(d, 700f, 540f, 72f)) throw new AssertionError("duplicate projection");
+        }
+        for (float[] input : new float[][]{{-2,700,540,72}, {-2,800,540,72},
+                {-2,800,600,72}, {-2,800,600,96}, {-1.25f,800,600,96}, {-3,800,600,96}}) {
+            if (!cached.update(input[0], input[1], input[2], input[3]))
+                throw new AssertionError("stale layout/density cache");
+            exact(cached.offset, StackedRecentsGeometry.offset(input[0],input[1],input[2],input[3]));
         }
         // Zero scale and a corner pivot cannot introduce NaN/division by zero.
         near(center(50, 70, StackedRecentsGeometry.translationForCenter(100, 50, 70, 600, 0, 0), 600, 0, 0), 100);

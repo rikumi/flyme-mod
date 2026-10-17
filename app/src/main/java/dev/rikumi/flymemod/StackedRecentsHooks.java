@@ -37,7 +37,7 @@ final class StackedRecentsHooks {
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled;
     private final BiConsumer<String, Throwable> log;
-    private final Class<?> taskType, alphaType, remoteHandlesType, groupedTaskType;
+    private final Class<?> recentsType, taskType, alphaType, remoteHandlesType, groupedTaskType;
     private final Field overview, grid, fullscreen, endTarget, alphaTarget;
     private final Method gestureActive, runningIndex, nextPage, taskCount, scrollForPage, loadVisible, orientationHandler, primaryAxis, overScroll, snapImmediately, showIcons, showTaskIcon, dispatchScroll;
     private final Map<View, State> states = new WeakHashMap<>();
@@ -65,7 +65,7 @@ final class StackedRecentsHooks {
         Class<?> mzLauncher = loader.loadClass("com.meizu.flyme.launcher.MzLauncher");
         showStatusBar = mzLauncher.getMethod("showSystemStatusBar", boolean.class);
         mzLauncher.getDeclaredMethod("onStateSetStart", launcherStateType);
-        Class<?> recents = loader.loadClass(RECENTS);
+        Class<?> recents = recentsType = loader.loadClass(RECENTS);
         taskType = loader.loadClass(TASK);
         thumbnailBounds = taskType.getMethod("getThumbnailBounds", Rect.class, boolean.class);
         sizeAdjustment = taskType.getMethod("getSizeAdjustment", boolean.class);
@@ -287,6 +287,13 @@ final class StackedRecentsHooks {
             try { return chain.proceed(); }
             finally { state.drawing = false; }
         }, Canvas.class);
+        installer.hook(RECENTS, "dispatchScrollChanged", chain -> {
+            State state = states.get(chain.getThisObject());
+            // The entry endpoint snaps the native pager before publishing the final pose.
+            // Suppress only its intermediate notifications; the caller flushes after render.
+            if (state != null && state.batchingEntryScroll && enabled.getAsBoolean()) return null;
+            return chain.proceed();
+        });
         installer.hook(RECENTS, "getUndampedOverScrollShift", chain -> {
             State state = states.get(chain.getThisObject());
             // RecentsView's dispatchDraw translates the whole canvas by this
@@ -295,6 +302,9 @@ final class StackedRecentsHooks {
         });
         installer.hook("android.view.ViewGroup", "drawChild", chain -> {
             ViewGroup parent = (ViewGroup) chain.getThisObject();
+            // This base-class hook also sees every folder, icon and widget subtree.
+            // Only RecentsView can own a stacked card; reject others before map lookups.
+            if (!recentsType.isInstance(parent)) return chain.proceed();
             Canvas canvas = (Canvas) chain.getArg(0);
             View child = (View) chain.getArg(1);
             Card card = cards.get(child);
@@ -507,6 +517,7 @@ final class StackedRecentsHooks {
         }
         installer.hook("android.view.View", "setTranslationZ", chain -> {
             View task = (View) chain.getThisObject();
+            if (!taskType.isInstance(task)) return chain.proceed();
             Card card = cards.get(task);
             if (card == null || card.writingZ || !enabled.getAsBoolean()
                     || !(task.getParent() instanceof View parent) || !active(parent)) return chain.proceed();
@@ -518,6 +529,7 @@ final class StackedRecentsHooks {
             boolean horizontal = setter.equals("setTranslationX");
             installer.hook("android.view.View", setter, chain -> {
                 View task = (View) chain.getThisObject();
+                if (!taskType.isInstance(task)) return chain.proceed();
                 Card card = cards.get(task);
                 if (card == null || card.writingTranslation || !enabled.getAsBoolean()
                         || !(task.getParent() instanceof View parent) || !active(parent)) return chain.proceed();
@@ -681,11 +693,17 @@ final class StackedRecentsHooks {
         float strength = fullscreenStrength * state.entryProgress;
         // Launching a task must not reload every previously culled thumbnail.
         if (state.entryFinished && state.handoffProgress == 1f && fullscreenStrength < 1f && card != null) return !card.hidden;
+        int size = state.horizontal ? child.getWidth() : child.getHeight();
+        int parentSize = state.horizontal ? view.getWidth() : view.getHeight();
+        EntryPose pose = state.entryPoses.get(child);
+        if (pose != null && !state.entryFinished) {
+            float targetScale = state.horizontal ? pose.targetScaleX : pose.targetScaleY;
+            return pose.targetAlpha > 0f && pose.targetCenter - size * targetScale * .5f
+                    < parentSize + 96f * state.density + buffer;
+        }
         float translation = state.horizontal
                 ? (card != null ? card.translationX : child.getTranslationX())
                 : (card != null ? card.translationY : child.getTranslationY());
-        int size = state.horizontal ? child.getWidth() : child.getHeight();
-        int parentSize = state.horizontal ? view.getWidth() : view.getHeight();
         float baseScale = state.horizontal
                 ? (card != null ? card.scaleX : child.getScaleX())
                 : (card != null ? card.scaleY : child.getScaleY());
@@ -693,7 +711,6 @@ final class StackedRecentsHooks {
         float pivot = state.horizontal ? child.getPivotX() : child.getPivotY();
         float center = origin + translation + pivot + (size * .5f - pivot) * baseScale;
         float anchor = parentSize * .5f;
-        EntryPose pose = state.entryPoses.get(child);
         float startCenter = pose == null ? center : (state.horizontal ? pose.x : pose.y);
         float pageScroll = card == null ? (Integer) scrollForPage.invoke(view, view.indexOfChild(child)) : card.scroll;
         float distance = (pageScroll - (state.entryStarted && !state.entryFinished
@@ -701,20 +718,18 @@ final class StackedRecentsHooks {
                 + translation + state.overScroll) / state.step;
         DismissPose dismiss = state.dismissPoses.get(child);
         if (dismiss != null) distance = dismiss.start + (dismiss.end - dismiss.start) * state.dismissProgress;
+        if (distance <= -3f) return false;
+        StackedRecentsGeometry.Projection projection = card == null ? null : card.projection;
+        if (projection != null) projection.update(distance, size, anchor, 24f * state.density);
         float startScale = pose == null ? baseScale : (state.horizontal ? pose.scaleX : pose.scaleY);
         float scale = StackedRecentsGeometry.entryScale(baseScale, startScale,
-                StackedRecentsGeometry.scale(distance), state.entryProgress, fullscreenStrength);
-        if (pose != null && !state.entryFinished) scale = startScale
-                + ((state.horizontal ? pose.targetScaleX : pose.targetScaleY) - startScale) * state.entryProgress;
-        float target = pose != null && !state.entryFinished ? pose.targetCenter
-                : anchor + StackedRecentsGeometry.offset(distance, size, anchor, 24f * state.density);
+                projection == null ? StackedRecentsGeometry.scale(distance) : projection.scale,
+                state.entryProgress, fullscreenStrength);
+        float target = anchor + (projection == null
+                ? StackedRecentsGeometry.offset(distance, size, anchor, 24f * state.density) : projection.offset);
         float targetCenter = center + (target - center) * strength
                 + (startCenter - center) * (1f - state.entryProgress);
         float left = targetCenter - size * scale * .5f;
-        if (pose != null && !state.entryFinished) {
-            float targetScale = state.horizontal ? pose.targetScaleX : pose.targetScaleY;
-            return pose.targetAlpha > 0f && pose.targetCenter - size * targetScale * .5f < parentSize + 96f * state.density + buffer;
-        }
         return distance > -3f && left < parentSize + 96f * state.density + buffer;
     }
 
@@ -738,7 +753,10 @@ final class StackedRecentsHooks {
         card.renderScaleX = x; card.renderScaleY = y;
         if (view.getScaleX() == x && view.getScaleY() == y) return;
         card.writingScale = true;
-        try { view.setScaleX(x); view.setScaleY(y); }
+        try {
+            if (view.getScaleX() != x) view.setScaleX(x);
+            if (view.getScaleY() != y) view.setScaleY(y);
+        }
         finally { card.writingScale = false; }
     }
 
@@ -958,7 +976,7 @@ final class StackedRecentsHooks {
                 // Update before the native surface transaction in this frame;
                 // dispatchDraw alone can leave the live app one frame behind.
                 render((ViewGroup) current);
-                dispatchScroll.invoke(current);
+                if (state.entryProgress != 1f || state.entryFinished) dispatchScroll.invoke(current);
             } catch (ReflectiveOperationException error) {
                 log.accept("Cannot update stacked-recents entry frame", error);
             }
@@ -982,15 +1000,18 @@ final class StackedRecentsHooks {
                     if (pose != null && title != null) pose.titleAlpha = title.getAlpha();
                 }
                 state.entryFinished = true;
+                state.batchingEntryScroll = true;
                 try {
                     if (state.entryPage >= 0) snapImmediately.invoke(current, state.entryPage);
                 } catch (ReflectiveOperationException error) {
                     log.accept("Cannot finalize stacked-recents page", error);
+                } finally {
+                    state.batchingEntryScroll = false;
                 }
                 state.entryPoses.clear();
                 try {
-                    render((ViewGroup) current);
-                    dispatchScroll.invoke(current);
+                    try { render((ViewGroup) current); }
+                    finally { dispatchScroll.invoke(current); }
                 } catch (ReflectiveOperationException error) {
                     log.accept("Cannot synchronize stacked-recents handoff", error);
                 }
@@ -1004,8 +1025,11 @@ final class StackedRecentsHooks {
                         blurAnimation.cancel();
                         return;
                     }
-                    state.blurProgress = (Float) blurAnimation.getAnimatedValue();
-                    state.handoffProgress = state.blurProgress;
+                    float progress = (Float) blurAnimation.getAnimatedValue();
+                    // start() immediately delivers zero, whose pose was just rendered/flushed.
+                    if (state.blurProgress == progress && state.handoffProgress == progress) return;
+                    state.blurProgress = progress;
+                    state.handoffProgress = progress;
                     try {
                         render((ViewGroup) parent);
                         dispatchScroll.invoke(parent);
@@ -1176,9 +1200,11 @@ final class StackedRecentsHooks {
             DismissPose dismiss = state.dismissPoses.get(child);
             if (dismiss != null) distance = dismiss.start + (dismiss.end - dismiss.start) * state.dismissProgress;
             boolean entering = pose != null && !state.entryFinished;
-            float stackScale = entering ? 1f : StackedRecentsGeometry.scale(distance);
+            StackedRecentsGeometry.Projection projection = card.projection;
+            if (!entering) projection.update(distance, size, anchor, 24f * density);
+            float stackScale = entering ? 1f : projection.scale;
             float target = entering ? pose.targetCenter
-                    : anchor + StackedRecentsGeometry.offset(distance, size, anchor, 24f * density);
+                    : anchor + projection.offset;
             float projectedScale = baseScale * stackScale;
             boolean hidden = entering
                     ? pose.targetAlpha <= 0f || pose.targetCenter - size * (state.horizontal ? pose.targetScaleX : pose.targetScaleY) * .5f
@@ -1232,7 +1258,7 @@ final class StackedRecentsHooks {
             card.offsetX = state.horizontal ? stackOffset : crossOffset;
             card.offsetY = state.horizontal ? crossOffset : stackOffset;
             card.opacity = 1f + ((pose != null && !state.entryFinished ? pose.targetAlpha
-                    : StackedRecentsGeometry.alpha(distance) * StackedRecentsGeometry.leftEdgeVisibility(distance)) - 1f) * strength;
+                    : projection.opacity) - 1f) * strength;
             EntryPose handoff = state.handoffPoses.get(child);
             if (handoff != null && state.handoffProgress < 1f) {
                 float progress = state.handoffProgress;
@@ -1264,13 +1290,15 @@ final class StackedRecentsHooks {
                         + child.getPivotY() + (child.getHeight() * .5f - child.getPivotY()) * child.getScaleY();
                 card.hasRenderedCenter = true;
             }
-            child.setAlpha(card.alpha * card.opacity);
+            float alpha = card.alpha * card.opacity;
+            if (child.getAlpha() != alpha) child.setAlpha(alpha);
             if (title != null) {
-                float titleAlpha = card.titleAlpha * (1f + (StackedRecentsGeometry.titleVisibility(distance) - 1f) * strength);
+                float titleVisibility = entering ? StackedRecentsGeometry.titleVisibility(distance) : projection.title;
+                float titleAlpha = card.titleAlpha * (1f + (titleVisibility - 1f) * strength);
                 if (handoff != null && state.handoffProgress < 1f && Float.isFinite(handoff.titleAlpha)) {
                     titleAlpha = handoff.titleAlpha + (titleAlpha - handoff.titleAlpha) * state.handoffProgress;
                 }
-                title.setAlpha(titleAlpha);
+                if (title.getAlpha() != titleAlpha) title.setAlpha(titleAlpha);
             }
             writeZ(child, card, card.z + Math.max(0f, Math.min(8f, distance + 4f)) * density * strength);
             // Keep the existing kernel during launch; animating its radius
@@ -1278,7 +1306,7 @@ final class StackedRecentsHooks {
             // Apply the final kernel once the entry/handoff geometry is stable.
             // Growing it every settle frame repeatedly reallocates GPU blur layers.
             int blur = launching ? card.blur : state.blurProgress < 1f ? 0
-                    : Math.round(StackedRecentsGeometry.blurDp(distance) * fullscreenStrength * 2f);
+                    : Math.round((entering ? StackedRecentsGeometry.blurDp(distance) : projection.blur) * fullscreenStrength * 2f);
             if (card.blur != blur) {
                 card.blur = blur;
                 if (blur == 0) card.effect = null;
@@ -1373,6 +1401,7 @@ final class StackedRecentsHooks {
         final ArrayList<Card> items = new ArrayList<>();
         RenderEffect[] effects = new RenderEffect[25];
         boolean dirty = true, pendingFocus, fromHome, horizontal = true;
+        boolean batchingEntryScroll;
         boolean clippingChanged, clipChildren, clipPadding, drawing, entryStarted, nativeEntryEnded, entrySettled;
         float overScroll, entryTargetScroll;
         int entryPage = -1;
@@ -1419,6 +1448,7 @@ final class StackedRecentsHooks {
     }
 
     private static final class Card {
+        final StackedRecentsGeometry.Projection projection = new StackedRecentsGeometry.Projection();
         final WeakReference<View> view;
         WeakReference<View> title;
         float titleAlpha;
