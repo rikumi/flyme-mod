@@ -140,7 +140,7 @@ final class RowRevealHooks {
         }
         installer.hook(View.class.getName(), "setAlpha", chain -> {
             NotificationRegion region = currentNotificationRegion.get();
-            if (enabled.getAsBoolean() && region != null && region.view == chain.getThisObject()) {
+            if (region != null && region.view == chain.getThisObject() && enabled.getAsBoolean()) {
                 // NPVC writes the undelayed parent alpha after setQsPanelAlpha. The
                 // pre-draw row renderer already owns this exact stack's delayed alpha.
                 // Suppress only that native write, not other views or endpoint/reset writes.
@@ -148,7 +148,7 @@ final class RowRevealHooks {
             }
             HeaderBinding binding = headerBindings.get(chain.getThisObject());
             Object owner = binding == null ? null : binding.owner.get();
-            if (!enabled.getAsBoolean() || owner == null || reveals.get(owner) != binding.reveal)
+            if (owner == null || reveals.get(owner) != binding.reveal || !enabled.getAsBoolean())
                 return chain.proceed();
             // Separate headers are siblings of the QS container. Merged headers
             // already inherit the root's reveal alpha and must not fade a second time.
@@ -425,15 +425,18 @@ final class RowRevealHooks {
         return separate ? alpha : parent <= 0f ? 0f : Math.min(1f, alpha / parent);
     }
     private void bindHeaders(Object owner, Reveal reveal, boolean separate) throws IllegalAccessException {
-        for (Field field : new Field[]{separate ? separateHeader : combinedHeader,
-                separate ? separateStatusBar : combinedStatusBar}) {
-            View header = (View) field.get(owner);
-            if (header == null) continue;
-            HeaderBinding old = headerBindings.get(header);
-            if (old == null || old.owner.get() != owner || old.reveal != reveal || old.separate != separate)
-                headerBindings.put(header, new HeaderBinding(owner, reveal, separate));
-            header.setAlpha(headerAlpha(reveal, separate));
-        }
+        float alpha = headerAlpha(reveal, separate);
+        bindHeader(owner, reveal, separate, separate ? separateHeader : combinedHeader, alpha);
+        bindHeader(owner, reveal, separate, separate ? separateStatusBar : combinedStatusBar, alpha);
+    }
+    private void bindHeader(Object owner, Reveal reveal, boolean separate, Field field, float alpha)
+            throws IllegalAccessException {
+        View header = (View) field.get(owner);
+        if (header == null) return;
+        HeaderBinding old = headerBindings.get(header);
+        if (old == null || old.owner.get() != owner || old.reveal != reveal || old.separate != separate)
+            headerBindings.put(header, new HeaderBinding(owner, reveal, separate));
+        ShadeViewProperties.alpha(header, alpha);
     }
     private static final class HeaderBinding {
         final WeakReference<Object> owner;
@@ -566,12 +569,8 @@ final class RowRevealHooks {
 
     private static void keepHeaderScale(Object owner, Field header, Field statusBar)
             throws IllegalAccessException {
-        for (Field field : new Field[]{header, statusBar}) {
-            View view = (View) field.get(owner);
-            if (view == null) continue;
-            view.setScaleX(1f);
-            view.setScaleY(1f);
-        }
+        ShadeViewProperties.unitScale((View) header.get(owner));
+        ShadeViewProperties.unitScale((View) statusBar.get(owner));
     }
 
     private void update(Object owner, float progress, boolean separate) throws ReflectiveOperationException {
@@ -783,9 +782,15 @@ final class RowRevealHooks {
                 lastVisibleDelay = page.lastDelay;
                 notificationGap = page.lastGap * .9f;
             }
+            float previousDelay = Float.NaN;
+            float amount = 0f;
             for (int i = 0; i < page.tiles.size(); i++) {
                 Tile tile = page.tiles.get(i);
-                float amount = revealCurve((state.progress - tile.delay) / (1f - tile.delay));
+                // prepare() sorts tiles by row. Siblings share the same timeline.
+                if (tile.delay != previousDelay) {
+                    amount = revealCurve((state.progress - tile.delay) / (1f - tile.delay));
+                    previousDelay = tile.delay;
+                }
                 applyFrame(tile.view, tile.animationPivotX, tile.animationPivotY,
                         .85f + .15f * amount, .85f + .15f * amount,
                         tile.alpha * (parentAlpha > 0f ? amount / parentAlpha : 0f));
