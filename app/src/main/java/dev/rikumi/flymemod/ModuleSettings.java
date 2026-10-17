@@ -64,6 +64,7 @@ public final class ModuleSettings {
     public static int backGestureDarkOpacity(int value) {
         return Math.round(Math.max(50, Math.min(100, value)) / 5f) * 5;
     }
+    public static final String BACK_GESTURE_BLOCK_IME = "back_gesture_block_ime";
     public static final String BACK_GESTURE_REMOVE_SMART = "back_gesture_remove_smart";
     public static final String BACK_GESTURE_WIDTH_ENABLED = "back_gesture_width_enabled";
     public static final String BACK_GESTURE_WIDTH_DP = "back_gesture_width_dp";

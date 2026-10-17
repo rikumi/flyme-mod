@@ -168,6 +168,7 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.RECENTS_CORNER_DP);
         columns.add(ModuleSettings.TILES_CONTOUR);
         columns.add(ModuleSettings.BACK_GESTURE_REMOVE_SMART);
+        columns.add(ModuleSettings.BACK_GESTURE_BLOCK_IME);
         columns.add(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED);
         columns.add(ModuleSettings.BACK_GESTURE_WIDTH_DP);
         columns.add(ModuleSettings.MBACK_SYSTEM_TIMEOUT);
@@ -339,6 +340,7 @@ public final class SettingsProvider extends ContentProvider {
         values.add(RecentsCornerSettings.radiusDp(getContext(), prefs));
         values.add(prefs.getBoolean(ModuleSettings.TILES_CONTOUR, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_REMOVE_SMART, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_BLOCK_IME, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_MAX_DP, ModuleSettings.BACK_GESTURE_WIDTH_MAX_DEFAULT),
                 prefs.getInt(ModuleSettings.BACK_GESTURE_WIDTH_DP, ModuleSettings.BACK_GESTURE_WIDTH_DEFAULT))));

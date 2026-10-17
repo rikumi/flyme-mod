@@ -209,6 +209,7 @@ public final class XposedInit extends XposedModule {
     private int backGestureDarkOpacity = ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT;
     private BackGestureBackgroundHooks activeBackGestureBackgroundHooks;
     private boolean backGestureWidthEnabled;
+    private boolean backGestureBlockIme;
     private boolean backGestureRemoveSmart = true;
     private BackGestureSmartHooks activeBackGestureSmartHooks;
     private BackGestureWidthHooks activeBackGestureWidthHooks;
@@ -773,6 +774,14 @@ public final class XposedInit extends XposedModule {
                     (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters), this::deoptimize);
         } catch (ReflectiveOperationException error) {
             log(Log.ERROR,"FlymeMod","Cannot resolve back gesture width",error);
+        }
+        try {
+            BackGestureImeHooks.install(loader, this::loadSettings, () -> backGestureBlockIme,
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error),
+                    (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                    this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve keyboard back gesture exclusion", error);
         }
         try {
             activeBackGestureSmartHooks = new BackGestureSmartHooks(loader, this::loadSettings, () -> backGestureRemoveSmart,
@@ -2684,6 +2693,8 @@ public final class XposedInit extends XposedModule {
                 int backDarkOpacityColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_DARK_OPACITY);
                 backGestureDarkOpacity = ModuleSettings.backGestureDarkOpacity(backDarkOpacityColumn < 0
                         ? ModuleSettings.BACK_GESTURE_DARK_OPACITY_DEFAULT : cursor.getInt(backDarkOpacityColumn));
+                int backImeColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_BLOCK_IME);
+                backGestureBlockIme = backImeColumn >= 0 && cursor.getInt(backImeColumn) != 0;
                 int backSmartColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_REMOVE_SMART);
                 backGestureRemoveSmart = backSmartColumn < 0 || cursor.getInt(backSmartColumn) != 0;
                 int backWidthColumn = cursor.getColumnIndex(ModuleSettings.BACK_GESTURE_WIDTH_ENABLED);

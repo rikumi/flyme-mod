@@ -225,6 +225,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
                     ModuleSettings.GESTURE_BAR_WIDTH_DEFAULT, 80, 120, unit = "dp")),
             CustomItem("back_gesture_width") { BackGestureWidthPreference() },
             SwitchItem(ModuleSettings.BACK_GESTURE_REMOVE_SMART, "放宽侧滑返回判定"),
+            SwitchItem(ModuleSettings.BACK_GESTURE_BLOCK_IME, "禁止键盘两侧侧滑返回"),
             SwitchItem(ModuleSettings.BACK_GESTURE_ARROW, "侧滑返回区域增加箭头"),
             SwitchItem(ModuleSettings.BACK_GESTURE_DARK_BACKGROUND, "侧滑返回暗色背景",
                 slider = SliderSpec(ModuleSettings.BACK_GESTURE_DARK_OPACITY,
