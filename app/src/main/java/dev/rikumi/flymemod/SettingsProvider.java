@@ -108,6 +108,9 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.AOD_CLOCK_FONT);
         columns.add(ModuleSettings.STATUS_BAR_CLOCK_FONT);
         columns.add(ModuleSettings.STATUS_BAR_LYRIC_AVOID);
+        columns.add(ModuleSettings.TICKER_LYRIC_AVOID);
+        columns.add(ModuleSettings.TICKER_DISPLAY_MODE);
+        columns.add(ModuleSettings.TICKER_LEFT_OF_CUTOUT);
         columns.add(ModuleSettings.STATUS_BAR_CHARGING_INFO);
         columns.add(ModuleSettings.CONTROL_CENTER_CLOCK_FONT);
         columns.add(ModuleSettings.LOCK_CLOCK_MONOSPACE);
@@ -271,6 +274,9 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getInt(ModuleSettings.AOD_CLOCK_FONT, 0));
         values.add(prefs.getInt(ModuleSettings.STATUS_BAR_CLOCK_FONT, 0));
         values.add(prefs.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.TICKER_LYRIC_AVOID, false) ? 1 : 0);
+        values.add(Math.max(0, Math.min(2, prefs.getInt(ModuleSettings.TICKER_DISPLAY_MODE, 0))));
+        values.add(prefs.getBoolean(ModuleSettings.TICKER_LEFT_OF_CUTOUT, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(2, prefs.getInt(ModuleSettings.STATUS_BAR_CHARGING_INFO, ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT))));
         values.add(prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_FONT, 0));
         values.add(prefs.getBoolean(ModuleSettings.LOCK_CLOCK_MONOSPACE, false) ? 1 : 0);

@@ -27,6 +27,7 @@ public final class CameraSettingsBridge extends Application {
                 || ModuleSettings.EARPHONE_NOISE_CONTROL.equals(key)
                 || ModuleSettings.HEYMELODY_NOISE_CONTROL.equals(key)
                 || ModuleSettings.STATUS_BAR_LYRIC_AVOID.equals(key)
+                || ModuleSettings.TICKER_LYRIC_AVOID.equals(key)
                 || ModuleSettings.SYSTEM_ICON_PACK.equals(key)
                 || ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND.equals(key)
                 || ModuleSettings.WIRELESS_DEBUG_THEME_FIX.equals(key)
@@ -99,6 +100,7 @@ public final class CameraSettingsBridge extends Application {
                                 local.getBoolean(ModuleSettings.HEYMELODY_NOISE_CONTROL, false))
                         .putBoolean(ModuleSettings.EARPHONE_NOISE_CONTROL,
                                 local.getBoolean(ModuleSettings.EARPHONE_NOISE_CONTROL, false))
+                        .putBoolean(ModuleSettings.TICKER_LYRIC_AVOID, local.getBoolean(ModuleSettings.TICKER_LYRIC_AVOID, false))
                         .putBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID,
                                 local.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, false))
                         .putBoolean(ModuleSettings.SYSTEM_ICON_PACK,local.getBoolean(ModuleSettings.SYSTEM_ICON_PACK, false))

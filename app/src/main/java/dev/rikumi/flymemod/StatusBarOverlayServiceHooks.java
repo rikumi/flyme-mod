@@ -35,14 +35,19 @@ final class StatusBarOverlayServiceHooks {
     private String published;
     // Retain the listener for the lifetime of system_server.
     private final SharedPreferences.OnSharedPreferenceChangeListener changes = (prefs, key) -> {
-        if (key == null || ModuleSettings.STATUS_BAR_LYRIC_AVOID.equals(key)) {
-            enabled = prefs.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, false);
+        if (key == null || ModuleSettings.STATUS_BAR_LYRIC_AVOID.equals(key)
+                || ModuleSettings.TICKER_LYRIC_AVOID.equals(key)) {
+            enabled = trackingEnabled();
             handler.post(this::rescan);
         }
     };
     StatusBarOverlayServiceHooks(SharedPreferences preferences, BiConsumer<String, Throwable> log) {
         this.preferences = preferences; this.log = log;
-        enabled = preferences.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, false);
+        enabled = trackingEnabled();
+    }
+    private boolean trackingEnabled() {
+        return preferences.getBoolean(ModuleSettings.STATUS_BAR_LYRIC_AVOID, false)
+                || preferences.getBoolean(ModuleSettings.TICKER_LYRIC_AVOID, false);
     }
     void install(ClassLoader loader, SignalHooks.Installer installer, Consumer<Method> deoptimize)
             throws ReflectiveOperationException {

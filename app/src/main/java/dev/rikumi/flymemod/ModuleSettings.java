@@ -103,6 +103,9 @@ public final class ModuleSettings {
     public static final String LOCK_CLOCK_FONT = "lock_clock_font";
     public static final String AOD_CLOCK_FONT = "aod_clock_font";
     public static final String STATUS_BAR_CLOCK_FONT = "status_bar_clock_font";
+    public static final String TICKER_DISPLAY_MODE = "ticker_display_mode";
+    public static final String TICKER_LEFT_OF_CUTOUT = "ticker_left_of_cutout";
+    public static final String TICKER_LYRIC_AVOID = "ticker_lyric_avoid_enabled";
     public static final String STATUS_BAR_LYRIC_AVOID = "status_bar_lyric_avoid";
     public static final String STATUS_BAR_CHARGING_INFO = "status_bar_charging_info";
     public static final int STATUS_BAR_CHARGING_INFO_DEFAULT = 0;
@@ -269,6 +272,10 @@ public final class ModuleSettings {
     public static SharedPreferences preferences(Context context) {
         SharedPreferences preferences = context.createDeviceProtectedStorageContext()
                 .getSharedPreferences(FILE, Context.MODE_PRIVATE);
+        if (!preferences.contains(TICKER_LYRIC_AVOID) && preferences.contains("ticker_lyric_avoid")) {
+            preferences.edit().putBoolean(TICKER_LYRIC_AVOID,
+                    preferences.getInt("ticker_lyric_avoid", 0) == 1).remove("ticker_lyric_avoid").commit();
+        }
         DesktopFeatureDefaults.initialize(preferences);
         if(preferences.contains("launcher_folder_contour")) {
             preferences.edit().putBoolean(ICON_CONTOUR,preferences.getBoolean(ICON_CONTOUR,false)

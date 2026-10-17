@@ -104,6 +104,7 @@ internal object OneClickPreset {
         ModuleSettings.VOLUME_FIRST_FOUR to 1,
     )
     private val modeKeys = setOf(
+        ModuleSettings.TICKER_DISPLAY_MODE,
         ModuleSettings.STATUS_BAR_CHARGING_INFO,
         ModuleSettings.CONTROL_CENTER_STYLE, ModuleSettings.VOLUME_FIRST_FOUR,
         ModuleSettings.LOCK_CLOCK_FONT, ModuleSettings.AOD_CLOCK_FONT,
@@ -130,6 +131,8 @@ internal object OneClickPreset {
     fun apply(editor: SharedPreferences.Editor, enabled: Boolean) {
         if (enabled) {
             switches.forEach { (key, value) -> editor.putBoolean(key, value) }
+            // Presentation override stays at the native policy in the developer preset.
+            editor.putInt(ModuleSettings.TICKER_DISPLAY_MODE, 0)
             values.forEach { (key, value) ->
                 if (key !in modeKeys || value != 0) editor.putInt(key, value)
             }

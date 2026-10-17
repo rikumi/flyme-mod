@@ -175,6 +175,9 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.MERGE_DUAL_SIGNAL, "合并双卡信号"),
             SwitchItem(ModuleSettings.SEPARATE_NETWORK_TYPE, "独立显示网络制式"),
             SwitchItem(ModuleSettings.STATUS_BAR_LYRIC_AVOID, "避让第三方状态栏歌词"),
+            SwitchItem(ModuleSettings.TICKER_LYRIC_AVOID, "通知 Ticker 避让第三方歌词"),
+            SelectItem(ModuleSettings.TICKER_DISPLAY_MODE, "通知使用 Ticker（跳字）显示", listOf("默认", "始终使用", "从不使用")),
+            SwitchItem(ModuleSettings.TICKER_LEFT_OF_CUTOUT, "通知 Ticker 只显示在挖孔左侧"),
             SelectItem(ModuleSettings.STATUS_BAR_CHARGING_INFO, "状态栏显示充电功率", listOf("关闭", "功率值", "电压电流值"), defaultValue = ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT),
         )),
         SettingsGroup("状态栏图标隐藏", listOf(

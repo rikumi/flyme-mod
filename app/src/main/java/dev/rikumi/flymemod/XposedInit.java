@@ -190,6 +190,10 @@ public final class XposedInit extends XposedModule {
     private ClockFontHooks activeClockFontHooks;
     private HeaderDateHooks activeHeaderDateHooks;
     private StatusBarLyricHooks activeStatusBarLyricHooks;
+    private TickerLyricHooks activeTickerLyricHooks;
+    private boolean tickerLyricAvoid;
+    private int tickerDisplayMode;
+    private boolean tickerLeftOfCutout;
     private boolean statusBarLyricAvoidEnabled = ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT;
     private ChargingInfoHooks activeChargingInfoHooks;
     private int statusBarChargingInfoMode = ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT;
@@ -652,6 +656,13 @@ public final class XposedInit extends XposedModule {
                     return chain.proceed(hookedArgs.toArray());
                 }, String.class, boolean.class);
 
+        try {
+            activeTickerLyricHooks = new TickerLyricHooks(this::loadSettings, () -> tickerLyricAvoid, () -> tickerDisplayMode, () -> tickerLeftOfCutout);
+            activeTickerLyricHooks.install(loader, (name, method, hooker, parameters) ->
+                    install(loader, name, method, hooker, parameters), this::deoptimize);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot resolve notification ticker hooks", error);
+        }
         try {
             activeStatusBarLyricHooks = new StatusBarLyricHooks(this::loadSettings, () -> statusBarLyricAvoidEnabled);
             activeStatusBarLyricHooks.install(loader, (name, method, hooker, parameters) ->
@@ -2614,6 +2625,7 @@ public final class XposedInit extends XposedModule {
                     if (activeClockFontHooks != null) activeClockFontHooks.refresh();
                     if (activeChargingInfoHooks != null) activeChargingInfoHooks.refresh();
                     if (activeStatusBarLyricHooks != null) activeStatusBarLyricHooks.refresh();
+                    if (activeTickerLyricHooks != null) activeTickerLyricHooks.refresh();
                     if (activeRecentsCornerHooks != null) activeRecentsCornerHooks.refresh();
                     if (activeCarrierVisibilityHooks != null) activeCarrierVisibilityHooks.refresh();
                     if (activeSimpleQsTextHooks != null) activeSimpleQsTextHooks.refresh();
@@ -2789,6 +2801,12 @@ public final class XposedInit extends XposedModule {
                 int aodFontColumn = cursor.getColumnIndex(ModuleSettings.AOD_CLOCK_FONT);
                 aodClockFont = aodFontColumn < 0 ? 0 : Math.max(0, Math.min(ModuleSettings.CLOCK_FONT_NAMES.length - 1, cursor.getInt(aodFontColumn)));
                 int statusFontColumn = cursor.getColumnIndex(ModuleSettings.STATUS_BAR_CLOCK_FONT);
+                int tickerDisplayColumn = cursor.getColumnIndex(ModuleSettings.TICKER_DISPLAY_MODE);
+                tickerDisplayMode = tickerDisplayColumn < 0 ? 0 : Math.max(0, Math.min(2, cursor.getInt(tickerDisplayColumn)));
+                int tickerLeftColumn = cursor.getColumnIndex(ModuleSettings.TICKER_LEFT_OF_CUTOUT);
+                tickerLeftOfCutout = tickerLeftColumn >= 0 && cursor.getInt(tickerLeftColumn) != 0;
+                int tickerLyricColumn = cursor.getColumnIndex(ModuleSettings.TICKER_LYRIC_AVOID);
+                tickerLyricAvoid = tickerLyricColumn >= 0 && cursor.getInt(tickerLyricColumn) != 0;
                 int lyricAvoidColumn = cursor.getColumnIndex(ModuleSettings.STATUS_BAR_LYRIC_AVOID);
                 statusBarLyricAvoidEnabled = lyricAvoidColumn < 0 ? ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT : cursor.getInt(lyricAvoidColumn) != 0;
                 int chargingInfoColumn = cursor.getColumnIndex(ModuleSettings.STATUS_BAR_CHARGING_INFO);
