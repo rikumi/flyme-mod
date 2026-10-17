@@ -1356,6 +1356,9 @@ public final class XposedInit extends XposedModule {
                     // The short contracted-template fallback passes mMinContractedHeight
                     // directly to measureChildWithMargins, unlike the first measurement.
                     // Restore only our padding deduction, keeping native insets intact.
+                    // An EXACTLY parent spec still gives WRAP_CONTENT an AT_MOST
+                    // child spec. Preserve that distinction: this is a cap, not a
+                    // minimum height for a naturally shorter notification.
                     int nativePadding = content.getPaddingTop() + content.getPaddingBottom() - extra;
                     int minimum = content.getClass().getField("mMinContractedHeight").getInt(content) - nativePadding;
                     if (contracted != null) {
@@ -1366,7 +1369,9 @@ public final class XposedInit extends XposedModule {
                     if (contracted != null && contracted.getLayoutParams().height < 0
                             && contracted.getMeasuredHeight() < minimum)
                         contracted.measure(View.MeasureSpec.makeMeasureSpec(contracted.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
-                                View.MeasureSpec.makeMeasureSpec(minimum, View.MeasureSpec.EXACTLY));
+                                View.MeasureSpec.makeMeasureSpec(Math.max(0, minimum),
+                                        contracted.getLayoutParams().height == android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                                ? View.MeasureSpec.EXACTLY : View.MeasureSpec.AT_MOST));
                     // Native onMeasure remeasures a shorter expanded child using the
                     // contracted child's height as a parent spec. That fallback subtracts
                     // our outer padding again, unlike the initial expanded measurement.
@@ -1377,7 +1382,9 @@ public final class XposedInit extends XposedModule {
                         int height = contracted.getMeasuredHeight() - nativePadding - margins.topMargin - margins.bottomMargin;
                         if (expanded.getMeasuredHeight() < height)
                             expanded.measure(View.MeasureSpec.makeMeasureSpec(expanded.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
-                                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+                                    View.MeasureSpec.makeMeasureSpec(Math.max(0, height),
+                                            expanded.getLayoutParams().height == android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                                    ? View.MeasureSpec.EXACTLY : View.MeasureSpec.AT_MOST));
                     }
                     // A contracted-only card also needs its outer measured height
                     // updated; otherwise FrameLayout still clips the restored child.

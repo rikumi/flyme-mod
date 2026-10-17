@@ -32,11 +32,19 @@ import java.util.*;
 public class PublicPaddingTest {
     public static class View {
         int[] padding = {3, 5, 7, 9};
-        int height = 80, measuredHeight = 100;
+        int height = 80, measuredHeight = 100, naturalHeight = 100;
         android.view.ViewGroup.LayoutParams params = new android.view.ViewGroup.MarginLayoutParams();
         int getMeasuredWidth() { return 300; }
         int getMeasuredHeight() { return measuredHeight; }
-        void measure(int width, int height) { measuredHeight = MeasureSpec.getSize(height); }
+        void measure(int width, int height) {
+            int size = MeasureSpec.getSize(height);
+            measuredHeight = MeasureSpec.getMode(height) == MeasureSpec.EXACTLY ? size : Math.min(naturalHeight, size);
+        }
+        void nativeFallback(int cap, int padding) {
+            var margins = (android.view.ViewGroup.MarginLayoutParams) params;
+            int size = Math.max(0, cap - padding - margins.topMargin - margins.bottomMargin);
+            measure(0, MeasureSpec.makeMeasureSpec(size, params.height == -1 ? MeasureSpec.EXACTLY : MeasureSpec.AT_MOST));
+        }
         protected void setMeasuredDimension(int width, int height) { measuredHeight = height; }
         static class MeasureSpec {
             static final int EXACTLY = 0x40000000, UNSPECIFIED = 0, AT_MOST = 0x80000000;
@@ -108,16 +116,18 @@ public class PublicPaddingTest {
                     int padding = c.getPaddingTop() + c.getPaddingBottom();
                     // Flyme NotificationContentView.onMeasure: first contracted spec
                     // includes padding, minimum fallback and expanded fallback omit it.
+                    c.mContractedChild.naturalHeight = c.naturalContracted;
                     c.mContractedChild.measuredHeight = c.naturalContracted;
                     if (c.naturalContracted < c.mMinContractedHeight)
-                        c.mContractedChild.measuredHeight = c.mMinContractedHeight - padding - 2 * ((android.view.ViewGroup.MarginLayoutParams)c.mContractedChild.params).topMargin;
+                        c.mContractedChild.nativeFallback(c.mMinContractedHeight, padding);
                     int margin = 2 * ((android.view.ViewGroup.MarginLayoutParams)c.mContractedChild.params).topMargin;
                     int maximum = c.mContractedChild.measuredHeight + margin;
                     if (c.mExpandedChild != null) {
+                        c.mExpandedChild.naturalHeight = c.naturalExpanded;
                         c.mExpandedChild.measuredHeight = c.naturalExpanded;
                         maximum = Math.max(maximum, c.naturalExpanded + margin);
                         if (c.mExpandedChild.measuredHeight < c.mContractedChild.measuredHeight)
-                            c.mExpandedChild.measuredHeight = c.mContractedChild.measuredHeight - padding - margin;
+                            c.mExpandedChild.nativeFallback(c.mContractedChild.measuredHeight, padding);
                     }
                     c.measuredHeight = maximum + padding;
                     return null;
@@ -186,7 +196,7 @@ public class PublicPaddingTest {
         for (int nativePadding : new int[]{0, 14}) {
             for (int margin : new int[]{0, 4}) for (int natural : new int[]{60, 99, 100, 110, 180}) {
                 for (int inset : new int[]{0, 5, 12, 24, 40}) {
-                    for (boolean expanded : new boolean[]{false, true}) {
+                    for (int dimension : new int[]{-1, -2}) for (boolean expanded : new boolean[]{false, true}) {
                         Content template = new Row().content;
                         template.padding = new int[]{0,nativePadding/2,0,nativePadding/2};
                         template.simulate = true; template.naturalContracted = natural;
@@ -195,14 +205,19 @@ public class PublicPaddingTest {
                         for (View child : new View[]{template.mContractedChild, template.mExpandedChild}) if (child != null) {
                             var params = (android.view.ViewGroup.MarginLayoutParams) child.params;
                             params.topMargin = params.bottomMargin = margin;
-                            params.height = -2;
+                            params.height = dimension;
                         }
                         int nativeChild = natural < 100 ? 100 - nativePadding - 2*margin : natural;
+                        if (dimension == -2) nativeChild = Math.min(natural, nativeChild);
                         activeNotificationAppearanceHooks.padding = inset;
                         measure(new Chain(template));
                         check(template.mContractedChild.measuredHeight == nativeChild);
                         check(template.measuredHeight == Math.max(nativeChild, expanded ? 70 : 0) + nativePadding + 2*margin + 2*inset);
-                        if (expanded && inset > 0) check(template.mExpandedChild.measuredHeight >= nativeChild - nativePadding - 2*margin);
+                        if (expanded && inset > 0) {
+                            int expected = Math.max(0, nativeChild - nativePadding - 2*margin);
+                            if (dimension == -2) expected = Math.min(70, expected);
+                            check(template.mExpandedChild.measuredHeight >= expected);
+                        }
                         // Stable repeated measures never accumulate extra height.
                         int stable = template.measuredHeight;
                         measure(new Chain(template)); check(template.measuredHeight == stable);
@@ -215,6 +230,24 @@ public class PublicPaddingTest {
                 }
             }
         }
+        // MEIZU 22 USB notification: natural 255px, native cap 325px,
+        // 17px per edge. WRAP_CONTENT must stay 255px rather than stretch to 325px.
+        Content usb = new Row().content;
+        usb.simulate = true; usb.padding = new int[]{0,0,0,0};
+        usb.mMinContractedHeight = 325;
+        usb.naturalContracted = usb.naturalExpanded = 255;
+        usb.mContractedChild.params.height = usb.mExpandedChild.params.height = -2;
+        usb.mHeadsUpChild = null;
+        activeNotificationAppearanceHooks.padding = 17;
+        for (int repeat = 0; repeat < 3; repeat++) {
+            measure(new Chain(usb));
+            check(usb.mContractedChild.measuredHeight == 255);
+            check(usb.mExpandedChild.measuredHeight == 255);
+            check(usb.measuredHeight == 289);
+        }
+        notificationCustomCornersEnabled = false;
+        measure(new Chain(usb)); check(usb.measuredHeight == 255);
+        notificationCustomCornersEnabled = true;
         // Fixed RemoteViews must grow ONLY by the container insets, including
         // sizes below the native minimum and short expanded/headsup templates.
         for (int fixed : new int[]{40, 80, 100, 180}) {
@@ -256,7 +289,7 @@ with tempfile.TemporaryDirectory(prefix="flyme-public-padding-", dir="/private/t
     (path / "PublicPaddingTest.java").write_text(java)
     stub = path / "android/view/ViewGroup.java"
     stub.parent.mkdir(parents=True)
-    stub.write_text("package android.view; public class ViewGroup { public static class LayoutParams { public int height=100; } public static class MarginLayoutParams extends LayoutParams { public int topMargin, bottomMargin; } }")
+    stub.write_text("package android.view; public class ViewGroup { public static class LayoutParams { public static final int MATCH_PARENT=-1; public int height=100; } public static class MarginLayoutParams extends LayoutParams { public int topMargin, bottomMargin; } }")
     jdk = Path("/opt/homebrew/opt/openjdk@21/bin")
     subprocess.run([str(jdk / "javac"), "-d", directory, str(stub), str(path / "PublicPaddingTest.java")], check=True)
     subprocess.run([str(jdk / "java"), "-cp", directory, "PublicPaddingTest"], check=True)
