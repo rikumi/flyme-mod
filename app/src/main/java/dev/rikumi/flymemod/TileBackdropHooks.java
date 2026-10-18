@@ -120,6 +120,32 @@ final class TileBackdropHooks {
                 return mix(layer,composed,coverage);
             }
             """;
+    // Media has additional rounded ancestor clips that are not represented by tile batches.
+    static final String MEDIA_SHADER = SHADER
+            .replace("float mask(float2 p)", """
+                    uniform float4 mediaClip0, mediaClip1, mediaClip2, mediaClip3;
+                    uniform float4 mediaRadius0, mediaRadius1, mediaRadius2, mediaRadius3;
+                    float mediaCoverage(float2 p, float4 box, float4 radius) {
+                        if (box.z <= box.x || box.w <= box.y) return 1.0;
+                        if (p.x < box.x || p.y < box.y || p.x >= box.z || p.y >= box.w) return 0.0;
+                        float2 r = min(p.y < (box.y+box.w)*0.5 ? radius.xy : radius.zw, (box.zw-box.xy)*0.5);
+                        if (r.x <= 0.0 || r.y <= 0.0) return 1.0;
+                        float2 q = min(p-box.xy,box.zw-p);
+                        return 1.0-smoothstep(0.99,1.01,length(max(r-q,float2(0.0))/r));
+                    }
+                    float mask(float2 p)
+                    """)
+            .replace("float coverage = mask(p)", """
+                    float2 mediaLocal = (p-float2(sksl_left,sksl_top))*shapeSize/
+                            float2(sksl_right-sksl_left,sksl_bottom-sksl_top);
+                    float coverage = mask(p)*mediaCoverage(mediaLocal,mediaClip0,mediaRadius0)
+                            *mediaCoverage(mediaLocal,mediaClip1,mediaRadius1)
+                            *mediaCoverage(mediaLocal,mediaClip2,mediaRadius2)
+                            *mediaCoverage(mediaLocal,mediaClip3,mediaRadius3)
+                    """);
+    private final Class<?> mediaClass, transitionClass, mediaContainerClass;
+    private final Field mediaRadius, transitionBounds, mediaClipHeight, mediaContainerRadius, stackMediaPath, stackMediaRadii;
+    private final Map<Object,Long> mediaEffects = new WeakHashMap<>();
     private final TileCornerHooks corners;
     private final BooleanSupplier enabled;
     private final BooleanSupplier notificationsEnabled;
@@ -168,6 +194,13 @@ final class TileBackdropHooks {
         this.networkStyle = networkStyle; this.corners = corners;
         this.saturationAmount = saturationAmount;
         this.notificationsEnabled=notificationsEnabled; this.notificationSaturation=notificationSaturation;
+        mediaClass=loader.loadClass("com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout");
+        mediaRadius=mediaClass.getField("mClipCornerRadius");
+        transitionClass=loader.loadClass("com.android.systemui.util.animation.TransitionLayout");
+        transitionBounds=transitionClass.getField("boundsRect");
+        mediaContainerClass=loader.loadClass("com.android.systemui.statusbar.notification.stack.MediaContainerView");
+        mediaClipHeight=mediaContainerClass.getField("clipHeight");
+        mediaContainerRadius=mediaContainerClass.getField("cornerRadius");
         notificationBackground=loader.loadClass("com.android.systemui.statusbar.notification.row.NotificationBackgroundView");
         notificationDrawable=notificationBackground.getField("mBackground");
         notificationRadii=notificationBackground.getField("mCornerRadii");
@@ -188,6 +221,8 @@ final class TileBackdropHooks {
         fancyClipPath = qsContainer.getField("mFancyClippingPath");
         fancyClipRadii = qsContainer.getField("mFancyClippingRadii");
         notificationStack=loader.loadClass("com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout");
+        stackMediaPath=notificationStack.getField("mRoundedClipPath");
+        stackMediaRadii=notificationStack.getField("mRoundedClipCornerRadii");
         stackClipping=notificationStack.getField("mShouldUseRoundedRectClipping");
         stackClipLeft=notificationStack.getField("mRoundedRectClippingLeft");
         stackClipTop=notificationStack.getField("mRoundedRectClippingTop");
@@ -199,6 +234,7 @@ final class TileBackdropHooks {
         rowClip=notificationOutline.getMethod("getClipPath",boolean.class);
         // Validate SkSL locally too, so syntax errors reach the module log before SF registration.
         new RuntimeShader(SHADER);
+        new RuntimeShader(MEDIA_SHADER);
         getRoot = View.class.getDeclaredMethod("getViewRootImpl"); getRoot.setAccessible(true);
         Class<?> rootType = loader.loadClass("android.view.ViewRootImpl");
         createEffect = rootType.getMethod("createFlymeEffect", String.class);
@@ -243,6 +279,18 @@ final class TileBackdropHooks {
             },boolean.class);
         }
         installPositionUpdateOptimization(installer);
+        for(String method:new String[]{"setBackground","onAttachedToWindow"}) {
+            mediaClass.getDeclaredMethod(method);
+            installer.hook(mediaClass.getName(),method,chain->{
+                Object result=chain.proceed();observe((View)chain.getThisObject());return result;
+            });
+        }
+        transitionClass.getDeclaredMethod("applyCurrentState");
+        installer.hook(transitionClass.getName(),"applyCurrentState",chain->{
+            Object result=chain.proceed();
+            if(mediaClass.isInstance(chain.getThisObject()))observe((View)chain.getThisObject());
+            return result;
+        });
         notificationBackground.getDeclaredMethod("onAttachedToWindow");
         notificationBackground.getDeclaredMethod("setCustomBackground",Drawable.class);
         notificationBackground.getDeclaredMethod("setActualHeight",int.class);
@@ -361,18 +409,18 @@ final class TileBackdropHooks {
     void observeDialog(View view) { observe(view, 3); }
 
     private void observe(View view, int networkRole) {
-        if (corners != null && networkRole != 3 && !notificationBackground.isInstance(view)) corners.observe(view, networkRole);
+        if (view != null && corners != null && networkRole != 3 && !mediaClass.isInstance(view) && !notificationBackground.isInstance(view)) corners.observe(view, networkRole);
         if (view == null) return;
         WeakReference<State> reference=states.get(view);
         State existing=reference==null?null:reference.get();
         if (existing!=null) {
-            if (notificationBackground.isInstance(view)) existing.update();
+            if (notificationBackground.isInstance(view) || mediaClass.isInstance(view)) existing.update();
             return;
         }
         State state = new State(view, networkRole);
         states.put(view, new WeakReference<>(state));
         view.addOnAttachStateChangeListener(state);
-        if (notificationBackground.isInstance(view)) view.addOnLayoutChangeListener(state);
+        if (notificationBackground.isInstance(view) || mediaClass.isInstance(view)) view.addOnLayoutChangeListener(state);
         if (view.isAttachedToWindow()) state.onViewAttachedToWindow(view);
     }
 
@@ -417,13 +465,19 @@ final class TileBackdropHooks {
         boolean drawableRenderable;
         final int networkRole;
         final boolean slider;
-        final boolean notification;
+        final boolean notification, media;
+        final RectF[] mediaClips={new RectF(),new RectF(),new RectF(),new RectF()};
+        final float[][] mediaClipRadii=new float[4][4];
+        final float[][] appliedMediaClips=new float[4][8];
+        final float[] mappedMediaRadius=new float[2];
+        int mediaClipCount;
         final float[] appliedNotificationCorners={-1,-1,-1,-1};
         final int backgroundId, radiusId;
         State(View view, int networkRole) {
             owner = new WeakReference<>(view); this.networkRole = networkRole;
             slider = view.getClass().getName().equals(SLIDER_OWNER);
             notification = notificationBackground.isInstance(view);
+            media = mediaClass.isInstance(view);
             backgroundId = view.getResources().getIdentifier("background", "id", "com.android.systemui");
             radiusId = slider ? view.getResources().getIdentifier("qs_corner_radius", "dimen", "com.android.systemui") : 0;
         }
@@ -458,12 +512,13 @@ final class TileBackdropHooks {
             previousSaturation = -1;
             previousBrightnessBoost = -1;
             drawableRenderable = false;
+            for(float[] clip:appliedMediaClips)java.util.Arrays.fill(clip,Float.NaN);
         }
         void update() {
             View view = owner.get();
             if (view == null) return;
-            if (!(notification ? notificationsEnabled : enabled).getAsBoolean() || !view.isAttachedToWindow()) { remove(view); return; }
-            if(!notification&&networkRole != 3&&detailShowing) {
+            if (!(notification || media ? notificationsEnabled : enabled).getAsBoolean() || !view.isAttachedToWindow()) { remove(view); return; }
+            if(!notification&&!media&&networkRole != 3&&detailShowing) {
                 if(effect!=null)setEffectVisibility(false,0);
                 return;
             }
@@ -510,6 +565,10 @@ final class TileBackdropHooks {
                             notificationBottomClips.getBoolean(view), notificationExpanding.getBoolean(view),
                             (Boolean)notificationAlignedRight.invoke(view));
                     radius=notificationRadius.getInt(view);
+                } else if (media) {
+                    bounds.set(0,0,view.getWidth(),view.getHeight());
+                    radius=Math.max(0,mediaRadius.getFloat(view));
+                    smooth=false;
                 } else if (slider) {
                     // The rectangular progress drawable is clipped by the owner's natural curve.
                     bounds.set(0, 0, view.getWidth(), view.getHeight());
@@ -539,7 +598,7 @@ final class TileBackdropHooks {
                 if (notification && !notificationExpanding.getBoolean(view))
                     intersectClip(bounds.left,notificationClipTop.getInt(view),bounds.right,
                             ((Number)notificationActualHeight.invoke(view)).intValue()-notificationClipBottom.getInt(view));
-                if (!notification && networkRole != 3 && corners != null && corners.isEnabled()) {
+                if (!notification && !media && networkRole != 3 && corners != null && corners.isEnabled()) {
                     radius = corners.radius(view, bounds.width(), bounds.height());
                     smoothing = smooth ? corners.smoothing(radius, bounds.width(), bounds.height()) : 0f;
                     smooth &= smoothing > 0f;
@@ -550,19 +609,21 @@ final class TileBackdropHooks {
                 if (root == null) return;
                 if (effectRoot.get() != root) remove(view);
                 if (effect == null) {
-                    Long id = effects.get(root);
+                    Map<Object,Long> registry=media?mediaEffects:effects;
+                    Long id = registry.get(root);
                     if (id == null) {
-                        id = (Long) createEffect.invoke(root,SHADER);
+                        id = (Long) createEffect.invoke(root,media?MEDIA_SHADER:SHADER);
                         if (id == 0) throw new IllegalStateException("Flyme rejected tile backdrop shader");
-                        effects.put(root,id); shaderId = id;
-                        liveShaderIds.add(id);
+                        registry.put(root,id); if(!media)shaderId = id;
+                        if(!media)liveShaderIds.add(id);
                     }
                     effect = (Drawable) createDrawable.invoke(root,id);
-                    if (batchCompositor != null) batch = batchCompositor.prepare(root);
+                    if (!media && batchCompositor != null) batch = batchCompositor.prepare(root);
                     effectRoot = new WeakReference<>(root); view.getOverlay().add(effect);
                     if (notification) setFloat.invoke(effect,"notificationShape",1f);
                     java.util.Arrays.fill(appliedNotificationCorners,-1f);
                 }
+                if(media)updateMediaUniforms();
                 if (notification) {
                     float[] radii=(float[])notificationRadii.get(view);
                     // Blur backgrounds have uniform corners; layered group backgrounds
@@ -619,7 +680,7 @@ final class TileBackdropHooks {
                 }
                 visible = !visibleBounds.isEmpty();
                 float saturation = (float) Math.max(0.0, Math.min(1.0,
-                        (notification ? notificationSaturation : saturationAmount).getAsDouble()));
+                        (notification || media ? notificationSaturation : saturationAmount).getAsDouble()));
                 if (saturation != previousSaturation) {
                     setFloat.invoke(effect,"saturationAmount",saturation);
                     previousSaturation = saturation;
@@ -658,12 +719,17 @@ final class TileBackdropHooks {
             visibleBounds.set(bounds);
             clipHole.setEmpty(); java.util.Arrays.fill(holeRadii,0f);
             if (view.getClipBounds(clipRect)) intersectClip(clipRect.left,clipRect.top,clipRect.right,clipRect.bottom);
+            mediaClipCount=0;
             toAncestor.reset();
+            if(media) {
+                Rect transitionClip=(Rect)transitionBounds.get(view);
+                intersectClip(transitionClip.left,transitionClip.top,transitionClip.right,transitionClip.bottom);
+            }
             for (View child=view; child.getParent() instanceof View ancestor; child=ancestor) {
                 toAncestor.postConcat(child.getMatrix());
                 toAncestor.postTranslate(child.getLeft()-ancestor.getScrollX(),child.getTop()-ancestor.getScrollY());
                 if (!toAncestor.invert(fromAncestor)) { visibleBounds.setEmpty(); return; }
-                if (notification && notificationOutline.isInstance(ancestor)
+                if ((notification || media) && notificationOutline.isInstance(ancestor)
                         && (Boolean)rowNeedsClip.invoke(ancestor,child)) {
                     // Canvas.clipPath in ExpandableOutlineView.drawChild does not
                     // clip SurfaceFlinger's effect regions. Match the native swipe
@@ -674,13 +740,32 @@ final class TileBackdropHooks {
                     if (path.isEmpty()) {visibleBounds.setEmpty();return;}
                     path.computeBounds(ancestorBounds,true);
                     fromAncestor.mapRect(ancestorBounds);
-                    NotificationBackdropGeometry.clipSides(bounds,ancestorBounds.left,ancestorBounds.right);
+                    if(notification)NotificationBackdropGeometry.clipSides(bounds,ancestorBounds.left,ancestorBounds.right);
                     intersectClip(ancestorBounds.left,ancestorBounds.top,ancestorBounds.right,ancestorBounds.bottom);
                     if (bounds.isEmpty()) {visibleBounds.setEmpty();return;}
                 }
                 if (notification && notificationStack.isInstance(ancestor) && stackClipping.getBoolean(ancestor))
                     mapClip(stackClipLeft.getInt(ancestor),stackClipTop.getInt(ancestor),
                             stackClipRight.getInt(ancestor),stackClipBottom.getInt(ancestor));
+                if(media){
+                    if(notificationStack.isInstance(ancestor)&&stackClipping.getBoolean(ancestor)){
+                        Path path=(Path)stackMediaPath.get(ancestor);
+                        if(path.isEmpty()){visibleBounds.setEmpty();return;}
+                        path.computeBounds(ancestorBounds,true);
+                        float[] radii=(float[])stackMediaRadii.get(ancestor);
+                        addMediaClip(ancestorBounds.left,ancestorBounds.top,ancestorBounds.right,ancestorBounds.bottom,radii[0],radii[4]);
+                    }
+                    if(transitionClass.isInstance(ancestor)){
+                        Rect clip=(Rect)transitionBounds.get(ancestor);mapClip(clip.left,clip.top,clip.right,clip.bottom);
+                    }
+                    if(mediaContainerClass.isInstance(ancestor)){
+                        addMediaClip(0,0,ancestor.getWidth(),mediaClipHeight.getInt(ancestor),mediaContainerRadius.getFloat(ancestor));
+                    }
+                    if(ancestor.getClipToOutline()&&ancestor.getOutlineProvider()!=null){
+                        outline.setEmpty();ancestor.getOutlineProvider().getOutline(ancestor,outline);
+                        if(outline.getRect(clipRect))addMediaClip(clipRect.left,clipRect.top,clipRect.right,clipRect.bottom,Math.max(0,outline.getRadius()));
+                    }
+                }
                 // The QS reveal hook can disable normal child clipping. This
                 // container's changing bottom still defines the controls area.
                 if (mzQsContainer.isInstance(ancestor)) mapClip(0,0,ancestor.getWidth(),ancestor.getHeight());
@@ -708,6 +793,39 @@ final class TileBackdropHooks {
                 if (visibleBounds.isEmpty()) return;
             }
             intersectClip(bounds.left,bounds.top,bounds.right,bounds.bottom);
+        }
+        private void addMediaClip(float left,float top,float right,float bottom,float radius) {
+            addMediaClip(left,top,right,bottom,radius,radius);
+        }
+        private void addMediaClip(float left,float top,float right,float bottom,float topRadius,float bottomRadius) {
+            mapClip(left,top,right,bottom);
+            if(topRadius<=0&&bottomRadius<=0)return;
+            // Refuse an incomplete mask rather than leaking a filter outside native clipping.
+            if(mediaClipCount>=mediaClips.length){visibleBounds.setEmpty();return;}
+            RectF clip=mediaClips[mediaClipCount];clip.set(left,top,right,bottom);fromAncestor.mapRect(clip);
+            float[] radii=mediaClipRadii[mediaClipCount++];
+            for(int i=0;i<2;i++){
+                float radius=Math.max(0,i==0?topRadius:bottomRadius);
+                mappedMediaRadius[0]=radius;mappedMediaRadius[1]=radius;
+                fromAncestor.mapVectors(mappedMediaRadius);
+                radii[i*2]=Math.abs(mappedMediaRadius[0]);radii[i*2+1]=Math.abs(mappedMediaRadius[1]);
+            }
+        }
+        private void updateMediaUniforms() throws ReflectiveOperationException {
+            for(int i=0;i<mediaClips.length;i++){
+                RectF clip=mediaClips[i];float[] r=mediaClipRadii[i],applied=appliedMediaClips[i];
+                float left=i<mediaClipCount?clip.left-bounds.left:0,top=i<mediaClipCount?clip.top-bounds.top:0;
+                float right=i<mediaClipCount?clip.right-bounds.left:0,bottom=i<mediaClipCount?clip.bottom-bounds.top:0;
+                float rx=i<mediaClipCount?r[0]:0,ry=i<mediaClipCount?r[1]:0;
+                float bx=i<mediaClipCount?r[2]:0,by=i<mediaClipCount?r[3]:0;
+                if(applied[0]!=left||applied[1]!=top||applied[2]!=right||applied[3]!=bottom
+                        ||applied[4]!=rx||applied[5]!=ry||applied[6]!=bx||applied[7]!=by){
+                    setFloat4.invoke(effect,"mediaClip"+i,left,top,right,bottom);
+                    setFloat4.invoke(effect,"mediaRadius"+i,rx,ry,bx,by);
+                    applied[0]=left;applied[1]=top;applied[2]=right;applied[3]=bottom;
+                    applied[4]=rx;applied[5]=ry;applied[6]=bx;applied[7]=by;
+                }
+            }
         }
         private void mapClip(float left,float top,float right,float bottom) {
             ancestorBounds.set(left,top,right,bottom);
