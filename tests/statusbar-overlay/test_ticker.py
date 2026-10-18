@@ -42,7 +42,8 @@ public class TickerTest{
 static int count;static void check(boolean b){count++;if(!b)throw new AssertionError("check "+count);}
 public static void main(String[] args)throws Exception{
 Context context=new Context();int[] mode={1,0};boolean[] left={false};
-TickerLyricHooks hooks=new TickerLyricHooks(c->{},()->mode[0]==1,()->mode[1],()->left[0]);hooks.install(TickerTest.class.getClassLoader(),SignalHooks.INSTALLER,m->{});
+java.util.Map<android.app.Notification,Object> originalIcons=new java.util.IdentityHashMap<>();
+TickerLyricHooks hooks=new TickerLyricHooks(c->{},()->mode[0]==1,()->mode[1],()->left[0],(source,copy)->{if(originalIcons.containsKey(source))originalIcons.put(copy,originalIcons.get(source));});hooks.install(TickerTest.class.getClassLoader(),SignalHooks.INSTALLER,m->{});
 PhoneStatusBarView bar=new PhoneStatusBarView(context);View view=new View(context);view.parent=bar;
 FlymeMarqueeTicker ticker=new FlymeMarqueeTicker();ticker.mTextSwitcher=new View(context);
 SignalHooks.dispatch(ticker,ticker.getClass().getName(),"setTickerView",new Object[]{view},a->null);
@@ -91,6 +92,7 @@ int[] width={0};SignalHooks.dispatch(view,"android.widget.LinearLayout","onMeasu
 left[0]=false;hooks.refresh();check(ticker.center&&ticker.curved);
 NotificationTickController controller=new NotificationTickController();controller.ticker=ticker;
 NotificationTickController$notifCollectionListener$1 listener=new NotificationTickController$notifCollectionListener$1();listener.this$0=controller;
+Object originalIcon=new Object();originalIcons.put(entry.getSbn().getNotification(),originalIcon);
 mode[1]=1;entry.getSbn().getNotification().tickerText=null;
 entry.getSbn().getNotification().extras.put("title","标题");entry.getSbn().getNotification().extras.put("text","正文");
 check(!provider.shouldHeadsUpWhenAwake(entry,false));
@@ -98,6 +100,8 @@ for(String event:new String[]{"onEntryAdded","onEntryUpdated"}){
 int before=ticker.entries;
 SignalHooks.dispatch(listener,listener.getClass().getName(),event,new Object[]{entry},a->{listener.nativeCalls++;return null;});
 check(ticker.entries==before+1);check(listener.nativeCalls==0);
+check(ticker.last.getNotification()!=entry.getSbn().getNotification());
+check(originalIcons.get(ticker.last.getNotification())==originalIcon);
 check("标题：正文".contentEquals(ticker.last.getNotification().tickerText));
 check(entry.getSbn().getNotification().tickerText==null);
 }

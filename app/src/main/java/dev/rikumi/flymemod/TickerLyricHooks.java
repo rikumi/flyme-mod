@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Consumer;
+import java.util.function.BiConsumer;
+import android.app.Notification;
 import java.util.function.IntSupplier;
 import java.util.function.BooleanSupplier;
 import android.view.WindowInsets;
@@ -22,6 +24,7 @@ import android.graphics.Rect;
 /** Ticker presentation policy, leaving native alert/privacy decisions intact. */
 final class TickerLyricHooks {
     private final Consumer<Context> settings;
+    private final BiConsumer<Notification, Notification> copyOriginalIcon;
     private final IntSupplier displayMode;
     private final BooleanSupplier avoidLyrics;
     private final BooleanSupplier leftOnly;
@@ -37,7 +40,9 @@ final class TickerLyricHooks {
     private Context context;
     private boolean lastLeftOnly;
     private List<StatusBarOverlayFrames.Frame> overlays = List.of();
-    TickerLyricHooks(Consumer<Context> settings, BooleanSupplier avoidLyrics, IntSupplier displayMode, BooleanSupplier leftOnly) {
+    TickerLyricHooks(Consumer<Context> settings, BooleanSupplier avoidLyrics, IntSupplier displayMode, BooleanSupplier leftOnly,
+            BiConsumer<Notification, Notification> copyOriginalIcon) {
+        this.copyOriginalIcon=copyOriginalIcon;
         this.settings=settings; this.avoidLyrics=avoidLyrics; this.displayMode=displayMode; this.leftOnly=leftOnly;
     }
     void install(ClassLoader loader, SignalHooks.Installer installer, Consumer<Method> deoptimize)
@@ -152,6 +157,7 @@ final class TickerLyricHooks {
                 if(target!=null){
                     StatusBarNotification original=(StatusBarNotification)sbn.invoke(chain.getArg(0));
                     StatusBarNotification copy=original.clone();
+                    copyOriginalIcon.accept(original.getNotification(),copy.getNotification());
                     copy.getNotification().tickerText=tickerText(copy);
                     addEntry.invoke(target,copy);
                 }

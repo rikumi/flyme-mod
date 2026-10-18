@@ -657,7 +657,11 @@ public final class XposedInit extends XposedModule {
                 }, String.class, boolean.class);
 
         try {
-            activeTickerLyricHooks = new TickerLyricHooks(this::loadSettings, () -> tickerLyricAvoid, () -> tickerDisplayMode, () -> tickerLeftOfCutout);
+            activeTickerLyricHooks = new TickerLyricHooks(this::loadSettings, () -> tickerLyricAvoid, () -> tickerDisplayMode, () -> tickerLeftOfCutout,
+                    (source, copy) -> {
+                        Icon icon = originalNotificationIcons.get(source);
+                        if (icon != null) originalNotificationIcons.put(copy, icon);
+                    });
             activeTickerLyricHooks.install(loader, (name, method, hooker, parameters) ->
                     install(loader, name, method, hooker, parameters), this::deoptimize);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
@@ -2523,6 +2527,8 @@ public final class XposedInit extends XposedModule {
             Class<?> ticker = loader.loadClass("com.flyme.systemui.statusbar.ticker.MarqueeTicker");
             Class<?> segment = loader.loadClass("com.flyme.systemui.statusbar.ticker.MarqueeTicker$Segment");
             java.lang.reflect.Field contextField = ticker.getField("mContext");
+            // Ensure queued segments reach the constructor hook even on optimized ROM builds.
+            deoptimize(ticker.getDeclaredMethod("addEntry", StatusBarNotification.class));
             hook(segment.getDeclaredConstructor(ticker, StatusBarNotification.class, Drawable.class, CharSequence.class))
                     .intercept(chain -> {
                         Context context = (Context) contextField.get(chain.getArg(0));
@@ -2541,7 +2547,7 @@ public final class XposedInit extends XposedModule {
                         if (drawable == null) return chain.proceed();
                         // Replace only this queued ticker segment, without changing the shared Notification.
                         return chain.proceed(new Object[]{chain.getArg(0), sbn,
-                                new OriginalNotificationIcon(drawable), chain.getArg(3)});
+                                new OriginalNotificationIcon(drawable, .55f), chain.getArg(3)});
                     });
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot hook original ticker notification icons", error);
@@ -2583,15 +2589,22 @@ public final class XposedInit extends XposedModule {
     }
 
     private static final class OriginalNotificationIcon extends DrawableWrapper {
+        private final float scale;
+
         OriginalNotificationIcon(Drawable drawable) {
+            this(drawable, .65f);
+        }
+
+        OriginalNotificationIcon(Drawable drawable, float scale) {
             super(drawable);
+            this.scale = scale;
         }
 
         @Override public void draw(Canvas canvas) {
             int saved = canvas.save();
             try {
                 // Scale only the artwork; preserve native layout, intrinsic size and tinting.
-                canvas.scale(.65f, .65f, getBounds().exactCenterX(), getBounds().exactCenterY());
+                canvas.scale(scale, scale, getBounds().exactCenterX(), getBounds().exactCenterY());
                 super.draw(canvas);
             } finally {
                 canvas.restoreToCount(saved);
