@@ -65,21 +65,38 @@ final class MediaSwipeCornerHooks {
         }
     }
 
-    private final class State implements View.OnAttachStateChangeListener {
-        final WeakReference<View> owner;
-        ViewOutlineProvider original;
-        float appliedRadius = Float.NaN;
+    /** Immutable delegation prevents two hook states from creating A -> B -> A cycles. */
+    private static final class CornerOutline extends ViewOutlineProvider {
+        final ViewOutlineProvider nativeProvider;
+        final ToDoubleFunction<View> radius;
         final Rect bounds = new Rect();
-        final ViewOutlineProvider outline = new ViewOutlineProvider() {
-            @Override public void getOutline(View view, Outline result) {
-                if (original == null) { result.setEmpty(); return; }
-                original.getOutline(view, result);
+        boolean drawing;
+
+        CornerOutline(ViewOutlineProvider nativeProvider, ToDoubleFunction<View> radius) {
+            this.nativeProvider = nativeProvider;
+            this.radius = radius;
+        }
+
+        @Override public void getOutline(View view, Outline result) {
+            // An external provider can itself delegate back to the view's current provider.
+            if (drawing) { result.setEmpty(); return; }
+            drawing = true;
+            try {
+                nativeProvider.getOutline(view, result);
                 float target = (float) radius.applyAsDouble(view);
-                // Native provider owns carouselWidth/Height, not view or screen width.
+                // Preserve native carousel dimensions and clipping activation.
                 if (Float.isFinite(target) && target >= 0 && result.getRect(bounds))
                     result.setRoundRect(bounds, target);
+            } finally {
+                drawing = false;
             }
-        };
+        }
+    }
+
+    private final class State implements View.OnAttachStateChangeListener {
+        final WeakReference<View> owner;
+        CornerOutline outline;
+        float appliedRadius = Float.NaN;
 
         State(View view) { owner = new WeakReference<>(view); }
         void update() {
@@ -87,9 +104,12 @@ final class MediaSwipeCornerHooks {
             if (view == null) return;
             float target = (float) radius.applyAsDouble(view);
             if (Float.isFinite(target) && target >= 0) {
-                if (view.getOutlineProvider() != outline) {
-                    original = view.getOutlineProvider();
+                if (outline == null || view.getOutlineProvider() != outline) {
+                    ViewOutlineProvider original = view.getOutlineProvider();
+                    // Never capture another module wrapper as the native provider.
+                    while (original instanceof CornerOutline wrapped) original = wrapped.nativeProvider;
                     if (original == null) return;
+                    outline = new CornerOutline(original, radius);
                     view.setOutlineProvider(outline);
                     appliedRadius = Float.NaN;
                 }
@@ -100,11 +120,11 @@ final class MediaSwipeCornerHooks {
             } else restore(view);
         }
         private void restore(View view) {
-            if (view.getOutlineProvider() == outline) {
-                view.setOutlineProvider(original);
+            if (outline != null && view.getOutlineProvider() == outline) {
+                view.setOutlineProvider(outline.nativeProvider);
                 view.invalidateOutline();
             }
-            original = null;
+            outline = null;
             appliedRadius = Float.NaN;
         }
         @Override public void onViewAttachedToWindow(View view) { update(); }
