@@ -1,6 +1,7 @@
 package dev.rikumi.flymemod;
 
 import android.content.SharedPreferences;
+import android.content.ComponentName;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -17,6 +18,8 @@ final class SmallWindowLimitHooks {
     private final BiConsumer<String, Throwable> log;
     private final ThreadLocal<Trim> trimming = new ThreadLocal<>();
     private Field displayArea;
+    private Field activityComponent, launchedFromPackage, taskSupervisor;
+    private Method rootActivity, removeTask;
     private Method childCount, childAt, asTask, mode, home, deferBack, activityCount, rootTask, parent, moveWindow, position;
     private final ThreadLocal<Boolean> collapsing = new ThreadLocal<>();
     private boolean errorLogged;
@@ -39,6 +42,21 @@ final class SmallWindowLimitHooks {
         parent = container.getMethod("getParent");
         rootTask = task.getMethod("getRootTask");
         Class<?> activity = loader.loadClass(WM + "ActivityRecord");
+        rootActivity = task.getDeclaredMethod("getRootActivity");
+        rootActivity.setAccessible(true);
+        activityComponent = activity.getDeclaredField("mActivityComponent");
+        activityComponent.setAccessible(true);
+        launchedFromPackage = activity.getDeclaredField("launchedFromPackage");
+        launchedFromPackage.setAccessible(true);
+        for (Class<?> type = task; type != null; type = type.getSuperclass()) {
+            try { taskSupervisor = type.getDeclaredField("mTaskSupervisor"); break; }
+            catch (NoSuchFieldException ignored) { }
+        }
+        if (taskSupervisor == null) throw new NoSuchFieldException("Task.mTaskSupervisor");
+        taskSupervisor.setAccessible(true);
+        removeTask = loader.loadClass(WM + "ActivityTaskSupervisor")
+                .getDeclaredMethod("removeTask", task, boolean.class, boolean.class, String.class);
+        removeTask.setAccessible(true);
         mode = task.getMethod("getWindowingMode");
         home = task.getMethod("isActivityTypeHome");
         activityCount = task.getMethod("getNonFinishingActivityCount");
@@ -188,9 +206,15 @@ final class SmallWindowLimitHooks {
             installer.hook(WM + name, "needPositionTaskAtBottom", chain -> {
                 Object result = chain.proceed();
                 Trim trim = trimming.get();
-                if (!Boolean.TRUE.equals(result) || trim == null || !trim.floatingDestination
+                if (trim == null || !trim.floatingDestination
                         || trim.controller != chain.getThisObject() || trim.incoming != chain.getArg(0) || !enabled()) return result;
-                return keep(trim.controller, trim.incoming, chain.getArg(1)) ? false : result;
+                Object candidate = chain.getArg(1);
+                if (candidate == trim.incoming) return false;
+                // Apply one shared quota across raw modes and pin subtypes. Native
+                // predicates only evict their own type, allowing mixed modes to exceed it.
+                if (isFloating(candidate) && !Boolean.TRUE.equals(home.invoke(candidate)))
+                    return !keep(trim.controller, trim.incoming, candidate);
+                return result;
             }, task, task);
         }
         installer.hook(base.getName(), "moveTasksToOtherWindowInner", chain -> {
@@ -232,7 +256,59 @@ final class SmallWindowLimitHooks {
         deoptimize.accept(mini.getDeclaredMethod("moveWindowTaskToBackIfNeed"));
         deoptimize.accept(loader.loadClass(WM + "FlymeWeltWindowControllerImpl")
                 .getDeclaredMethod("moveWindowTaskToBackIfNeed"));
+        installPlacement(loader, installer, deoptimize);
         log.accept("Flyme small-window limit hooks registered: concurrent pin visibility, expanded-window handoff and automatic eviction paths covered", null);
+    }
+
+    private void installPlacement(ClassLoader loader, SignalHooks.Installer installer,
+                                  Consumer<Method> deoptimize) throws ReflectiveOperationException {
+        Class<?> task=loader.loadClass(WM+"Task"), pin=loader.loadClass(WM+"FlymePinWindowControllerImpl");
+        Class<?> info=loader.loadClass(WM+"FlymePinWindowInfo"), window=loader.loadClass(WM+"FlymeWindowInfo");
+        Method getInfo=loader.loadClass(WM+"FlymeTaskExt").getDeclaredMethod("getWindowInfo",task);
+        getInfo.setAccessible(true);
+        Method visible=window.getMethod("getVisibleBound");visible.setAccessible(true);
+        Method drag=info.getDeclaredMethod("getDragBound");drag.setAccessible(true);
+        Method move=info.getDeclaredMethod("updatePosition",int.class,int.class,boolean.class);move.setAccessible(true);
+        Method hidden=loader.loadClass(WM+"FlymeFloatWindowInfo").getDeclaredMethod("isHidden");hidden.setAccessible(true);
+        Method getDisplay=task.getMethod("getDisplayContent");getDisplay.setAccessible(true);
+        Method metrics=loader.loadClass(WM+"DisplayContent").getMethod("getDisplayMetrics");metrics.setAccessible(true);
+        ThreadLocal<Object> entering=new ThreadLocal<>();
+        installer.hook(pin.getName(),"updateWindowModeInfo",chain->{
+            Object previous=entering.get();
+            if(enabled() && (Boolean)chain.getArg(2) && (Integer)chain.getArg(1)!=12)
+                entering.set(chain.getArg(0));
+            try {return chain.proceed();}
+            finally {if(previous==null)entering.remove();else entering.set(previous);}
+        },task,int.class,boolean.class,boolean.class);
+        installer.hook(pin.getName(),"createWindowInfo",chain->{
+            Object result=chain.proceed(), incoming=chain.getArg(0);
+            if(!enabled() || entering.get()!=incoming || !info.isInstance(result))return result;
+            try {
+                android.graphics.Rect bounds=(android.graphics.Rect)visible.invoke(result);
+                android.graphics.Rect safe=(android.graphics.Rect)drag.invoke(result);
+                Object area=displayArea.get(chain.getThisObject());
+                for(int i=((Number)childCount.invoke(area)).intValue()-1;i>=0;i--){
+                    Object other=asTask.invoke(childAt.invoke(area,i));
+                    if(other==null || other==incoming || (Integer)mode.invoke(other)!=12)continue;
+                    Object old=getInfo.invoke(null,other);
+                    if(!info.isInstance(old) || Boolean.TRUE.equals(hidden.invoke(old)))continue;
+                    android.graphics.Rect last=(android.graphics.Rect)visible.invoke(old);
+                    if(!android.graphics.Rect.intersects(last,safe))continue;
+                    float density=((android.util.DisplayMetrics)metrics.invoke(getDisplay.invoke(incoming))).density;
+                    int x=Math.max(safe.left,Math.min(safe.right-bounds.width(),last.left));
+                    int y=nextPinTop(last.bottom,bounds.height(),safe.top,safe.bottom,Math.round(8*density));
+                    move.invoke(result,x,y,true);
+                    break;
+                }
+            } catch(ReflectiveOperationException|RuntimeException error){reportCountingError(error);}
+            return result;
+        },task,int.class,int.class,int.class);
+        deoptimize.accept(pin.getDeclaredMethod("updateWindowModeInfo",task,int.class,boolean.class,boolean.class));
+    }
+
+    static int nextPinTop(int previousBottom,int height,int top,int bottom,int gap){
+        int next=Math.max(top,previousBottom+gap);
+        return (long)next+height<=bottom?next:top;
     }
 
     private void collapseOtherExpanded(Object controller, Object incoming) {
@@ -247,7 +323,8 @@ final class SmallWindowLimitHooks {
             for (int i = ((Number) childCount.invoke(area)).intValue() - 1; i >= 0; i--) {
                 Object candidate = asTask.invoke(childAt.invoke(area, i));
                 if (candidate != null && candidate != incoming
-                        && expandedMode(((Number) mode.invoke(candidate)).intValue())
+                        && (expandedMode(((Number) mode.invoke(candidate)).intValue())
+                            || (isFloating(candidate) && isMoreApps(candidate)))
                         && !Boolean.TRUE.equals(deferBack.invoke(null, candidate))
                         && ((Number) activityCount.invoke(candidate)).intValue() > 0)
                     expanded.add(candidate);
@@ -257,7 +334,14 @@ final class SmallWindowLimitHooks {
                 // Native mode 12 owns the pin surface, drag/tap consumer and shrink animation.
                 // Invoke directly: postSwitchTasksToOtherWindow removes the previous pending
                 // message, so queuing one message per task would only shrink the last window.
-                for (Object candidate : expanded) moveWindow.invoke(controller, candidate, 12, 0, true, true);
+                for (Object candidate : expanded) {
+                    if (isMoreApps(candidate)) {
+                        // This picker is an auxiliary task, not an application to retain.
+                        // Finish its activities and remove recents, without killing SystemUITools.
+                        removeTask.invoke(taskSupervisor.get(candidate), candidate, false, true,
+                                "flyme-mod-more-apps-selected");
+                    } else moveWindow.invoke(controller, candidate, 12, 0, true, true);
+                }
                 // Shrinking can reorder children. Reapply native ordering with the new priorities.
                 position.invoke(area, Integer.MAX_VALUE, incoming, false);
             } finally { collapsing.remove(); }
@@ -267,6 +351,21 @@ final class SmallWindowLimitHooks {
     }
 
     static boolean expandedMode(int mode) { return mode == 11 || mode == 1035; }
+
+    private boolean isMoreApps(Object task) throws ReflectiveOperationException {
+        Object activity = rootActivity.invoke(task);
+        if (activity == null) return false;
+        ComponentName component = (ComponentName) activityComponent.get(activity);
+        return component != null && isMoreAppsComponent(component.getPackageName(), component.getClassName(),
+                (String) launchedFromPackage.get(activity));
+    }
+
+    static boolean isMoreAppsComponent(String packageName, String className, String launchedFrom) {
+        return "com.flyme.systemuitools".equals(packageName)
+                && ("com.flyme.systemuitools.windowmode.views.MoreAppWindow".equals(className)
+                    || ("com.flyme.systemuitools".equals(launchedFrom)
+                        && "com.flyme.systemuitools.windowmode.views.SlideLaunchAppSettings".equals(className)));
+    }
 
     private boolean enabled() {
         return preferences.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false);

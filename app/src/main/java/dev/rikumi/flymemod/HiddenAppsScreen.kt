@@ -371,7 +371,9 @@ private fun HiddenAppIcon(context: Context, app: HiddenAppEntry, layout: HiddenF
             android.widget.TextView(ctx).apply {
                 includeFontPadding = false
                 gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-                setSingleLine(true)
+                textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER
+                maxLines = 1
+                setHorizontallyScrolling(false)
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 // The stable parent owns taps and long presses; native views must not intercept.
                 isClickable = false

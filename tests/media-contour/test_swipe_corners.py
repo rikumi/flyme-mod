@@ -17,17 +17,17 @@ run(h,"setContentTranslation",()->h.setContentTranslation(-50));check(v.clip);ch
 for(int[] bounds:new int[][]{{620,250},{280,120},{1200,480}}){run(h,"setCarouselBounds",()->h.setCarouselBounds(bounds[0],bounds[1]));check(outline(v).rect.right==bounds[0]);check(outline(v).rect.bottom==bounds[1]);check(outline(v).radius==radius);}
 run(h,"onSettingsButtonUpdated",()->h.onSettingsButtonUpdated(v));check(h.cornerRadius==18);check(outline(v).radius==42.5f);
 int invalidations=v.invalidations;for(int i=0;i<10;i++)hooks.refresh();check(v.invalidations==invalidations);radius=55.25f;hooks.refresh();check(outline(v).radius==55.25f);check(v.invalidations==invalidations+1);
-contour=false;hooks.refresh();check(v.getOutlineProvider()==h.nativeProvider);check(outline(v).radius==18);check(v.clip);contour=true;hooks.refresh();check(outline(v).radius==55.25f);
+corners=false;hooks.refresh();check(v.getOutlineProvider()==h.nativeProvider);check(outline(v).radius==18);check(v.clip);corners=true;hooks.refresh();check(outline(v).radius==55.25f);
 corners=false;hooks.refresh();check(v.getOutlineProvider()==h.nativeProvider);corners=true;hooks.refresh();check(outline(v).radius==55.25f);
 v.detach();check(v.getOutlineProvider()==h.nativeProvider);v.attach();check(outline(v).radius==55.25f);check(v.listeners.size()==1);
 // A new native provider is adopted rather than overwritten with stale dimensions.
-ViewOutlineProvider replacement=new ViewOutlineProvider(){public void getOutline(View view,Outline out){out.setRoundRect(5,7,530,207,26);}};v.setOutlineProvider(replacement);run(h,"updateClipToOutline",h::updateClipToOutline);Outline o=outline(v);check(o.rect.left==5&&o.rect.top==7&&o.rect.right==530&&o.rect.bottom==207);check(o.radius==55.25f);contour=false;hooks.refresh();check(v.getOutlineProvider()==replacement);check(outline(v).radius==26);
+ViewOutlineProvider replacement=new ViewOutlineProvider(){public void getOutline(View view,Outline out){out.setRoundRect(5,7,530,207,26);}};v.setOutlineProvider(replacement);run(h,"updateClipToOutline",h::updateClipToOutline);Outline o=outline(v);check(o.rect.left==5&&o.rect.top==7&&o.rect.right==530&&o.rect.bottom==207);check(o.radius==55.25f);corners=false;hooks.refresh();check(v.getOutlineProvider()==replacement);check(outline(v).radius==26);
 // Separate carousel and invalid settings cannot contaminate another view.
-var second=new MediaCarouselScrollHandler();run(second,"updateClipToOutline",second::updateClipToOutline);check(second.scrollView.getOutlineProvider()==second.nativeProvider);contour=true;radius=Float.NaN;hooks.refresh();check(v.getOutlineProvider()==replacement);radius=-1;hooks.refresh();check(v.getOutlineProvider()==replacement);radius=0;hooks.refresh();check(outline(v).radius==0);check(outline(second.scrollView).radius==0);
-contour=false;hooks.refresh();check(v.getOutlineProvider()==replacement);check(second.scrollView.getOutlineProvider()==second.nativeProvider);check(h.cornerRadius==18);check(h.carouselWidth==1200&&h.carouselHeight==480);
+var second=new MediaCarouselScrollHandler();run(second,"updateClipToOutline",second::updateClipToOutline);check(second.scrollView.getOutlineProvider()==second.nativeProvider);corners=true;radius=Float.NaN;hooks.refresh();check(v.getOutlineProvider()==replacement);radius=-1;hooks.refresh();check(v.getOutlineProvider()==replacement);radius=0;hooks.refresh();check(outline(v).radius==0);check(outline(second.scrollView).radius==0);
+corners=false;hooks.refresh();check(v.getOutlineProvider()==replacement);check(second.scrollView.getOutlineProvider()==second.nativeProvider);check(h.cornerRadius==18);check(h.carouselWidth==1200&&h.carouselHeight==480);
 // Two independently registered hook states can observe the same carousel.
-contour=true;radius=37;
-var duplicate=new MediaSwipeCornerHooks(SwipeTest.class.getClassLoader(),c->{},view->contour&&corners?radius:Double.NaN);
+corners=true;radius=37;
+var duplicate=new MediaSwipeCornerHooks(SwipeTest.class.getClassLoader(),c->{},view->corners?radius:Double.NaN);
 duplicate.install(SignalHooks.installer);
 run(h,"updateClipToOutline",h::updateClipToOutline);
 for(int i=0;i<20;i++){
@@ -35,9 +35,9 @@ hooks.refresh();duplicate.refresh();check(outline(v).radius==37);
 v.detach();check(v.getOutlineProvider()==replacement);
 v.attach();check(outline(v).radius==37);
 }
-contour=false;hooks.refresh();duplicate.refresh();check(v.getOutlineProvider()==replacement);
+corners=false;hooks.refresh();duplicate.refresh();check(v.getOutlineProvider()==replacement);
 // Captured wrappers remain usable after detach; restoration never nulls their delegate.
-contour=true;hooks.refresh();ViewOutlineProvider captured=v.getOutlineProvider();
+corners=true;hooks.refresh();ViewOutlineProvider captured=v.getOutlineProvider();
 v.detach();Outline detached=new Outline();captured.getOutline(v,detached);check(detached.rect.right==530);
 // External providers that delegate back to the current view cannot overflow the stack.
 ViewOutlineProvider reentrant=new ViewOutlineProvider(){public void getOutline(View view,Outline out){view.getOutlineProvider().getOutline(view,out);}};
@@ -46,13 +46,13 @@ v.setOutlineProvider(reentrant);hooks.refresh();check(outline(v).rect==null);
 boolean[] fail={true};ViewOutlineProvider flaky=new ViewOutlineProvider(){public void getOutline(View view,Outline out){if(fail[0])throw new IllegalStateException("native");out.setRoundRect(1,2,90,40,8);}};
 v.setOutlineProvider(flaky);hooks.refresh();boolean threw=false;try{outline(v);}catch(IllegalStateException expected){threw=true;}check(threw);
 fail[0]=false;check(outline(v).rect.right==90);check(outline(v).radius==37);
-contour=false;hooks.refresh();duplicate.refresh();check(v.getOutlineProvider()==flaky);
+corners=false;hooks.refresh();duplicate.refresh();check(v.getOutlineProvider()==flaky);
 System.out.println("PASS: "+checks+" production media swipe corner/provider/bounds/lifecycle checks");}}
 '''
 }
 material=Path('app/src/main/java/dev/rikumi/flymemod/ColorOsMaterialHooks.java').read_text()
 bridge=Path('app/src/main/java/dev/rikumi/flymemod/XposedInit.java').read_text()
-assert 'notificationEnabled.getAsBoolean() ? notificationRadius.applyAsDouble(view) : Double.NaN' in material
+assert 'new MediaSwipeCornerHooks(loader, settings, notificationRadius)' in material
 assert material.count('mediaSwipeCorners.install(installer);') == 1 and 'mediaSwipeCorners.refresh();' in material
 assert 'view -> notificationCustomCornersEnabled && activeNotificationAppearanceHooks != null' in bridge
 assert '? activeNotificationAppearanceHooks.radius(view) : Double.NaN' in bridge

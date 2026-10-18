@@ -20,7 +20,7 @@ final class MediaSwipeCornerHooks {
     private final Class<?> handler;
     private final Field scrollView;
     private final Consumer<Context> settings;
-    // NaN means native geometry, including when either relevant setting is off.
+    // NaN means native geometry when custom notification corners are off.
     private final ToDoubleFunction<View> radius;
     private final Map<View, WeakReference<State>> states = new WeakHashMap<>();
 

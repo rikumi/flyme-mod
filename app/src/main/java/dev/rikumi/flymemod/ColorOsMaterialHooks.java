@@ -48,8 +48,8 @@ final class ColorOsMaterialHooks {
             throws ReflectiveOperationException {
         this.corners = corners; this.loader = loader; this.settings = settings; contourEnabled = contour; splitNetworkEnabled = splitNetwork; notificationEnabled = notification; this.log = log;
         this.notificationOpacity = notificationOpacity;
-        mediaSwipeCorners = new MediaSwipeCornerHooks(loader, settings,
-                view -> notificationEnabled.getAsBoolean() ? notificationRadius.applyAsDouble(view) : Double.NaN);
+        // Carousel clipping follows the card's corner setting, independently of contour lighting.
+        mediaSwipeCorners = new MediaSwipeCornerHooks(loader, settings, notificationRadius);
         notificationOutline = loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableOutlineView");
         childNeedsClipping = notificationOutline.getMethod("childNeedsClipping",View.class);
         customChildClipPath = notificationOutline.getMethod("getCustomClipPath",View.class);

@@ -356,6 +356,15 @@ public final class XposedInit extends XposedModule {
     }
 
     private void installPackageHooks(String packageName, ClassLoader loader) {
+        if ("com.flyme.systemuitools".equals(packageName)) {
+            try {
+                new WeltWindowHandles(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                        (message,error) -> log(error == null ? Log.INFO : Log.ERROR,"FlymeMod",message,error))
+                        .install(loader,(name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                log(Log.ERROR,"FlymeMod","Cannot resolve native welt handles",error);
+            }
+        }
         if ("com.android.settings".equals(packageName)) {
             new DeviceInfoExtrasHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error))

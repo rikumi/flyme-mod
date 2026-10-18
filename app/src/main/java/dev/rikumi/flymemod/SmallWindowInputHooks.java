@@ -123,7 +123,103 @@ final class SmallWindowInputHooks {
         deoptimize.accept(accept); deoptimize.accept(input);
         deoptimize.accept(loader.loadClass(WM + "InputMonitor$UpdateInputForAllWindowsConsumer")
                 .getDeclaredMethod("accept", window));
+        installTaskRestore(pin, base, task, transaction, installer, deoptimize);
         log.accept("Flyme retained pin-window touch regions and native gesture targeting registered", null);
+    }
+
+    private void installTaskRestore(Class<?> pin,Class<?> base,Class<?> task,Class<?> transaction,
+            SignalHooks.Installer installer,Consumer<Method> deoptimize) throws ReflectiveOperationException {
+        Method restore=pin.getDeclaredMethod("switchPinTaskToMinimizeModeIfNeed",task,boolean.class);
+        Method dispatch=accessible(pin.getDeclaredMethod("onHandleMessage",android.os.Handler.class,android.os.Message.class));
+        Method top=base.getDeclaredMethod("getTopWindowModeRootTask");
+        Method parent=accessible(task.getMethod("getParent"));
+        Field handlerField=field(base,"mHandler");
+        ThreadLocal<Object[]> target=new ThreadLocal<>();
+        Method resolve=accessible(base.getDeclaredMethod("getWindowModeRootTask",int.class));
+        Field taskId=field(task,"mTaskId");
+        String targetKey="dev.rikumi.flymemod.pin_task";
+        // Pin's drag/fling messages retain geometry but discard the explicit task
+        // argument. Stamp messages while they are produced, including delayed
+        // follow-ups, and restore the target only for their own dispatch scope.
+        installer.hook(android.os.Handler.class.getName(),"sendMessageAtTime",chain->{
+            Object[] selected=target.get();
+            if(selected!=null && handlerField.get(selected[0])==chain.getThisObject())
+                ((android.os.Message)chain.getArg(0)).getData().putInt(targetKey,taskId.getInt(selected[1]));
+            return chain.proceed();
+        },android.os.Message.class,long.class);
+        installer.hook(pin.getName(),"onHandleMessage",chain->{
+            android.os.Message message=(android.os.Message)chain.getArg(1);
+            android.os.Bundle data=message.peekData();
+            int id=data==null?0:data.getInt(targetKey,0);
+            if(id<=0)return chain.proceed();
+            Object controller=chain.getThisObject();
+            Object lock=globalLock.get(controllerWms.get(controller));
+            synchronized(lock){
+                Object selected=resolve.invoke(controller,id);
+                if(selected==null)return null;
+                Object[] previous=target.get();target.set(new Object[]{controller,selected});
+                try {return chain.proceed();}
+                finally {if(previous==null)target.remove();else target.set(previous);}
+            }
+        },android.os.Handler.class,android.os.Message.class);
+        for(String name:new String[]{"fling","moveWindowModeBound"}){
+            Class<?>[] parameters=name.equals("fling")
+                    ?new Class<?>[]{int.class,float.class,float.class,Rect.class,android.graphics.Point.class}
+                    :new Class<?>[]{int.class,Rect.class,float[].class,float[].class,boolean.class,boolean.class};
+            Method method=pin.getDeclaredMethod(name,parameters);
+            installer.hook(pin.getName(),name,chain->{
+                int id=(Integer)chain.getArg(0);
+                if(!enabled() || id<=0)return chain.proceed();
+                Object controller=chain.getThisObject();
+                Object lock=globalLock.get(controllerWms.get(controller));
+                synchronized(lock){
+                    Object selected=resolve.invoke(controller,id);
+                    if(selected==null)return name.equals("fling")?false:null;
+                    Object[] previous=target.get();target.set(new Object[]{controller,selected});
+                    try {return chain.proceed();}
+                    finally {if(previous==null)target.remove();else target.set(previous);}
+                }
+            },parameters);
+            deoptimize.accept(method);
+        }
+        deoptimize.accept(android.os.Handler.class.getDeclaredMethod("sendMessageDelayed",android.os.Message.class,long.class));
+        deoptimize.accept(android.os.Message.class.getDeclaredMethod("sendToTarget"));
+        installer.hook(base.getName(),top.getName(),chain->{
+            Object[] selected=target.get();
+            if(selected!=null && selected[0]==chain.getThisObject()) {
+                Object selectedTask=selected[1];
+                return parent.invoke(selectedTask)!=null && (Integer)mode.invoke(selectedTask)==12
+                        ?selectedTask:null;
+            }
+            return chain.proceed();
+        });
+        installer.hook(pin.getName(),restore.getName(),chain->{
+            if(!enabled())return chain.proceed();
+            Object controller=chain.getThisObject(), selected=chain.getArg(0);
+            Object info=windowInfo.invoke(null,selected);
+            if(info==null)return chain.proceed();
+            Rect from=new Rect((Rect)bounds.invoke(info));
+            boolean minimize=(Boolean)chain.getArg(1);
+            android.os.Handler handler=(android.os.Handler)handlerField.get(controller);
+            // Native message 6 only stores a Rect and loses its Task. Keep the
+            // asynchronous handler/animation path, but retain the selected task
+            // in this callback instead of resolving the current top pin later.
+            handler.post(()->{
+                Object[] previous=target.get();target.set(new Object[]{controller,selected});
+                android.os.Message message=android.os.Message.obtain(handler,6,minimize?1:0,0,from);
+                try {
+                    log.accept("Pin bar animation target: "+selected+", minimize="+minimize,null);
+                    dispatch.invoke(controller,handler,message);
+                }
+                catch(ReflectiveOperationException|RuntimeException error){report(error);}
+                finally {message.recycle();if(previous==null)target.remove();else target.set(previous);}
+            });
+            return null;
+        },task,boolean.class);
+        deoptimize.accept(dispatch);
+        // This caller can inline the small private message-producing method.
+        deoptimize.accept(pin.getDeclaredMethod("updateWindowModeShowStateInner",task,
+                transaction,boolean.class));
     }
 
     private boolean enabled() { return preferences.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false); }
