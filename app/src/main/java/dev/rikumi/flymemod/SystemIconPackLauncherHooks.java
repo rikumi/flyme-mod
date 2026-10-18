@@ -26,6 +26,23 @@ final class SystemIconPackLauncherHooks {
     private SharedPreferences.OnSharedPreferenceChangeListener changes;
     SystemIconPackLauncherHooks(SharedPreferences settings,BiConsumer<String,Throwable> log) { this.settings=settings; this.log=log; }
     void install(ClassLoader loader,SignalHooks.Installer installer,Consumer<Method> deoptimize)throws ReflectiveOperationException {
+        Class<?> utilities=loader.loadClass("com.android.launcher3.Utilities");
+        Class<?> itemInfo=loader.loadClass("com.android.launcher3.model.data.ItemInfo");
+        Method fullDrawable=utilities.getDeclaredMethod("getFullDrawable",Context.class,itemInfo,
+                int.class,int.class,boolean.class);
+        installer.hook(utilities.getName(),fullDrawable.getName(),chain->{
+            if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK,false))return chain.proceed();
+            // DragView extracts and enlarges adaptive foreground/background layers.
+            // API replacement icons contain a complete icon in the foreground, so
+            // they cannot be used here. Let Flyme load its selected theme/pack and
+            // preserve its native layer padding, mask, badges and dynamic icons.
+            try(SystemIconPackClient.NativeScope ignored=SystemIconPackClient.nativeScope()){
+                return chain.proceed();
+            }
+        },Context.class,itemInfo,int.class,int.class,boolean.class);
+        deoptimize.accept(fullDrawable);
+        for(Method method:loader.loadClass("com.android.launcher3.dragndrop.DragView").getDeclaredMethods())
+            if(method.getName().contains("setItemInfo"))deoptimize.accept(method);
         Class<?> packs=loader.loadClass("com.meizu.flyme.launcher.iconpack.AppIconPackLoader");
         Method current=packs.getDeclaredMethod("getCurrentIconPack",Context.class);
         packs.getDeclaredMethod("setCurrentIconPack",Context.class,String.class);

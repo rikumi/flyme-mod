@@ -102,6 +102,8 @@ public final class SettingsProvider extends ContentProvider {
                 ModuleSettings.HIDE_GBOARD, ModuleSettings.RECENTS_SWIPE_UP_KILL, ModuleSettings.RECENTS_HIDE_NOT_RUNNING, ModuleSettings.STACKED_RECENTS, ModuleSettings.FOLDER_PAGING, ModuleSettings.FOLDER_CENTER, ModuleSettings.FOLDER_RESTORE_COLOR, ModuleSettings.FOLDER_RADIUS_ENABLED, ModuleSettings.FOLDER_RADIUS,
                 ModuleSettings.ORIGINAL_NOTIFICATION_ICONS, ModuleSettings.MONOCHROME_NOTIFICATION_ACTIONS, ModuleSettings.REMOVE_NOTIFICATION_ACTION_BACKGROUND,
                 ModuleSettings.MERGE_DUAL_SIGNAL, ModuleSettings.SEPARATE_NETWORK_TYPE, ModuleSettings.HIDE_DISABLED_APPS, ModuleSettings.HIDE_LUNAR, ModuleSettings.BLOCK_STORE_SPLASH, ModuleSettings.BLOCK_WEATHER_RECOMMENDATIONS, ModuleSettings.SLIDER_ACTIVE_CORNERS, ModuleSettings.STORE_HIDE_FEATURED, ModuleSettings.STORE_HIDE_GAMES, ModuleSettings.STORE_HIDE_POPULAR, ModuleSettings.STORE_HIDE_COMMUNITY, ModuleSettings.STORE_HIDE_DAILY, ModuleSettings.BLOCK_WEATHER_ADS, ModuleSettings.WEATHER_DARK_BACKGROUND, ModuleSettings.STORE_HIDE_SEARCH_HOT, ModuleSettings.STORE_EMPTY_APPLICATION_PAGE, ModuleSettings.INSTALLER_SKIP_WARNINGS, ModuleSettings.STORE_DETAIL_HIDE_SAME_MODEL, ModuleSettings.STORE_DETAIL_HIDE_TOPICS, ModuleSettings.STORE_HIDE_SEARCH_RECOMMENDATIONS, ModuleSettings.STORE_DETAIL_HIDE_REVIEWS, ModuleSettings.COMBINED_PULL_ANIMATION, ModuleSettings.LIMIT_AOD_MOVEMENT, ModuleSettings.COMBINED_COLLAPSE_FIX, ModuleSettings.VOLUME_FIRST_FOUR, ModuleSettings.RESTORE_COLLAPSED_CARD_HEIGHT, ModuleSettings.QS_TRANSLATION_ORIGIN, ModuleSettings.SECONDARY_EXPANSION_FIX, ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN, ModuleSettings.COMBINED_FILTER_SETTINGS, ModuleSettings.HOME_ICON_MINIMUM_SIZE}));
+        columns.add(ModuleSettings.ADD_PANEL_OPTIMIZE);
+        columns.add(ModuleSettings.ADD_PANEL_NAMES);
         for (String[] folder : ModuleSettings.MEDIA_FOLDERS) columns.add(folder[1]);
         columns.addAll(java.util.Arrays.asList(ModuleSettings.HIDE_STATUS_ICON_KEYS));
         columns.add(ModuleSettings.LOCK_CLOCK_FONT);
@@ -268,6 +270,8 @@ public final class SettingsProvider extends ContentProvider {
                 prefs.getBoolean(ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.COMBINED_FILTER_SETTINGS, false) ? 1 : 0,
                 prefs.getBoolean(ModuleSettings.HOME_ICON_MINIMUM_SIZE, false) ? 1 : 0}));
+        values.add(prefs.getBoolean(ModuleSettings.ADD_PANEL_OPTIMIZE, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.ADD_PANEL_NAMES, false) ? 1 : 0);
         for (String[] folder : ModuleSettings.MEDIA_FOLDERS) values.add(prefs.getBoolean(folder[1], false) ? 1 : 0);
         for (String key : ModuleSettings.HIDE_STATUS_ICON_KEYS) values.add(prefs.getBoolean(key, false) ? 1 : 0);
         values.add(prefs.getInt(ModuleSettings.LOCK_CLOCK_FONT, 0));

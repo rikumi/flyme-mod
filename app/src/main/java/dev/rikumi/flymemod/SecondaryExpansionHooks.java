@@ -311,10 +311,25 @@ final class SecondaryExpansionHooks {
         int top = coordinate(first, common, true) + first.getPaddingTop() - coordinate(mini, common, true);
         int right = mini.getWidth() - left - (4 * cw + 3 * spacing);
         if (left < 0 || top < 0 || right < 0) { state.geometryDirty = true; return; }
-        if (mini.getPaddingLeft() != left || mini.getPaddingTop() != top || mini.getPaddingRight() != right)
+        if (mini.getPaddingLeft() != left || mini.getPaddingTop() != top || mini.getPaddingRight() != right) {
             mini.setPadding(left, top, right, state.bottom);
+            // alignMini also runs after LinearLayout.onLayout. A padding change there
+            // can leave the children measured/positioned with the previous padding:
+            // the current traversal may clear its in-layout requestLayout flags.
+            // Request once after that traversal, when a fresh measure is guaranteed.
+            requestGeometryLayout(state);
+        }
         alignSpacers(state, state.wrapper, spacing);
         alignSpacers(state, state.sliders, spacing);
+    }
+
+    private static void requestGeometryLayout(Panels state) {
+        if (state.layoutPosted) return;
+        state.layoutPosted = true;
+        state.mini.post(() -> {
+            state.layoutPosted = false;
+            state.mini.requestLayout();
+        });
     }
 
     private static void restoreGeometry(Panels state) {
@@ -515,6 +530,7 @@ final class SecondaryExpansionHooks {
         final View[] collapsed;
         final boolean[] matched;
         boolean geometryDirty = true;
+        boolean layoutPosted;
         int left, top, right, bottom;
         final Map<View, Integer> spacers = new WeakHashMap<>();
         final Map<ViewGroup, Clip> clips = new WeakHashMap<>();

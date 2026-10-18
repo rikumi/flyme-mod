@@ -32,7 +32,7 @@ public class Resources {
  public static final int LAYER_TYPE_HARDWARE=2,LAYER_TYPE_NONE=0;
  public float alpha=1;public int pathColor,pathWrites;
  public void setLayerType(int type,Object paint){}public void setAlpha(float value){alpha=value;}
- public boolean center=true;public int invalidates;public final android.content.res.Resources resources=new android.content.res.Resources();
+ public boolean circular,center=true;public int invalidates;public final android.content.res.Resources resources=new android.content.res.Resources();
  public android.content.Context getContext(){return new android.content.Context();}
  public android.content.res.Resources getResources(){return resources;}public int[] getDrawableState(){return new int[0];}
  public void invalidate(){invalidates++;}}''',
@@ -57,6 +57,8 @@ public class ForegroundTest {
  static void draw(View v)throws Throwable{hooks.get(v instanceof TextView?"android.widget.TextView":"android.widget.ImageView").run(new SignalHooks.Chain(){public Object getThisObject(){return v;}public Object proceed(){return null;}});}
  static class Color {static final int WHITE=0xffffffff;static int alpha(int color){return color>>>24;}}
  boolean whiteActiveEnabled,darkenEnabled;
+ boolean hasCircularCardActivation(View view){return view.circular;}
+ SURFACE
  Set<ImageView> volumeSliderIcons=new HashSet<>();Map<ImageView,Integer> sliderIconColors=new HashMap<>();
  public static class Owner extends View {public ImageView mIconView=new ImageView();}
  public static class Slider extends View {
@@ -67,7 +69,7 @@ public class ForegroundTest {
  void applyIconColor(ImageView icon,int color){icon.pathColor=color;icon.pathWrites++;}
  VOLUME
  public static void main(String[] args)throws Throwable {
-  boolean[] enabled={false};var palette=new ControlCenterForegroundHooks(c->enabled[0],v->v.center);
+  boolean[] enabled={false},activeTile={false};var palette=new ControlCenterForegroundHooks(c->enabled[0],v->v.center,v->activeTile[0]);
   palette.install((cls,method,hook,types)->hooks.put(cls,hook));
   TextView text=new TextView();var black=text.colors;draw(text);check(text.writes==0);
   enabled[0]=true;for(int i=0;i<1000;i++)draw(text);
@@ -78,6 +80,18 @@ public class ForegroundTest {
   text.center=true;text.colors=ColorStateList.valueOf(0xff206cff);draw(text);check(text.colors.getDefaultColor()==0xff206cff);
   text.colors=ColorStateList.valueOf(0xff000000);draw(text);text.colors=ColorStateList.valueOf(0x73000000);draw(text);check(text.colors.getDefaultColor()==0x73ffffff);
   enabled[0]=false;draw(text);check(text.colors.getDefaultColor()==0x73000000);
+  enabled[0]=true;text.colors=ColorStateList.valueOf(0x99000000);draw(text);
+  check(text.colors.getDefaultColor()==0x99ffffff);
+  activeTile[0]=true;draw(text);check(text.colors.getDefaultColor()==0x99000000);
+  int activeWrites=text.writes;for(int i=0;i<1000;i++)draw(text);check(text.writes==activeWrites);
+  // All tile labels retain the actual theme palette, including inactive day labels.
+  for(int nativeColor:new int[]{0xff000000,0x993c3c43,0xffffffff,0x96ffffff}) {
+   text.colors=ColorStateList.valueOf(nativeColor);draw(text);
+   check(text.colors.getDefaultColor()==nativeColor);
+  }
+  text.colors=ColorStateList.valueOf(0x99000000);
+  activeTile[0]=false;draw(text);check(text.colors.getDefaultColor()==0x99ffffff);
+  enabled[0]=false;draw(text);check(text.colors.getDefaultColor()==0x99000000);
   enabled[0]=true;ImageView icon=new ImageView();icon.tint=ColorStateList.valueOf(0x59000000);var unavailable=icon.tint;
   for(int i=0;i<1000;i++)draw(icon);check(icon.tint.getDefaultColor()==0x4dffffff);check(icon.tintWrites==1);
   enabled[0]=false;draw(icon);check(icon.tint==unavailable);
@@ -102,6 +116,13 @@ public class ForegroundTest {
     if(level<=15){check(volume.pathColor==0xff555555);check(Math.abs(volume.alpha-.8f)<.001f);}
    }
   }
+  View tile=new View();
+  for(boolean white:new boolean[]{false,true})for(boolean circle:new boolean[]{false,true})
+   for(boolean disabled:new boolean[]{false,true})for(int state=0;state<3;state++) {
+    host.whiteActiveEnabled=white;tile.circular=circle;
+    check(host.hasActiveTileSurface(tile,state,disabled)==(white&&!circle&&!disabled&&state==2));
+   }
+  host.whiteActiveEnabled=true;
   int writes=volume.pathWrites;
   for(int i=0;i<1000;i++)host.updateSliderIcon(slider,false);
   check(volume.pathWrites==writes);
@@ -115,6 +136,8 @@ public class ForegroundTest {
 }
 text=(root/'XposedInit.java').read_text();start=text.index('    private static int volumeSliderIconColor(');end=text.index('\n    private void applyIconColor',start)
 sources['dev/rikumi/flymemod/ForegroundTest.java']=sources['dev/rikumi/flymemod/ForegroundTest.java'].replace('VOLUME',text[start:end])
+start=text.index('    private boolean hasActiveTileSurface(');end=text.index('    private boolean hasCircularCardActivation(',start)
+sources['dev/rikumi/flymemod/ForegroundTest.java']=sources['dev/rikumi/flymemod/ForegroundTest.java'].replace('SURFACE',text[start:end])
 sources['dev/rikumi/flymemod/ControlCenterForegroundHooks.java']=(root/'ControlCenterForegroundHooks.java').read_text()
 with tempfile.TemporaryDirectory(dir='/private/tmp',prefix='flyme-foreground-') as tmp:
     target=Path(tmp)

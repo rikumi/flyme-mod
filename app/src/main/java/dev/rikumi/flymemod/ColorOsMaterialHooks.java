@@ -324,7 +324,9 @@ final class ColorOsMaterialHooks {
                     view.setImageDrawable(styled);
                     previousOpacity = -1;
                 }
-                int opacity = Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, notificationOpacity.getAsInt()));
+                boolean night = (view.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                        == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+                int opacity = LightBackgroundOpacity.effective(notificationOpacity.getAsInt(), night);
                 if (opacity != previousOpacity) {
                     styled.backgroundAlpha = Math.round(opacity * 255f / 100f);
                     styled.invalidateSelf(); previousOpacity = opacity;

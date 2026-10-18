@@ -587,6 +587,31 @@ internal fun FluixCard(
     )
 }
 
+@Composable
+internal fun FluixScopeWarningCard(message: String = "有作用域未勾选，请前往勾选", onClick: () -> Unit) {
+    val summary = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    FluixCard(backgroundColor = Color(0xFFFFBE0A).copy(alpha = 0.18f)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = FLUIX_ROW_MIN_HEIGHT)
+                .clickable(onClick = onClick)
+                .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicText(
+                text = message,
+                style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = MiuixIcons.ChevronForward,
+                contentDescription = null,
+                tint = summary.copy(alpha = summary.alpha * FLUIX_CATEGORY_CHEVRON_ALPHA),
+                modifier = Modifier.padding(start = 12.dp).size(FLUIX_CATEGORY_CHEVRON),
+            )
+        }
+    }
+}
+
 // 超长列表用的单行卡片容器: 与 FluixCard 同款外观(圆角/底色/边距), 但每行各占一个独立容器。
 // 上百行若塞进同一个 Card, 该容器会变成上万像素高, 首屏要一次性组合全部行, 且滚动到后半段时
 // 命中测试会失效(表现为"前面能点、后面点不动")。故长列表应逐行使用本容器。

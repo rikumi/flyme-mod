@@ -23,6 +23,7 @@ import java.lang.reflect.Method;
 final class ControlCenterForegroundHooks {
     private final Predicate<Context> enabled;
     private final Predicate<View> inCenter;
+    private final Predicate<View> preserveText;
     private final Map<Resources, Map<Integer, Integer>> palettes = new WeakHashMap<>();
     private final Map<TextView, Tint> texts = new WeakHashMap<>();
     private final Map<ImageView, Tint> icons = new WeakHashMap<>();
@@ -30,8 +31,9 @@ final class ControlCenterForegroundHooks {
     private final Set<View> views = Collections.newSetFromMap(new WeakHashMap<>());
     private final Method filterColor, filterMode;
 
-    ControlCenterForegroundHooks(Predicate<Context> enabled, Predicate<View> inCenter) throws ReflectiveOperationException {
-        this.enabled = enabled; this.inCenter = inCenter;
+    ControlCenterForegroundHooks(Predicate<Context> enabled, Predicate<View> inCenter,
+            Predicate<View> preserveText) throws ReflectiveOperationException {
+        this.enabled = enabled; this.inCenter = inCenter; this.preserveText = preserveText;
         // Public in Flyme's framework, omitted from the SDK stubs.
         filterColor = PorterDuffColorFilter.class.getMethod("getColor");
         filterMode = PorterDuffColorFilter.class.getMethod("getMode");
@@ -42,7 +44,9 @@ final class ControlCenterForegroundHooks {
             TextView view = (TextView) chain.getThisObject();
             boolean center = inCenter.test(view);
             if (center) views.add(view);
-            boolean active = center && enabled.test(view.getContext());
+            // Tile labels already choose a foreground for their surface and system theme.
+            // In particular 0x99000000 on white must not match the media night palette.
+            boolean active = center && enabled.test(view.getContext()) && !preserveText.test(view);
             Tint saved = texts.get(view);
             if (active) {
                 ColorStateList current = view.getTextColors();

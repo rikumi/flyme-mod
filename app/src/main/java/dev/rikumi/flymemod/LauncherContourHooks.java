@@ -187,6 +187,32 @@ final class LauncherContourHooks {
             return result;
         }, Canvas.class);
         new LauncherIconSurfaceContourHooks(loader, settings, icon, log).install(installer, deoptimize);
+        Class<?> drag = loader.loadClass("com.android.launcher3.dragndrop.DragView");
+        Field dragMask = field(drag, "mScaledMaskPath");
+        Method dragDraw = drag.getDeclaredMethod("draw", Canvas.class);
+        installer.hook(drag.getName(), "draw", chain -> {
+            Object result = chain.proceed();
+            View host = (View) chain.getThisObject();
+            Canvas canvas = (Canvas) chain.getArg(0);
+            if (IconContourDrawScope.isRaw() || !canvas.isHardwareAccelerated()) return result;
+            track(host);
+            if (!icon.getAsBoolean()) return result;
+            try {
+                // DragView replaces its original preview with independently drawn
+                // adaptive layers on drag start. Those bypass FastBitmapDrawable.
+                // Until that replacement, the preview already carries its contour.
+                Path path = (Path) dragMask.get(host);
+                if (path == null || path.isEmpty() || host.getWidth() <= 0 || host.getHeight() <= 0) return result;
+                LauncherContourRenderer renderer = renderer(host);
+                Bitmap mask = renderer.pathMask(host, path, host.getWidth(), host.getHeight());
+                // Native draw has restored the foreground's spring translation.
+                // The contour follows the stationary clip, while View applies
+                // the complete drag scale, position and alpha to both together.
+                renderer.draw(host, canvas, new RectF(0, 0, host.getWidth(), host.getHeight()), 0f, 1f, mask);
+            } catch (Exception | LinkageError error) { report(host, error); }
+            return result;
+        }, Canvas.class);
+        deoptimize.accept(dragDraw);
         for (String method : new String[]{"setAlpha", "setVisible"}) {
             installer.hook("com.meizu.flyme.launcher.utils.BackgroundBlurUtils", method, chain -> {
                 Object result = chain.proceed();

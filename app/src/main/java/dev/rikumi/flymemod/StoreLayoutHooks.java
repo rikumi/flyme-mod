@@ -126,6 +126,7 @@ final class StoreLayoutHooks {
         catch (ReflectiveOperationException e) { log.accept("Cannot resolve store application page", e); }
         try { installRecommendations(loader, installer); }
         catch (ReflectiveOperationException e) { log.accept("Cannot resolve store download recommendations", e); }
+
     }
 
     private void installSettings(SignalHooks.Installer installer) {
@@ -177,10 +178,24 @@ final class StoreLayoutHooks {
                     && request.getName().equals("getUpdateRecommendApps"))
                 return emptyUpdateRecommendations(loader);
             if (options[5] && request.getDeclaringClass().getName().equals("com.meizu.mstore.data.net.api.AppDetailApi")
-                    && request.getName().equals("getRecommendAppData")) return empty.invoke(null);
+                    && request.getName().equals("getRecommendAppData")) return emptyDetailRecommendations(loader);
             return chain.proceed();
         }, Object.class, Method.class, Object[].class);
 
+    }
+
+    static Object emptyDetailRecommendations(ClassLoader loader) throws ReflectiveOperationException {
+        // DetailPresenter flatMaps into recommendations before updating its install
+        // button and pager. empty() skips that final onNext entirely. The mapper
+        // additionally requires a non-null blocks list to produce its Pair.
+        Class<?> resultType = loader.loadClass("com.meizu.mstore.data.net.requestitem.base.ResultModel");
+        Class<?> valueType = loader.loadClass("com.meizu.mstore.data.net.requestitem.detail.RecommendValue");
+        Object value = valueType.getConstructor().newInstance();
+        valueType.getField("blocks").set(value, new ArrayList<>());
+        Object result = resultType.getConstructor().newInstance();
+        resultType.getField("code").setInt(result, 200);
+        resultType.getField("value").set(result, value);
+        return loader.loadClass("io.reactivex.Observable").getMethod("just", Object.class).invoke(null, result);
     }
 
     static Object emptyUpdateRecommendations(ClassLoader loader) throws ReflectiveOperationException {

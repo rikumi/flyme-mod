@@ -14,6 +14,8 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.WIDGET_CONTOUR, "小组件背景轮廓光"),
         )),
         SettingsGroup("桌面图标设置", listOf(
+            SwitchItem(ModuleSettings.LAUNCHER_EXTRA_ROW, "桌面图标增加一行",
+                subtitle = "开启与关闭时的桌面布局相互独立", notifyChange = false),
             SwitchItem(ModuleSettings.EDIT_APP_ICON_NAME, "允许编辑图标和名称"),
             SwitchItem(ModuleSettings.SYSTEM_ICON_PACK, "系统级应用图标包图标"),
             SwitchItem(ModuleSettings.FIX_ICON_PACK_PREVIEW, "修复选择图标包图标显示"),
@@ -135,6 +137,10 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.HEYMELODY_NOISE_CONTROL, "支持 OPPO/一加耳机降噪控制",
                 enabledSubtitle = "需安装欢律并完成绑定"),
             SelectItem(ModuleSettings.VOLUME_FIRST_FOUR, "修改音量调节前四小格", listOf("不修改", "合并为两中格", "合并为一大格")),
+        )),
+        SettingsGroup("添加面板", listOf(
+            SwitchItem(ModuleSettings.ADD_PANEL_OPTIMIZE, "优化添加面板加载"),
+            SwitchItem(ModuleSettings.ADD_PANEL_NAMES, "添加面板始终显示磁贴名称"),
         )),
     ),
     "notification" to listOf(

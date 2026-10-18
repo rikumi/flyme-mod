@@ -72,8 +72,8 @@ final class NotificationAppearanceHooks {
         applyRoundness=rowClass.getMethod("applyRoundnessAndInvalidate");
         tintNoBlur=backgroundClass.getMethod("setTintForNoBlur",int.class);
     }
-    private int color() {
-        return Color.argb(Math.round(Math.max(0,Math.min(ModuleSettings.LIGHT_OPACITY_MAX,opacity.getAsInt()))*255f/100f),255,255,255);
+    private int color(View view) {
+        return Color.argb(Math.round(LightBackgroundOpacity.effective(opacity.getAsInt(), night(view))*255f/100f),255,255,255);
     }
     float radius(View view) {
         float side=tileCorners.cellSide(view);
@@ -103,7 +103,7 @@ final class NotificationAppearanceHooks {
         if (!light.getAsBoolean()) return nativeColor;
         // Keep dark floating notifications readable; light-mode surfaces all use the slider.
         if (night(view) && floating(view)) return blur ? DARK_BLUR_COLOR : DARK_SOLID_COLOR;
-        return color();
+        return color(view);
     }
     void install(SignalHooks.Installer installer) {
         installer.hook("android.widget.ImageView", "onDraw", chain -> {
@@ -319,7 +319,7 @@ final class NotificationAppearanceHooks {
                     Drawable drawable=view.getBackground();
                     if(drawable!=null && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable")
                             && !drawable.getClass().getName().endsWith("WallpaperBlurDrawable")) {
-                        int tint=backgroundColor(view,color(),false);
+                        int tint=backgroundColor(view,color(view),false);
                         if(landscape) {
                             tintedLandscape=drawable.mutate();
                             originalLandscapeFilter=tintedLandscape.getColorFilter();
@@ -331,10 +331,10 @@ final class NotificationAppearanceHooks {
                     if(background!=null && nativeBackground.get(background) instanceof Drawable drawable
                             && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable")
                             && !drawable.getClass().getName().endsWith("WallpaperBlurDrawable"))
-                        tintNoBlur.invoke(background,backgroundColor(view,color(),false));
+                        tintNoBlur.invoke(background,backgroundColor(view,color(view),false));
                 }
             }
-            lastColor=color(); lastLight=light.getAsBoolean(); lastCorners=corners.getAsBoolean();
+            lastColor=color(view); lastLight=light.getAsBoolean(); lastCorners=corners.getAsBoolean();
             lastFloating=isFloating; lastNight=night(view);
             lastRadius=lastCorners?radius(view):-1f;
         }
@@ -347,7 +347,7 @@ final class NotificationAppearanceHooks {
                 failed=true; log.accept("Cannot resolve floating notification state",error); return;
             }
             boolean changed=night(view)!=lastNight || currentFloating!=lastFloating || currentCorners!=lastCorners || currentLight!=lastLight
-                    || (currentLight && color()!=lastColor) || (currentCorners && radius(view)!=lastRadius);
+                    || (currentLight && color(view)!=lastColor) || (currentCorners && radius(view)!=lastRadius);
             if(!changed)return;
             running=true;
             try {

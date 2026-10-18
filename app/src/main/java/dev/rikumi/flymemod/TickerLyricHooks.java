@@ -79,6 +79,15 @@ final class TickerLyricHooks {
         }
         Class<?> entry=loader.loadClass("com.android.systemui.statusbar.notification.collection.NotificationEntry");
         Method sbn=entry.getMethod("getSbn");
+        // Use the collection's add/update distinction instead of retaining keys:
+        // removal followed by posting the same ID is a new notification again.
+        String filter="com.flyme.systemui.statusbar.ticker.FlymeTickerEx";
+        installer.hook(filter,"tickFilter",chain->{
+            StatusBarNotification value=(StatusBarNotification)sbn.invoke(chain.getArg(0));
+            if(suppressOngoingUpdate((Boolean)chain.getArg(1),value.getNotification()))return null;
+            return chain.proceed();
+        },entry,boolean.class,Runnable.class);
+        deoptimize.accept(loader.loadClass(filter).getDeclaredMethod("tickFilter",entry,boolean.class,Runnable.class));
         String provider="com.android.systemui.statusbar.notification.interruption.NotificationInterruptStateProviderImpl";
         var unclearableList=loader.loadClass(provider).getDeclaredField("mDisableHeadsUpUnclearableList");
         unclearableList.setAccessible(true);
@@ -153,9 +162,10 @@ final class TickerLyricHooks {
             Method eventMethod=listener.getDeclaredMethod(event,entry);
             installer.hook(listener.getName(),event,chain->{
                 if(displayMode.getAsInt()!=1)return chain.proceed();
+                StatusBarNotification original=(StatusBarNotification)sbn.invoke(chain.getArg(0));
+                if(suppressOngoingUpdate(event.equals("onEntryAdded"),original.getNotification()))return null;
                 Object target=nativeTicker.get(owner.get(chain.getThisObject()));
                 if(target!=null){
-                    StatusBarNotification original=(StatusBarNotification)sbn.invoke(chain.getArg(0));
                     StatusBarNotification copy=original.clone();
                     copyOriginalIcon.accept(original.getNotification(),copy.getNotification());
                     copy.getNotification().tickerText=tickerText(copy);
@@ -176,6 +186,9 @@ final class TickerLyricHooks {
         deoptimize.accept(loader.loadClass(provider).getDeclaredMethod("checkHeadsUp",entry,boolean.class));
         deoptimize.accept(loader.loadClass(provider).getDeclaredMethod("shouldHeadsUp",entry));
         deoptimize.accept(loader.loadClass(provider).getDeclaredMethod("shouldHeadsUpWhenAwake",entry,boolean.class));
+    }
+    private static boolean suppressOngoingUpdate(boolean added, Notification notification){
+        return !added && (notification.flags & Notification.FLAG_ONGOING_EVENT)!=0;
     }
     private CharSequence tickerText(StatusBarNotification sbn){
         android.app.Notification notification=sbn.getNotification();

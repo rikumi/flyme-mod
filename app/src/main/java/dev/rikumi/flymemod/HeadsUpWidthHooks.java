@@ -15,9 +15,10 @@ final class HeadsUpWidthHooks {
     private static final String ROW = "com.android.systemui.statusbar.notification.row.ExpandableNotificationRow";
     private static final String STACK = "com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout";
     private static final String LANDSCAPE = "com.flyme.notification.view.LandscapeHeadsUpNotificationView";
+    private static final String MEDIA = "com.android.systemui.statusbar.notification.stack.MediaContainerView";
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled;
-    private final Class<?> stack;
+    private final Class<?> stack, media;
     private final ClassLoader loader;
     private final Field expanded, shade;
     private final Field statusBarState, showingPublic;
@@ -30,6 +31,7 @@ final class HeadsUpWidthHooks {
             throws ReflectiveOperationException {
         this.settings = settings; this.enabled = enabled; this.loader = loader;
         stack = loader.loadClass(STACK); expanded = stack.getField("mIsExpanded");
+        media = loader.loadClass(MEDIA);
         statusBarState = stack.getField("mStatusBarState");
         shade = stack.getField("mShadeInteractor");
         classics = shade.getType().getMethod("isClassicsMode");
@@ -48,6 +50,26 @@ final class HeadsUpWidthHooks {
     void install(SignalHooks.Installer installer) throws ReflectiveOperationException { install(installer, null); }
 
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
+        // MediaContainerView inherits ExpandableView.onMeasure. Its host forwards
+        // this spec into the media measurement manager and transition layout.
+        Method mediaMeasure = media.getMethod("onMeasure", int.class, int.class);
+        installer.hook(mediaMeasure.getDeclaringClass().getName(), "onMeasure", chain -> {
+            View view = (View) chain.getThisObject();
+            if (!media.isInstance(view)) return chain.proceed();
+            settings.accept(view.getContext());
+            if (view.getParent() instanceof View parent && stack.isInstance(parent)) {
+                containers.add(parent); rows.add(view);
+                if (enabled.getAsBoolean() && statusBarState.getInt(parent) == 1
+                        && !mergedPresentation(parent) && parent.getMeasuredWidth() > 0) {
+                    widened.add(view);
+                    return chain.proceed(new Object[]{View.MeasureSpec.makeMeasureSpec(
+                            contentWidth(parent.getMeasuredWidth(), view.getResources().getDisplayMetrics().density),
+                            View.MeasureSpec.EXACTLY), chain.getArg(1)});
+                }
+            }
+            widened.remove(view);
+            return chain.proceed();
+        }, int.class, int.class);
         installer.hook(ROW, "onMeasure", chain -> {
             View row = (View) chain.getThisObject();
             settings.accept(row.getContext());

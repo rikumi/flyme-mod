@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 
 public final class ModuleSettings {
+    public static final String LAUNCHER_EXTRA_ROW = "launcher_extra_row";
     public static final String AUTO_BRIGHTNESS_OFFSET_ENABLED = "auto_brightness_offset_enabled";
     public static final String AUTO_BRIGHTNESS_OFFSET = "auto_brightness_offset";
     public static final int AUTO_BRIGHTNESS_OFFSET_DEFAULT = 10;
@@ -79,6 +80,8 @@ public final class ModuleSettings {
     public static final String NOTIFICATION_CONTOUR = "coloros_notification_contour";
     public static final String QS_TRANSLATION_ORIGIN = "control_center_translation_origin_fix";
     public static final String SEPARATE_SHADE_SWIPE = "separate_shade_bidirectional_swipe";
+    public static final String ADD_PANEL_OPTIMIZE = "add_panel_optimize";
+    public static final String ADD_PANEL_NAMES = "add_panel_names";
     public static final String SECONDARY_EXPANSION_FIX = "combined_secondary_expansion_fix";
     public static final String COMBINED_EMPTY_SHADE_KEEP_OPEN = "combined_empty_shade_keep_open";
     public static final String COMBINED_FILTER_SETTINGS = "combined_filter_button_settings";
@@ -139,7 +142,7 @@ public final class ModuleSettings {
     public static final String LIGHT = "light_tile_background";
     public static final String LIGHT_OPACITY = "light_tile_background_opacity";
     public static final int LIGHT_OPACITY_DEFAULT = 12;
-    public static final int LIGHT_OPACITY_MAX = 100;
+    public static final int LIGHT_OPACITY_MAX = 40;
     public static final String TILE_CORNERS = "control_center_tile_corners";
     public static final String TILE_CORNER_PERCENT = "control_center_tile_corner_percent";
     public static final int TILE_CORNER_PERCENT_DEFAULT = 30;

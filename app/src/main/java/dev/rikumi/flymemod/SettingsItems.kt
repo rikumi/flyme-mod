@@ -167,6 +167,9 @@ private fun SwitchSettingRow(
             expanded = it
             preferences.edit().putBoolean(item.key, it).apply()
             if (item.notifyChange) context.contentResolver.notifyChange(ModuleSettings.URI, null)
+            if (item.key == ModuleSettings.LAUNCHER_EXTRA_ROW) {
+                android.widget.Toast.makeText(context, "重启桌面后生效，两套桌面布局分别保存", android.widget.Toast.LENGTH_LONG).show()
+            }
             onChanged(it)
         },
         onTitleClick = if (checked && slider != null) ({ expanded = !expanded }) else null,

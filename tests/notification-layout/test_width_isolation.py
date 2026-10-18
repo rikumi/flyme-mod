@@ -2,6 +2,9 @@
 from pathlib import Path
 import tempfile, subprocess
 files={
+'com/android/systemui/statusbar/notification/row/ExpandableView.java':'package com.android.systemui.statusbar.notification.row;public class ExpandableView extends android.view.View{public void onMeasure(int w,int h){}}',
+'com/android/systemui/statusbar/notification/stack/MediaContainerView.java':'package com.android.systemui.statusbar.notification.stack;public class MediaContainerView extends com.android.systemui.statusbar.notification.row.ExpandableView{}',
+
 'android/content/Context.java':'package android.content;public class Context{}',
 'android/view/View.java':'''package android.view;import android.content.Context;public class View{public Object parent;public boolean force=true;public void forceLayout(){force=true;}public int measured=1200,requests,originalMargin=27;public Resources resources=new Resources();public Object getParent(){return parent;}public int getMeasuredWidth(){return measured;}public Context getContext(){return new Context();}public Resources getResources(){return resources;}public void requestLayout(){requests++;}public static class Resources{public Metrics metrics=new Metrics();public Metrics getDisplayMetrics(){return metrics;}}public static class Metrics{public float density=2.625f;public int widthPixels=2400;}public static class MeasureSpec{public static final int EXACTLY=0x40000000;public static int makeMeasureSpec(int s,int m){return s|m;}public static int getSize(int s){return s&0x3fffffff;}}}''',
 'kotlinx/coroutines/flow/StateFlow.java':'package kotlinx.coroutines.flow;public interface StateFlow{Object getValue();}',
@@ -48,6 +51,22 @@ host.filter=true;host.mSidePaddings=150;check(!combined.applyWidth(host,1200));n
 for(int i=0;i<20;i++){host.mSidePaddings=150;check(combined.applyWidth(host,1200));nativeWidth=1116;check(measure(reused)==1116);}check(host.mSidePaddings==42);
 host.resources.metrics.density=3;check(combined.applyWidth(host,1080));check(host.mSidePaddings==48);nativeWidth=984;check(measure(reused)==984);host.mStatusBarState=1;host.measured=1080;reused.resources.metrics.density=3;check(measure(reused)==1032);
 check(CombinedNotificationWidthHooks.contentWidth(10,3)==0);nativeWidth=900;
+// Media uses the inherited measure method, sharing the same state-transition invalidation.
+var media=new com.android.systemui.statusbar.notification.stack.MediaContainerView();
+media.parent=host;host.measured=1200;media.resources.metrics.density=2.625f;
+String mediaOwner="com.android.systemui.statusbar.notification.row.ExpandableView";
+for(boolean active:new boolean[]{true,false})for(int state=0;state<3;state++)for(boolean classics:new boolean[]{false,true}){
+ enabled=active;host.mStatusBarState=state;host.mShadeInteractor.combined=classics;
+ Object[] spec=run(media,mediaOwner,"onMeasure",View.MeasureSpec.makeMeasureSpec(900,View.MeasureSpec.EXACTLY),123);
+ check(View.MeasureSpec.getSize((Integer)spec[0])==(active&&state==1?1158:900));check(spec[1].equals(123));
+}
+enabled=true;host.mStatusBarState=1;run(media,mediaOwner,"onMeasure",900,123);media.force=false;
+run(host,host.getClass().getName(),"setStatusBarState",0);check(media.force);
+media.force=false;enabled=false;hook.refresh();check(media.force);
+media.parent=new android.widget.LinearLayout();enabled=true;
+check(run(media,mediaOwner,"onMeasure",900,123)[0].equals(900));
+var unrelated=new com.android.systemui.statusbar.notification.row.ExpandableView();unrelated.parent=host;
+check(run(unrelated,mediaOwner,"onMeasure",900,123)[0].equals(900));
 System.out.println("PASS: "+checks+" production width/container isolation/transition/group/restore checks");}}
 '''}
 with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:

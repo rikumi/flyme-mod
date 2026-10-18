@@ -63,6 +63,7 @@ public final class XposedInit extends XposedModule {
     private volatile boolean settingsLoaded;
     private boolean scaleEnabled;
     private boolean lightEnabled;
+    private Context backgroundThemeContext;
     private boolean tileBackgroundColorEnabled;
     private boolean notificationBackgroundColorEnabled;
     private int notificationBackgroundSaturation = ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT;
@@ -74,7 +75,7 @@ public final class XposedInit extends XposedModule {
     private int lightBackgroundOpacity = ModuleSettings.LIGHT_OPACITY_DEFAULT;
     private final Map<View, Object[]> lightBackgroundWrappers = new WeakHashMap<>();
     private final Set<View> lightBackgroundTiles = Collections.newSetFromMap(new WeakHashMap<>());
-    private final Set<GradientDrawable> lightSliderBackgrounds = Collections.newSetFromMap(new WeakHashMap<>());
+    private final Map<GradientDrawable, android.content.res.ColorStateList> lightSliderBackgrounds = new WeakHashMap<>();
     private boolean darkenEnabled;
     private ControlCenterForegroundHooks activeControlCenterForegroundHooks;
     private final Map<Object,Integer> nativeHeaderColors = new WeakHashMap<>();
@@ -84,6 +85,7 @@ public final class XposedInit extends XposedModule {
     private RowRevealHooks activeRowRevealHooks;
     private SeparateShadeSwipeHooks activeSeparateShadeSwipeHooks;
     private boolean whiteActiveEnabled;
+    private volatile boolean addPanelOptimize, addPanelNames;
     private int controlCenterStyle;
     private int customActiveColor = ModuleSettings.CONTROL_CENTER_ACTIVE_COLOR_DEFAULT;
     private int whiteActiveOpacity = 90;
@@ -273,6 +275,15 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR, "FlymeMod", "Cannot initialize scoped system application icon pack", error);
         }
         installPackageHooks(param.getPackageName(), param.getClassLoader());
+        if ("com.meizu.assistant".equals(param.getPackageName())) {
+            try {
+                new AssistantWidgetCloneHooks((message, error) -> log(error == null ? Log.INFO : Log.ERROR,
+                        "FlymeMod", message, error)).install(param.getClassLoader(),
+                        (name, method, hooker, parameters) -> install(param.getClassLoader(), name, method, hooker, parameters));
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                log(Log.ERROR, "FlymeMod", "Cannot install Assistant widget configuration copy", error);
+            }
+        }
     }
 
     @Override public void onSystemServerStarting(SystemServerStartingParam param) {
@@ -466,6 +477,13 @@ public final class XposedInit extends XposedModule {
             return;
         }
         if ("com.meizu.flyme.launcher".equals(packageName)) {
+            try {
+                new LauncherExtraRowHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                        (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
+                        .install(loader, this::installDrawingHook);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot install isolated extra-row launcher layout", error);
+            }
             installLauncherIconHiding(loader);
             try {
                 new RecentsGestureJankHooks(loader, () -> stackedRecentsEnabled).install(
@@ -586,6 +604,12 @@ public final class XposedInit extends XposedModule {
             }
         }
         if (!"com.android.systemui".equals(packageName)) return;
+        try {
+            new AddPanelHooks(this::loadSettings, () -> addPanelOptimize, () -> addPanelNames,
+                    (message,error) -> log(Log.ERROR,"FlymeMod",message,error))
+                    .install(loader,(name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);
+        } catch (ReflectiveOperationException error) { log(Log.ERROR,"FlymeMod","Cannot install add-panel hooks",error); }
+
         try {
             NetworkTileHooks networkTiles = new NetworkTileHooks(loader,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
@@ -1235,8 +1259,7 @@ public final class XposedInit extends XposedModule {
             if (activeTileBackdropHooks != null) activeTileBackdropHooks.observe(tile);
             boolean policyDisabled = chain.getArgs().size() > 1 && Boolean.TRUE.equals(chain.getArg(1));
             // Connectivity activation belongs to its icon circles, not the card surface.
-            if (whiteActiveEnabled && !hasCircularCardActivation((View) chain.getThisObject())
-                    && (Integer) chain.getArg(0) == 2 && !policyDisabled) {
+            if (hasActiveTileSurface(tile, (Integer) chain.getArg(0), policyDisabled)) {
                 whiteActiveTileViews.add((View) chain.getThisObject());
                 return activeTileBackgroundColor();
             }
@@ -1323,7 +1346,7 @@ public final class XposedInit extends XposedModule {
         if (lightEnabled && drawable instanceof LayerDrawable layers
                 && layers.findDrawableByLayerId(android.R.id.background) instanceof GradientDrawable bg) {
             bg.mutate();
-            lightSliderBackgrounds.add(bg);
+            if (!lightSliderBackgrounds.containsKey(bg)) lightSliderBackgrounds.put(bg, bg.getColor());
             bg.setColor(lightBackgroundColor());
         }
         if (whiteActiveEnabled && drawable instanceof LayerDrawable layers) {
@@ -1516,7 +1539,10 @@ public final class XposedInit extends XposedModule {
     }
 
     private int lightBackgroundColor() {
-        return Color.argb(Math.round(lightBackgroundOpacity * 255f / 100f), 255, 255, 255);
+        boolean night = backgroundThemeContext != null
+                && (backgroundThemeContext.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                        == Configuration.UI_MODE_NIGHT_YES;
+        return Color.argb(Math.round(LightBackgroundOpacity.effective(lightBackgroundOpacity, night) * 255f / 100f), 255, 255, 255);
     }
 
     private void refreshLightBackgroundOpacity() {
@@ -1537,8 +1563,11 @@ public final class XposedInit extends XposedModule {
                 log(Log.ERROR, "FlymeMod", "Cannot refresh light tile background", error);
             }
         }
-        for (GradientDrawable background : new ArrayList<>(lightSliderBackgrounds))
-            if (background != null) background.setColor(lightBackgroundColor());
+        for (Map.Entry<GradientDrawable, android.content.res.ColorStateList> entry : new ArrayList<>(lightSliderBackgrounds.entrySet())) {
+            if (lightEnabled) entry.getKey().setColor(lightBackgroundColor());
+            else entry.getKey().setColor(entry.getValue());
+        }
+        if (!lightEnabled) lightSliderBackgrounds.clear();
     }
 
     private int activeTileBackgroundColor() {
@@ -1941,7 +1970,18 @@ public final class XposedInit extends XposedModule {
 
     private void installDarkBackground(ClassLoader loader) {
         try {
-            activeControlCenterForegroundHooks = new ControlCenterForegroundHooks(this::shouldDarken, this::isControlCenterView);
+            Class<?> tile = loader.loadClass("com.android.systemui.qs.tileimpl.QSTileViewImpl");
+            Class<?> custom = loader.loadClass("com.flyme.systemui.qs.tileimpl.FlymeCustomQSTileView");
+            activeControlCenterForegroundHooks = new ControlCenterForegroundHooks(this::shouldDarken,
+                    this::isControlCenterView, view -> {
+                // Tile label getters choose their palette from the actual system theme.
+                // Backdrop dimming must not convert day-mode labels to night colors.
+                for (View current = view; current != null;
+                        current = current.getParent() instanceof View parent ? parent : null) {
+                    if (tile.isInstance(current) || custom.isInstance(current)) return true;
+                }
+                return false;
+            });
             activeControlCenterForegroundHooks.install(
                     (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters));
         } catch (ReflectiveOperationException error) {
@@ -2098,13 +2138,9 @@ public final class XposedInit extends XposedModule {
         XposedInterface.Hooker foreground = chain -> {
             View view = (View) chain.getThisObject();
             loadSettings(view.getContext());
-            if (whiteActiveEnabled && !hasCircularCardActivation(view) && (Integer) chain.getArg(0) == 2
-                    && !(chain.getArgs().size() > 1 && Boolean.TRUE.equals(chain.getArg(1)))) return activeTileForegroundColor();
-            if (!darkenEnabled || !isControlCenterView(view)) return chain.proceed();
-            Boolean previous = nightForeground.get();
-            nightForeground.set(true);
-            try { return chain.proceed(); }
-            finally { if (previous == null) nightForeground.remove(); else nightForeground.set(previous); }
+            if (hasActiveTileSurface(view, (Integer) chain.getArg(0),
+                    chain.getArgs().size() > 1 && Boolean.TRUE.equals(chain.getArg(1)))) return activeTileForegroundColor();
+            return chain.proceed();
         };
         for (String method : new String[]{"getLabelColorForState", "getSecondaryLabelColorForState"}) {
             install(loader, "com.android.systemui.qs.tileimpl.QSTileViewImpl", method,
@@ -2140,6 +2176,10 @@ public final class XposedInit extends XposedModule {
         } catch (ClassNotFoundException e) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve QSTile.State", e);
         }
+    }
+
+    private boolean hasActiveTileSurface(View view, int state, boolean disabledByPolicy) {
+        return whiteActiveEnabled && state == 2 && !disabledByPolicy && !hasCircularCardActivation(view);
     }
 
     private boolean hasCircularCardActivation(View view) {
@@ -2545,18 +2585,21 @@ public final class XposedInit extends XposedModule {
                         StatusBarNotification sbn = (StatusBarNotification) chain.getArg(1);
                         Icon original = !originalNotificationIconsEnabled || sbn == null ? null
                                 : originalNotificationIcons.get(sbn.getNotification());
-                        if (original == null) return chain.proceed();
-                        Drawable drawable;
-                        try {
-                            drawable = original.loadDrawable(context);
+                        Drawable drawable = (Drawable) chain.getArg(2);
+                        float scale = 1f;
+                        if (original != null) try {
+                            Drawable loaded = original.loadDrawable(context);
+                            if (loaded != null) { drawable = loaded; scale = .65f; }
                         } catch (RuntimeException error) {
                             log(Log.ERROR, "FlymeMod", "Cannot load original ticker icon " + sbn.getPackageName(), error);
-                            return chain.proceed();
                         }
                         if (drawable == null) return chain.proceed();
-                        // Replace only this queued ticker segment, without changing the shared Notification.
+                        int sizeId = context.getResources().getIdentifier("status_bar_icon_size", "dimen", "com.android.systemui");
+                        int size = context.getResources().getDimensionPixelSize(sizeId);
+                        // Normalize intrinsic dimensions before CENTER_INSIDE measures the
+                        // switcher; application artwork must not decide the ticker's size.
                         return chain.proceed(new Object[]{chain.getArg(0), sbn,
-                                new OriginalNotificationIcon(drawable, .55f), chain.getArg(3)});
+                                new TickerNotificationIcon(drawable, size, scale), chain.getArg(3)});
                     });
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot hook original ticker notification icons", error);
@@ -2597,6 +2640,35 @@ public final class XposedInit extends XposedModule {
         }
     }
 
+    private static final class TickerNotificationIcon extends DrawableWrapper {
+        private final int size;
+        private final float scale;
+        private final int sourceWidth, sourceHeight;
+        TickerNotificationIcon(Drawable drawable, int size, float scale) {
+            super(drawable);
+            this.size = size; this.scale = scale;
+            sourceWidth = drawable.getIntrinsicWidth(); sourceHeight = drawable.getIntrinsicHeight();
+        }
+        @Override public int getIntrinsicWidth() { return size; }
+        @Override public int getIntrinsicHeight() { return size; }
+        @Override protected void onBoundsChange(android.graphics.Rect bounds) {
+            int width = bounds.width(), height = bounds.height();
+            float fit = sourceWidth > 0 && sourceHeight > 0
+                    ? Math.min(width / (float) sourceWidth, height / (float) sourceHeight) : 1f;
+            int w = sourceWidth > 0 && sourceHeight > 0 ? Math.round(sourceWidth * fit) : width;
+            int h = sourceWidth > 0 && sourceHeight > 0 ? Math.round(sourceHeight * fit) : height;
+            int left = bounds.left + (width - w) / 2, top = bounds.top + (height - h) / 2;
+            getDrawable().setBounds(left, top, left + w, top + h);
+        }
+        @Override public void draw(Canvas canvas) {
+            int saved = canvas.save();
+            try {
+                canvas.scale(scale, scale, getBounds().exactCenterX(), getBounds().exactCenterY());
+                super.draw(canvas);
+            } finally { canvas.restoreToCount(saved); }
+        }
+    }
+
     private static final class OriginalNotificationIcon extends DrawableWrapper {
         private final float scale;
 
@@ -2622,6 +2694,7 @@ public final class XposedInit extends XposedModule {
     }
 
     private synchronized void loadSettings(Context context) {
+        backgroundThemeContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
         if (moduleSettingsObserver == null) {
             Context appContext = context.getApplicationContext();
             moduleSettingsObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
@@ -2633,6 +2706,7 @@ public final class XposedInit extends XposedModule {
                     int previousStyle = controlCenterStyle;
                     int previousActiveColor = customActiveColor;
                     int previousLightOpacity = lightBackgroundOpacity;
+                    boolean previousLight = lightEnabled;
                     synchronized (XposedInit.this) { settingsLoaded = false; }
                     loadSettings(appContext);
                     if (activeBackGestureSmartHooks != null && previousBackSmart != backGestureRemoveSmart)
@@ -2677,7 +2751,7 @@ public final class XposedInit extends XposedModule {
                     if (activeThemeChanged) refreshActiveIconTheme();
                     if (activeThemeChanged || (whiteActiveEnabled && previousOpacity != whiteActiveOpacity))
                         refreshWhiteActiveOpacity();
-                    if (lightEnabled && previousLightOpacity != lightBackgroundOpacity) refreshLightBackgroundOpacity();
+                    if (previousLight != lightEnabled || (lightEnabled && previousLightOpacity != lightBackgroundOpacity)) refreshLightBackgroundOpacity();
                     if (activeTileBackdropHooks != null) activeTileBackdropHooks.refresh();
                     if (activeControlCenterForegroundHooks != null) activeControlCenterForegroundHooks.refresh();
                     if (previousDarken != darkenEnabled) {
@@ -2695,6 +2769,20 @@ public final class XposedInit extends XposedModule {
             };
             appContext.getContentResolver().registerContentObserver(
                     ModuleSettings.URI, false, moduleSettingsObserver);
+            appContext.registerComponentCallbacks(new android.content.ComponentCallbacks() {
+                private int nightMode = appContext.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+                @Override public void onConfigurationChanged(Configuration configuration) {
+                    int next = configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+                    if (next == nightMode) return;
+                    nightMode = next;
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        moduleSettingsObserver.onChange(false);
+                        refreshLightBackgroundOpacity();
+                        if (activeControlCenterForegroundHooks != null) activeControlCenterForegroundHooks.refresh();
+                    });
+                }
+                @Override public void onLowMemory() {}
+            });
         }
         if (settingsLoaded) return;
         try (Cursor cursor = context.getContentResolver().query(ModuleSettings.URI, null, null, null, null)) {
@@ -2874,6 +2962,10 @@ public final class XposedInit extends XposedModule {
                 statusBarClockSpacingEnabled = statusSpacingEnabledColumn >= 0 && cursor.getInt(statusSpacingEnabledColumn) != 0;
                 int collapseFixColumn = cursor.getColumnIndex(ModuleSettings.COMBINED_COLLAPSE_FIX);
                 combinedCollapseFixEnabled = collapseFixColumn >= 0 && cursor.getInt(collapseFixColumn) != 0;
+                int optimizeColumn = cursor.getColumnIndex(ModuleSettings.ADD_PANEL_OPTIMIZE);
+                addPanelOptimize = optimizeColumn >= 0 && cursor.getInt(optimizeColumn) != 0;
+                int namesColumn = cursor.getColumnIndex(ModuleSettings.ADD_PANEL_NAMES);
+                addPanelNames = namesColumn >= 0 && cursor.getInt(namesColumn) != 0;
                 int secondaryColumn = cursor.getColumnIndex(ModuleSettings.SECONDARY_EXPANSION_FIX);
                 secondaryExpansionEnabled = secondaryColumn >= 0 && cursor.getInt(secondaryColumn) != 0;
                 int emptyKeepOpenColumn = cursor.getColumnIndex(ModuleSettings.COMBINED_EMPTY_SHADE_KEEP_OPEN);

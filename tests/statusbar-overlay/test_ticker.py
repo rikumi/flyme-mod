@@ -13,7 +13,7 @@ files['android/graphics/Rect.java']=files['android/graphics/Rect.java'].replace(
 files['android/view/WindowInsets.java']='''package android.view;public class WindowInsets{public DisplayCutout getDisplayCutout(){return new DisplayCutout();}}'''
 files['android/view/DisplayCutout.java']='''package android.view;public class DisplayCutout{public android.graphics.Rect getBoundingRectTop(){return new android.graphics.Rect(400,0,480,24);}}'''
 files['android/app/INotificationManager.java']='package android.app;import dev.rikumi.flymemod.SignalHooks;public class INotificationManager{public static class Stub{public static class Proxy{public boolean allow=true;public boolean getNotificationHeadsUpAllowForPackage(String pkg,int uid){return (Boolean)SignalHooks.dispatch(this,getClass().getName(),"getNotificationHeadsUpAllowForPackage",new Object[]{pkg,uid},args->allow);}}}}'
-files['android/app/Notification.java']='package android.app;public class Notification{public int flags=0,priority=0;public CharSequence tickerText="hello";}'
+files['android/app/Notification.java']='package android.app;public class Notification{public static final int FLAG_ONGOING_EVENT=2;public int flags=0,priority=0;public CharSequence tickerText="hello";}'
 files['android/service/notification/StatusBarNotification.java']='package android.service.notification;public class StatusBarNotification{public String getOrigPackageName(){return "test.app";}public int getOrigPkgUid(){return 10001;}android.app.Notification n=new android.app.Notification();public android.app.Notification getNotification(){return n;}}'
 files['dev/rikumi/flymemod/SignalHooks.java']=files['dev/rikumi/flymemod/SignalHooks.java'].replace('public Object getArg(int n)', 'public java.util.List<Object> getArgs(){return java.util.Arrays.asList(args);}public Object getArg(int n)')
 files['com/flyme/systemui/statusbar/ticker/MarqueeTicker.java']='''package com.flyme.systemui.statusbar.ticker;
@@ -34,6 +34,7 @@ files['android/service/notification/StatusBarNotification.java']=files['android/
 files['com/flyme/systemui/statusbar/ticker/NotificationTickController.java']=files['com/flyme/systemui/statusbar/ticker/NotificationTickController.java'].replace('public void inflateTickerView', 'public FlymeMarqueeTicker ticker;public void inflateTickerView')
 files['com/flyme/systemui/statusbar/ticker/NotificationTickController$notifCollectionListener$1.java']='package com.flyme.systemui.statusbar.ticker;import com.android.systemui.statusbar.notification.collection.NotificationEntry;public class NotificationTickController$notifCollectionListener$1{public NotificationTickController this$0;public int nativeCalls;public void onEntryAdded(NotificationEntry e){}public void onEntryUpdated(NotificationEntry e){}}'
 files['com/flyme/systemui/statusbar/ticker/MarqueeTicker.java']=files['com/flyme/systemui/statusbar/ticker/MarqueeTicker.java'].replace('public View mTextSwitcher;', 'public android.service.notification.StatusBarNotification last;public View mTextSwitcher;').replace('entries++;return null;', 'entries++;last=(android.service.notification.StatusBarNotification)args[0];return null;')
+files['com/flyme/systemui/statusbar/ticker/FlymeTickerEx.java']='package com.flyme.systemui.statusbar.ticker;public class FlymeTickerEx{public void tickFilter(com.android.systemui.statusbar.notification.collection.NotificationEntry e,boolean added,Runnable run){}}'
 files['dev/rikumi/flymemod/TickerTest.java']='''package dev.rikumi.flymemod;
 import android.content.*;import android.view.*;import android.provider.Settings;
 import com.flyme.systemui.statusbar.ticker.*;import com.android.systemui.statusbar.phone.*;
@@ -105,6 +106,20 @@ check(originalIcons.get(ticker.last.getNotification())==originalIcon);
 check("标题：正文".contentEquals(ticker.last.getNotification().tickerText));
 check(entry.getSbn().getNotification().tickerText==null);
 }
+// Ongoing updates never replay; a new add with the same entry is allowed.
+entry.getSbn().getNotification().flags=2;
+int beforeOngoing=ticker.entries;
+for(int i=0;i<10;i++)SignalHooks.dispatch(listener,listener.getClass().getName(),"onEntryUpdated",new Object[]{entry},a->null);
+check(ticker.entries==beforeOngoing);
+SignalHooks.dispatch(listener,listener.getClass().getName(),"onEntryAdded",new Object[]{entry},a->null);
+check(ticker.entries==beforeOngoing+1);
+FlymeTickerEx filter=new FlymeTickerEx();int[] nativeTicks={0};
+for(int flag:new int[]{0,2,2|64})for(boolean added:new boolean[]{true,false}){
+entry.getSbn().getNotification().flags=flag;int before=nativeTicks[0];
+SignalHooks.dispatch(filter,filter.getClass().getName(),"tickFilter",new Object[]{entry,added,(Runnable)()->{}},a->{nativeTicks[0]++;return null;});
+check(nativeTicks[0]==before+(!added&&(flag&2)!=0?0:1));
+}
+entry.getSbn().getNotification().flags=0;
 entry.getSbn().getNotification().extras.clear();
 SignalHooks.dispatch(listener,listener.getClass().getName(),"onEntryAdded",new Object[]{entry},a->null);
 check("测试应用".contentEquals(ticker.last.getNotification().tickerText));

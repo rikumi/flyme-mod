@@ -49,6 +49,7 @@ public final class CameraSettingsBridge extends Application {
                 || ModuleSettings.CAMERA_LIVE_PREROLL_ENABLED.equals(key)
                 || ModuleSettings.CAMERA_LIVE_PREROLL_MS.equals(key)
                 || ModuleSettings.CAMERA_KEEP_FILTER.equals(key)
+                || ModuleSettings.LAUNCHER_EXTRA_ROW.equals(key)
                 || ModuleSettings.APP_IMMERSIVE_NAVIGATION.equals(key)
                 || ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES.equals(key)
                 || ModuleSettings.LANDSCAPE_GAME_PACKAGES.equals(key)
@@ -92,6 +93,8 @@ public final class CameraSettingsBridge extends Application {
         for (XposedService service : services) {
             try {
                 service.getRemotePreferences(REMOTE_FILE).edit()
+                        .putBoolean(ModuleSettings.LAUNCHER_EXTRA_ROW,
+                                local.getBoolean(ModuleSettings.LAUNCHER_EXTRA_ROW, false))
                         .putBoolean(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED,
                                 local.getBoolean(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED, false))
                         .putInt(ModuleSettings.AUTO_BRIGHTNESS_OFFSET,

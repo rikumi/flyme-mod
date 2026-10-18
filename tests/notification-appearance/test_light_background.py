@@ -27,7 +27,7 @@ public class NotificationLightTest {
     static int checks;
     static void check(boolean v,String m){checks++;if(!v)throw new AssertionError(m);}
     static class Color {static int argb(int a,int r,int g,int b){return a<<24|r<<16|g<<8|b;}}
-    static class ModuleSettings {static final int LIGHT_OPACITY_MAX=100;}
+    static class ModuleSettings {static final int LIGHT_OPACITY_MAX=40;}
     static class ColorFilter {int tint;ColorFilter(int tint){this.tint=tint;}}
     static class PorterDuff {enum Mode {SRC_IN}}
     static class PorterDuffColorFilter extends ColorFilter {
@@ -82,7 +82,7 @@ public class NotificationLightTest {
     boolean night(View v){return v.night;}
     boolean floating(View v)throws ReflectiveOperationException{return v.floating;}
     float radius(View v){return 12;}
-    private int color() COLOR
+    private int color(View view) COLOR
     private int backgroundColor(View view,int nativeColor,boolean blur)throws ReflectiveOperationException TINT
     class State {
         final WeakReference<View> owner;
@@ -101,7 +101,7 @@ public class NotificationLightTest {
             enabled=false;v.setBackground();check(v.background.color()==v.nativeTint,"off must retain light native background");
             enabled=true;
             for(int a:new int[]{0,5,12,24,50,95,100}){
-                amount=a;state.update();check(v.background.color()==((Math.round(a*255f/100f)<<24)|0xFFFFFF),"light slider ignored");
+                amount=a;state.update();check(v.background.color()==((Math.round((Math.max(0,Math.min(40,a))+60)*255f/100f)<<24)|0xFFFFFF),"light slider ignored");
             }
             int resets=v.resets;
             for(int i=0;i<100;i++)state.update();
@@ -113,14 +113,14 @@ public class NotificationLightTest {
             int expected=v.floating?(blur?DARK_BLUR_COLOR:DARK_SOLID_COLOR):0x1FFFFFFF;
             check(v.background.color()==expected,"dark policy changed");
             v.night=false;v.nativeTint=0xB2FFFFFF;state.update();
-            check(v.background.color()==0x1FFFFFFF,"theme change must refresh tint");
+            check(v.background.color()==0xB8FFFFFF,"theme change must refresh tint");
             enabled=false;state.update();check(v.background.color()==v.nativeTint,"second off transition must restore");
         }
         Landscape reused=new Landscape();State state=new State(reused);
         enabled=false;reused.setBackground();Drawable original=reused.background;
         ColorFilter nativeFilter=new ColorFilter(0xCC123456);original.setColorFilter(nativeFilter);
         enabled=true;state.update();check(reused.background==original,"native landscape drawable must be reused");
-        check(original.color()==color(),"module tint must override native filter while enabled");
+        check(original.color()==color(reused),"module tint must override native filter while enabled");
         amount=24;state.update();enabled=false;state.update();
         check(original.getColorFilter()==nativeFilter,"off must restore original filter after repeated slider updates");
         enabled=false;
@@ -134,11 +134,12 @@ public class NotificationLightTest {
     public static void main(String[] args)throws Exception{new NotificationLightTest().run();}
 }
 '''
-for key, marker in [('COLOR','private int color()'),('TINT','private int backgroundColor('),
+for key, marker in [('COLOR','private int color(View view)'),('TINT','private int backgroundColor('),
                     ('RESTORE','void restoreLandscapeTint()'),('FINISH','void finish()'),('UPDATE','void update()')]:
     java=re.sub(r"\b"+key+r"\b",lambda _: body(marker),java)
 with tempfile.TemporaryDirectory(dir='/private/tmp',prefix='flyme-notification-light-') as tmp:
     root=Path(tmp);f=root/'NotificationLightTest.java';f.write_text(java)
     jdk=Path('/opt/homebrew/opt/openjdk@21/bin')
-    subprocess.run([str(jdk/'javac'),'-d',tmp,str(f)],check=True)
+    policy=root/'LightBackgroundOpacity.java';policy.write_text(Path('app/src/main/java/dev/rikumi/flymemod/LightBackgroundOpacity.java').read_text().replace('package dev.rikumi.flymemod;', ''))
+    subprocess.run([str(jdk/'javac'),'-d',tmp,str(f),str(policy)],check=True)
     subprocess.run([str(jdk/'java'),'-cp',tmp,'NotificationLightTest'],check=True)

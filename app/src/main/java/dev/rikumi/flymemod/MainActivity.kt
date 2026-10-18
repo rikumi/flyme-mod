@@ -204,7 +204,7 @@ private fun SettingsScreen(requestedPage: String?, pageRequest: Int, resumeReque
     ) { pageId ->
         val category = CATEGORIES.firstOrNull { it.id == pageId }
         if (category == null) {
-            HomeScreen(onOpenCategory = { openCategoryId = it })
+            HomeScreen(resumeRequest, onOpenCategory = { openCategoryId = it })
         } else if (category.id == DISABLED_APPS_ID) {
             DisabledAppsScreen(LocalContext.current, onBack = { openCategoryId = null })
         } else if (category.id == "hidden_apps") {
@@ -216,7 +216,7 @@ private fun SettingsScreen(requestedPage: String?, pageRequest: Int, resumeReque
 }
 
 @Composable
-private fun HomeScreen(onOpenCategory: (String) -> Unit) {
+private fun HomeScreen(resumeRequest: Int, onOpenCategory: (String) -> Unit) {
     val listState = rememberLazyListState()
     val overscrollOffset = remember { mutableFloatStateOf(0f) }
     Scaffold(
@@ -237,6 +237,7 @@ private fun HomeScreen(onOpenCategory: (String) -> Unit) {
             item(key = "module_controls") {
                 HomeModuleControls()
             }
+            item(key = "scope_warning") { HomeScopeStatus(resumeRequest) }
             CATEGORY_GROUPS.forEach { group ->
                 item(key = "category_group/${group.first().id}") {
                     FluixCard {
@@ -272,6 +273,7 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
             navigationApplications = true)
         return
     }
+    val extraRowSupported = LauncherExtraRowDevice.isSupported(LocalContext.current)
     val listState = rememberLazyListState()
     val overscrollOffset = remember { mutableFloatStateOf(0f) }
     Scaffold(
@@ -299,7 +301,11 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                 .padding(padding)
                 .fluixOverscroll(listState, overscrollOffset),
         ) {
-            SETTINGS_GROUPS[category.id].orEmpty().forEach { group ->
+            SETTINGS_GROUPS[category.id].orEmpty().map { group ->
+                group.copy(items = group.items.filter {
+                    it.key != ModuleSettings.LAUNCHER_EXTRA_ROW || extraRowSupported
+                })
+            }.filter { it.items.isNotEmpty() }.forEach { group ->
                 item(key = "${category.id}/${group.title}/title") {
                     FluixSmallTitle(text = group.title)
                 }
