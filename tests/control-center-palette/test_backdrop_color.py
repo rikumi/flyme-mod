@@ -8,7 +8,8 @@ hooks=(root/'TileBackdropHooks.java').read_text()
 batch=(root/'TileBackdropBatch.java').read_text()
 shader=re.search(r'static final String SHADER = """(.*?)""";',hooks,re.S).group(1)
 start=batch.index('    private static String shader(int capacity)');end=batch.rfind('\n}')
-code='class TileBackdropHooks {static final String SHADER = """\n'+shader+'\n""";}\npublic class ShaderTest {\n'+batch[start:end]+'\npublic static void main(String[]args){System.out.print(shader(4));}}'
+constants=hooks[hooks.index('    static final String SHADER'):hooks.index('    private final Class<?> mediaClass')]
+code='class TileBackdropHooks {\n'+constants+'\n}\npublic class ShaderTest {\n'+batch[start:end]+'\npublic static void main(String[]args){System.out.print(shader(4));}}'
 with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
     p=Path(tmp)/'ShaderTest.java';p.write_text(code)
     jdk=Path('/opt/homebrew/opt/openjdk@21/bin')

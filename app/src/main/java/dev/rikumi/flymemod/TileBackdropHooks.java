@@ -120,7 +120,7 @@ final class TileBackdropHooks {
                 return mix(layer,composed,coverage);
             }
             """;
-    // Media has additional rounded ancestor clips that are not represented by tile batches.
+    // Media retains its rounded ancestor clips both standalone and in the shared batch.
     static final String MEDIA_SHADER = SHADER
             .replace("float mask(float2 p)", """
                     uniform float4 mediaClip0, mediaClip1, mediaClip2, mediaClip3;
@@ -269,7 +269,7 @@ final class TileBackdropHooks {
         batchCompositor = batch;
     }
 
-    void install(SignalHooks.Installer installer) throws ReflectiveOperationException {
+    void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
         for(String host:new String[]{"com.android.systemui.qs.QSTileHost","com.android.systemui.qs.QSHostAdapter"}) {
             notificationBackground.getClassLoader().loadClass(host).getDeclaredMethod("setShowingDetail",boolean.class);
             installer.hook(host,"setShowingDetail",chain->{
@@ -279,6 +279,12 @@ final class TileBackdropHooks {
             },boolean.class);
         }
         installPositionUpdateOptimization(installer);
+        try {
+            new BackdropSnapshotCache().install(trackerNode.getDeclaringClass().getClassLoader(),
+                    liveShaderIds, installer, deoptimize, log);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log.accept("Cannot install backdrop snapshot cache", error);
+        }
         for(String method:new String[]{"setBackground","onAttachedToWindow"}) {
             mediaClass.getDeclaredMethod(method);
             installer.hook(mediaClass.getName(),method,chain->{
@@ -615,10 +621,10 @@ final class TileBackdropHooks {
                         id = (Long) createEffect.invoke(root,media?MEDIA_SHADER:SHADER);
                         if (id == 0) throw new IllegalStateException("Flyme rejected tile backdrop shader");
                         registry.put(root,id); if(!media)shaderId = id;
-                        if(!media)liveShaderIds.add(id);
+                        liveShaderIds.add(id);
                     }
                     effect = (Drawable) createDrawable.invoke(root,id);
-                    if (!media && batchCompositor != null) batch = batchCompositor.prepare(root);
+                    if (batchCompositor != null) batch = batchCompositor.prepare(root);
                     effectRoot = new WeakReference<>(root); view.getOverlay().add(effect);
                     if (notification) setFloat.invoke(effect,"notificationShape",1f);
                     java.util.Arrays.fill(appliedNotificationCorners,-1f);

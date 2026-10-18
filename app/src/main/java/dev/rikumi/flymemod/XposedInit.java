@@ -1195,7 +1195,7 @@ public final class XposedInit extends XposedModule {
                     () -> notificationBackgroundSaturation / 100.0, () -> networkSplitStyle, activeTileCornerHooks,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error),
                     message -> log(Log.INFO, "FlymeMod", message));
-            activeTileBackdropHooks.install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters));
+            activeTileBackdropHooks.install((name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters), this::deoptimize);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             log(Log.ERROR, "FlymeMod", "Cannot resolve live tile backdrop shader", error);
         }
