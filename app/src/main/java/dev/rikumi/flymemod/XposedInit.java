@@ -608,6 +608,16 @@ public final class XposedInit extends XposedModule {
         }
         if (!"com.android.systemui".equals(packageName)) return;
         try {
+            new MediaStartupHooks(this).install(loader);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot install media startup query guards", error);
+        }
+        try {
+            new FlymeMediaStartupHooks(this).install(loader);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot install Flyme QS direct-session media guard", error);
+        }
+        try {
             new AddPanelHooks(this::loadSettings, () -> addPanelOptimize, () -> addPanelNames,
                     (message,error) -> log(Log.ERROR,"FlymeMod",message,error))
                     .install(loader,(name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters),this::deoptimize);

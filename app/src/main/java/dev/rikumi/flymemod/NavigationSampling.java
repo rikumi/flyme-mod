@@ -1,15 +1,16 @@
 package dev.rikumi.flymemod;
 
-/** Fixed sample locations in one raw-task capture, including the backing's 1px seam. */
+/** Independent CPU implementation of ColorOS-style side-region / line fallback sampling. */
 final class NavigationSampling {
-    static final int ROW_POINTS = 20;
-    static final int REGION_ROWS = 3;
-    static final int REGION_COLUMNS = 4;
-    static final int REGION_POINTS = REGION_ROWS * REGION_COLUMNS;
+    // Raw-buffer pixels, not dp. Keep a gap above the backing's 1px seam.
+    private static final int SAMPLE_HEIGHT = 10;
+    private static final int SIDE_INSET = 2;
+    private static final int SIDE_WIDTH = 8;
+    private static final int LINE_HEIGHT = 3;
+    private static final int SIDE_VARIANCE_LIMIT = 100;
+    private static final int LINE_VARIANCE_LIMIT = 25;
     final int left, navigationTop, width, navigationHeight;
     final int captureTop, captureHeight;
-    private final int[] xs = new int[ROW_POINTS + REGION_POINTS];
-    private final int[] ys = new int[ROW_POINTS + REGION_POINTS];
 
     NavigationSampling(int left, int navigationTop, int width, int navigationHeight) {
         if (navigationTop <= 1 || width <= 0 || navigationHeight <= 0) {
@@ -17,40 +18,36 @@ final class NavigationSampling {
         }
         this.left = left; this.navigationTop = navigationTop;
         this.width = width; this.navigationHeight = navigationHeight;
-        captureTop = navigationTop - 2;
-        captureHeight = navigationHeight + 2;
-        for (int i = 0; i < ROW_POINTS; i++) {
-            // Cosine spacing: dense at both edges, sparse around the middle.
-            xs[i] = (int) Math.round((width - 1) * (1 - Math.cos(Math.PI * i / (ROW_POINTS - 1))) / 2);
-        }
-        int regionHeight = navigationHeight + 1;
-        for (int row = 0; row < REGION_ROWS; row++) {
-            for (int column = 0; column < REGION_COLUMNS; column++) {
-                int index = ROW_POINTS + row * REGION_COLUMNS + column;
-                xs[index] = (2 * column + 1) * width / (2 * REGION_COLUMNS);
-                ys[index] = 1 + (2 * row + 1) * regionHeight / (2 * REGION_ROWS);
-            }
-        }
+        captureHeight = Math.min(SAMPLE_HEIGHT, navigationTop - 1);
+        captureTop = navigationTop - 1 - captureHeight;
     }
 
     boolean matches(int left, int top, int width, int height) {
         return this.left == left && navigationTop == top && this.width == width && navigationHeight == height;
     }
 
-    int x(int point) { return xs[point]; }
-    int y(int point) { return ys[point]; }
-
     Integer sample(PixelReader pixels) {
-        int[] row = new int[ROW_POINTS];
-        for (int i = 0; i < ROW_POINTS; i++) row[i] = pixels.colorAt(xs[i], ys[i]);
-        int reference = pixels.colorAt(xs[ROW_POINTS], ys[ROW_POINTS]);
-        boolean uniform = true;
-        for (int i = ROW_POINTS + 1; i < xs.length; i++) {
-            // The interior gate is exact; the ~1% tolerance belongs only to the
-            // dominant-color vote among the twenty exterior sample points.
-            if (pixels.colorAt(xs[i], ys[i]) != reference) uniform = false;
+        // Accumulate both sides together: individually uniform but differently colored
+        // sides must not arbitrarily select one side or produce their blended color.
+        int inset = Math.min(SIDE_INSET, (width - 1) / 2);
+        int sideWidth = Math.min(SIDE_WIDTH, (width - 2 * inset) / 2);
+        if (sideWidth > 0) {
+            NavigationColorSampler sides = new NavigationColorSampler();
+            collect(sides, pixels, inset, inset + sideWidth, 0, captureHeight);
+            collect(sides, pixels, width - inset - sideWidth, width - inset, 0, captureHeight);
+            Integer color = sides.color(SIDE_VARIANCE_LIMIT);
+            if (color != null) return color;
         }
-        return uniform ? NavigationColorSampler.dominantColor(row) : null;
+        NavigationColorSampler line = new NavigationColorSampler();
+        collect(line, pixels, 0, width, Math.max(0, captureHeight - LINE_HEIGHT), captureHeight);
+        return line.color(LINE_VARIANCE_LIMIT);
+    }
+
+    private static void collect(NavigationColorSampler sample, PixelReader pixels,
+            int left, int right, int top, int bottom) {
+        for (int y = top; y < bottom; y++) {
+            for (int x = left; x < right; x++) sample.add(pixels.colorAt(x, y));
+        }
     }
 
     interface PixelReader {

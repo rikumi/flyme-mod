@@ -1,47 +1,25 @@
 package dev.rikumi.flymemod;
 
-import java.util.Arrays;
-
-/** An observed RGB value wins only when its 1% neighborhood covers most of the line. */
+/** Mean RGB color accepted only when the mean of the three channel variances is low. */
 final class NavigationColorSampler {
-    private static final int CHANNEL_TOLERANCE = 3; // round(255 * 1%)
+    private long count, red, green, blue, squares;
+    private boolean transparent;
 
-    static Integer dominantColor(int[] pixels) {
-        int[] colors = new int[pixels.length];
-        int size = 0;
-        for (int pixel : pixels) {
-            // An empty/transparent part of a task capture is not an app color.
-            if ((pixel >>> 24) == 255) colors[size++] = pixel & 0xffffff;
-        }
-        if (size <= pixels.length / 2) return null;
-        Arrays.sort(colors, 0, size);
-        int[] counts = new int[size];
-        int unique = 0, exactWinner = 0;
-        for (int i = 0; i < size;) {
-            int value = colors[i], end = i + 1;
-            while (end < size && colors[end] == value) end++;
-            colors[unique] = value; counts[unique] = end - i;
-            if (counts[unique] > counts[exactWinner]) exactWinner = unique;
-            unique++; i = end;
-        }
-        if (counts[exactWinner] > pixels.length / 2) return 0xff000000 | colors[exactWinner];
+    void add(int color) {
+        // Task captures have no reliable background behind transparent pixels.
+        if ((color >>> 24) != 255) transparent = true;
+        int r = (color >>> 16) & 255, g = (color >>> 8) & 255, b = color & 255;
+        count++;
+        red += r; green += g; blue += b;
+        squares += (long) r * r + (long) g * g + (long) b * b;
+    }
 
-        int winner = 0, votes = 0, start = 0, end = 0;
-        for (int i = 0; i < unique; i++) {
-            int red = colors[i] >>> 16, green = (colors[i] >>> 8) & 255, blue = colors[i] & 255;
-            while (start < unique && (colors[start] >>> 16) < red - CHANNEL_TOLERANCE) start++;
-            while (end < unique && (colors[end] >>> 16) <= red + CHANNEL_TOLERANCE) end++;
-            int count = 0;
-            for (int j = start; j < end; j++) {
-                if (Math.abs(((colors[j] >>> 8) & 255) - green) <= CHANNEL_TOLERANCE
-                        && Math.abs((colors[j] & 255) - blue) <= CHANNEL_TOLERANCE) count += counts[j];
-            }
-            // Count neighbors around an actual color, not a transitive chain or
-            // an average. Ties favor the most frequent exact value in the group.
-            if (count > votes || (count == votes && counts[i] > counts[winner])) {
-                winner = i; votes = count;
-            }
-        }
-        return votes > pixels.length / 2 ? 0xff000000 | colors[winner] : null;
+    Integer color(int varianceLimit) {
+        if (transparent || count == 0) return null;
+        // E[x²] - E[x]²; compare before dividing to retain boundary precision.
+        long variance = count * squares - red * red - green * green - blue * blue;
+        if (variance > 3L * varianceLimit * count * count) return null;
+        return 0xff000000 | ((int) (red / count) << 16)
+                | ((int) (green / count) << 8) | (int) (blue / count);
     }
 }

@@ -20,6 +20,7 @@ public final class CameraSettingsBridge extends Application {
     private SharedPreferences local;
     private final SharedPreferences.OnSharedPreferenceChangeListener changes = (prefs, key) -> {
         if (key == null
+                || ModuleSettings.FIX_MEDIA_STARTUP.equals(key)
                 || ModuleSettings.ANDROID_VERSION_KERNEL.equals(key)
                 || ModuleSettings.STATUS_BATTERY_CAPACITY.equals(key)
                 || ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED.equals(key)
@@ -97,6 +98,7 @@ public final class CameraSettingsBridge extends Application {
         for (XposedService service : services) {
             try {
                 service.getRemotePreferences(REMOTE_FILE).edit()
+                        .putBoolean(ModuleSettings.FIX_MEDIA_STARTUP, local.getBoolean(ModuleSettings.FIX_MEDIA_STARTUP, false))
                         .putBoolean(ModuleSettings.LAUNCHER_EXTRA_ROW,
                                 local.getBoolean(ModuleSettings.LAUNCHER_EXTRA_ROW, false))
                         .putBoolean(ModuleSettings.AUTO_BRIGHTNESS_OFFSET_ENABLED,

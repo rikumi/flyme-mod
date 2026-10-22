@@ -120,6 +120,9 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
                 ),
             ),
         )),
+        SettingsGroup("播放控制", listOf(
+            SwitchItem(ModuleSettings.FIX_MEDIA_STARTUP, "禁用主动显示未播放媒体"),
+        )),
         SettingsGroup("控制中心动画", listOf(
             SwitchItem(ModuleSettings.SEPARATE_SHADE_SWIPE, "分离控制中心与通知中心双向滑动切换"),
             SwitchItem(ModuleSettings.FIX_MEDIA_SWIPE, "播放控制侧滑删除分段动画"),

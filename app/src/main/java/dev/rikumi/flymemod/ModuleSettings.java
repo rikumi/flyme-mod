@@ -221,6 +221,7 @@ public final class ModuleSettings {
     public static final String NETWORK_SPLIT_STYLE = "network_split_style";
     public static final String SPLIT_NETWORK_CARD = "split_network_card";
     public static final String FOLD_IDLE_MEDIA = "fold_idle_media";
+    public static final String FIX_MEDIA_STARTUP = "fix_media_startup";
     public static final String FIX_MEDIA_SWIPE = "fix_media_swipe";
     public static final String NOTIFICATION_SWIPE_SEGMENTS = "notification_swipe_segments";
     public static final String CIRCLE_SMALL_TILES = "circle_small_tiles";
