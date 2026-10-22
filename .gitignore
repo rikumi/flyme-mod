@@ -19,3 +19,6 @@ __pycache__/
 
 # Local device performance captures
 /.local/perf-traces/
+
+# Android native build intermediates
+.cxx/

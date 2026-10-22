@@ -26,10 +26,15 @@ if (!signingStoreFile.isFile()) {
 
 android {
     namespace 'dev.rikumi.flymemod'
+    ndkVersion '21.4.7075529'
+    externalNativeBuild {
+        cmake { path file('src/main/cpp/CMakeLists.txt'); version '3.22.1' }
+    }
     compileSdk 37
 
     defaultConfig {
         applicationId 'dev.rikumi.flymemod'
+        externalNativeBuild { cmake { arguments '-DANDROID_STL=c++_static' } }
         minSdk 26
         targetSdk 37
         versionCode 10400

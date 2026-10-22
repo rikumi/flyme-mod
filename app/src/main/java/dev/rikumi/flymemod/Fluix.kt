@@ -56,7 +56,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -411,7 +411,7 @@ fun FluixOverscrollHost(content: @Composable () -> Unit) {
  */
 @Composable
 fun Modifier.fluixOverscroll(
-    listState: LazyListState,
+    listState: ScrollableState,
     overscrollOffset: MutableState<Float>? = null,
 ): Modifier {
     val density = LocalDensity.current

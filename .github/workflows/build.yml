@@ -46,7 +46,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
 
       - name: Install compile SDK
-        run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;21.4.7075529' 'cmake;3.22.1'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

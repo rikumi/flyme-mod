@@ -7,6 +7,11 @@ private val FONT_WEIGHT_NAMES = listOf("跟随系统", "极细（100）", "纤�
 internal val HIDE_DISABLED_APPS_ITEM = SwitchItem(ModuleSettings.HIDE_DISABLED_APPS, "在应用管理中隐藏已停用应用")
 
 internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
+    "system_fonts" to listOf(SettingsGroup("系统字体", listOf(
+        CustomItem(SystemFontHooks.ZH) { SystemFontPreference(SystemFontHooks.ZH, "中文字体", listOf("默认", "思源黑体", "自定义")) },
+        CustomItem(SystemFontHooks.LATIN) { SystemFontPreference(SystemFontHooks.LATIN, "西文字体", listOf("默认", "Inter", "Manrope", "自定义")) },
+        CustomItem(SystemFontHooks.MONO) { SystemFontPreference(SystemFontHooks.MONO, "等宽字体", listOf("Maple Mono", "JetBrains Mono", "Fira Code", "Cascadia Code", "自定义")) },
+    ))),
     "desktop" to listOf(
         SettingsGroup("轮廓光", listOf(
             SwitchItem(ModuleSettings.ICON_CONTOUR, "图标轮廓光"),

@@ -14,13 +14,13 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -76,6 +76,7 @@ private val CATEGORY_GROUPS: List<List<Category>> = listOf(
         Category("hidden_apps", "隐藏应用", R.drawable.ic_flyme_home_apps, SettingsHomeColors.yellowForeground),
         Category(DISABLED_APPS_ID, "停用应用", R.drawable.ic_flyme_home_disabled, SettingsHomeColors.yellowForeground),
         Category("navigation", "导航与手势", R.drawable.ic_flyme_home_gestures, SettingsHomeColors.yellowForeground),
+        Category("system_fonts", "系统字体", R.drawable.ic_flyme_home_fonts, SettingsHomeColors.yellowForeground),
     ),
     listOf(
         Category("system_cleanup", "系统净化", R.drawable.ic_flyme_home_cleaner, SettingsHomeColors.orangeForeground),
@@ -217,7 +218,7 @@ private fun SettingsScreen(requestedPage: String?, pageRequest: Int, resumeReque
 
 @Composable
 private fun HomeScreen(resumeRequest: Int, onOpenCategory: (String) -> Unit) {
-    val listState = rememberLazyListState()
+    val listState = rememberScrollState()
     val overscrollOffset = remember { mutableFloatStateOf(0f) }
     Scaffold(
         topBar = {
@@ -227,33 +228,29 @@ private fun HomeScreen(resumeRequest: Int, onOpenCategory: (String) -> Unit) {
             )
         },
     ) { padding ->
-        LazyColumn(
-            state = listState,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .fluixOverscroll(listState, overscrollOffset),
+                .fluixOverscroll(listState, overscrollOffset)
+                .verticalScroll(listState),
         ) {
-            item(key = "module_controls") {
-                HomeModuleControls()
-            }
-            item(key = "scope_warning") { HomeScopeStatus(resumeRequest) }
+            HomeModuleControls()
+            HomeScopeStatus(resumeRequest)
             CATEGORY_GROUPS.forEach { group ->
-                item(key = "category_group/${group.first().id}") {
-                    FluixCard {
-                        group.forEachIndexed { index, category ->
-                            if (index > 0) FluixItemDivider(startInset = FLUIX_CATEGORY_TEXT_START)
-                            FluixCategoryRow(
-                                icon = category.icon,
-                                iconForeground = category.iconForeground,
-                                title = category.title,
-                                onClick = { onOpenCategory(category.id) },
-                            )
-                        }
+                FluixCard {
+                    group.forEachIndexed { index, category ->
+                        if (index > 0) FluixItemDivider(startInset = FLUIX_CATEGORY_TEXT_START)
+                        FluixCategoryRow(
+                            icon = category.icon,
+                            iconForeground = category.iconForeground,
+                            title = category.title,
+                            onClick = { onOpenCategory(category.id) },
+                        )
                     }
                 }
             }
-            item(key = "home_bottom_space") { Box(Modifier.height(20.dp)) }
+            Box(Modifier.height(20.dp))
         }
     }
 }
@@ -274,7 +271,7 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
         return
     }
     val extraRowSupported = LauncherExtraRowDevice.isSupported(LocalContext.current)
-    val listState = rememberLazyListState()
+    val listState = rememberScrollState()
     val overscrollOffset = remember { mutableFloatStateOf(0f) }
     Scaffold(
         topBar = {
@@ -294,26 +291,20 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
             )
         },
     ) { padding ->
-        LazyColumn(
-            state = listState,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .fluixOverscroll(listState, overscrollOffset),
+                .fluixOverscroll(listState, overscrollOffset)
+                .verticalScroll(listState),
         ) {
             SETTINGS_GROUPS[category.id].orEmpty().map { group ->
                 group.copy(items = group.items.filter {
                     it.key != ModuleSettings.LAUNCHER_EXTRA_ROW || extraRowSupported
                 })
             }.filter { it.items.isNotEmpty() }.forEach { group ->
-                item(key = "${category.id}/${group.title}/title") {
-                    FluixSmallTitle(text = group.title)
-                }
-                itemsIndexed(
-                    items = group.items,
-                    key = { _, item -> "${category.id}/${group.title}/${item.key}" },
-                    contentType = { _, item -> item.javaClass },
-                ) { index, item ->
+                FluixSmallTitle(text = if (category.id == "system_fonts") "修改字体需重启 Zygote 生效" else group.title)
+                group.items.forEachIndexed { index, item ->
                     FluixCardRow(first = index == 0, last = index == group.items.lastIndex) {
                         if (index > 0) FluixItemDivider()
                         SettingsItemRow(item, SettingsActions(
@@ -323,7 +314,7 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                     }
                 }
             }
-            item { Box(Modifier.height(24.dp)) }
+            Box(Modifier.height(24.dp))
         }
     }
 }

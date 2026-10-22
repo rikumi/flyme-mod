@@ -235,6 +235,8 @@ public final class XposedInit extends XposedModule {
     private boolean nightBlacklistInstalled;
 
     @Override public void onPackageReady(PackageReadyParam param) {
+        if (!"android".equals(param.getPackageName())) NativeFontHooks.hook(this);
+        FlymeFontProtection.install(this, param.getClassLoader());
         if (!nightBlacklistInstalled) {
             try {
                 new NightModeBlacklistHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)).install(param.getClassLoader(),
@@ -288,6 +290,7 @@ public final class XposedInit extends XposedModule {
 
     @Override public void onSystemServerStarting(SystemServerStartingParam param) {
         ClassLoader loader = param.getClassLoader();
+        SystemFontHooks.hook(this, loader);
         try {
             new HeyMelodyNoiseBridge(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
                     (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))

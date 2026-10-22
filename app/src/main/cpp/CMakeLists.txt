@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.22)
+project(flyme_font_bridge LANGUAGES CXX)
+add_library(flyme_font_bridge SHARED font_bridge.cpp)
+target_compile_features(flyme_font_bridge PRIVATE cxx_std_17)
+target_compile_options(flyme_font_bridge PRIVATE -Wall -Wextra -fvisibility=hidden)
+target_link_libraries(flyme_font_bridge PRIVATE log dl)
+target_link_options(flyme_font_bridge PRIVATE -Wl,-z,max-page-size=16384)

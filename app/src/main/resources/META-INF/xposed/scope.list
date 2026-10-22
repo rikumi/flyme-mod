@@ -40,3 +40,6 @@ com.meizu.wear
 system
 com.meizu.safe
 com.google.android.gms
+com.android.chrome
+com.google.android.webview
+com.android.webview

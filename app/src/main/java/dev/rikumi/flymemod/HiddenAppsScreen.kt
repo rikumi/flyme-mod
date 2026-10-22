@@ -15,9 +15,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
@@ -101,7 +100,7 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
     var picking by remember { mutableStateOf(false) }
     var choices by remember { mutableStateOf<List<HiddenAppEntry>?>(null) }
     var entries by remember { mutableStateOf<List<HiddenAppEntry>>(emptyList()) }
-    val listState = rememberLazyListState()
+    val listState = rememberScrollState()
     val overscroll = remember { mutableFloatStateOf(0f) }
     fun save(packages: Set<String>) {
         val editor = preferences.edit().putStringSet(packagesKey, packages)
@@ -121,7 +120,7 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
         entries = withContext(Dispatchers.IO) { ordered.map { previous[it] ?: appEntry(context, it) } }
     }
     LaunchedEffect(picking) {
-        listState.scrollToItem(0)
+        listState.scrollTo(0)
         if (picking) {
             choices = null
             val result = withContext(Dispatchers.IO) { readLauncherApps(context, navigationApplications || landscapeGames) }
@@ -151,15 +150,15 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
                     savedOrder = HiddenAppOrder.reconcile(packages, order.joinToString("\n")).joinToString("\n")
                     preferences.edit().putString(ModuleSettings.HIDDEN_LAUNCHER_APP_ORDER, savedOrder).apply()
                 })
-        } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).fluixOverscroll(listState, overscroll)) {
-            item { FluixSmallTitle(if (navigationApplications || landscapeGames) {
+        } else Column(modifier = Modifier.fillMaxSize().padding(padding).fluixOverscroll(listState, overscroll).verticalScroll(listState)) {
+            FluixSmallTitle(if (navigationApplications || landscapeGames) {
                 if (picking) "非系统应用" else if (landscapeGames) "横屏游戏宽度适配列表" else "强制沉浸应用列表"
-            } else if (picking) "有桌面图标的应用" else "彻底隐藏应用列表") }
+            } else if (picking) "有桌面图标的应用" else "彻底隐藏应用列表")
             val current = if (picking) choices?.filter { it.pkg !in hidden } else entries
             when {
-                current == null -> item { FluixSmallTitle("加载中…") }
-                current.isEmpty() -> item { FluixSmallTitle("暂无应用") }
-                else -> itemsIndexed(current, key = { _, app -> app.pkg }) { index, app ->
+                current == null -> FluixSmallTitle("加载中…")
+                current.isEmpty() -> FluixSmallTitle("暂无应用")
+                else -> current.forEachIndexed { index, app ->
                     FluixCardRow(first = index == 0, last = index == current.lastIndex) {
                         if (landscapeGames && !picking) {
                             val displayMode = context.getSystemService(android.hardware.display.DisplayManager::class.java)
@@ -191,7 +190,7 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
                     }
                 }
             }
-            item { Spacer(Modifier.height(20.dp)) }
+            Spacer(Modifier.height(20.dp))
         }
     }
 }

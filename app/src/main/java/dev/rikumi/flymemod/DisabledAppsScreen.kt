@@ -27,9 +27,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -231,14 +230,14 @@ private fun buildExportScript(apps: List<DisabledAppEntry>): String {
 /** List/export disabled apps; five taps on the warning unlock the root app picker. */
 @Composable
 internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
-    val listState = rememberLazyListState()
+    val listState = rememberScrollState()
     val overscrollOffset = remember { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
     var picking by remember { mutableStateOf(false) }
     var choices by remember { mutableStateOf<List<DisabledAppEntry>?>(null) }
     var busy by remember { mutableStateOf(false) }
     var loadGeneration by remember { mutableIntStateOf(0) }
-    val pickerState = rememberLazyListState()
+    val pickerState = rememberScrollState()
     val currentListState = if (picking) pickerState else listState
     BackHandler(enabled = picking || busy) { if (!busy) picking = false }
     // null = 加载中; 加载失败(无 root 等)toast 后按空列表展示。
@@ -262,7 +261,7 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
         overscrollOffset.floatValue = 0f
         if (picking) {
             choices = null
-            pickerState.scrollToItem(0)
+            pickerState.scrollTo(0)
             android.widget.Toast.makeText(ctx, "加载中…", android.widget.Toast.LENGTH_SHORT).show()
             try {
                 choices = withContext(Dispatchers.IO) { listSystemApps(ctx) }
@@ -350,41 +349,39 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
             )
         },
     ) { padding ->
-        LazyColumn(
-            state = currentListState,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .fluixOverscroll(currentListState, overscrollOffset),
+                .fluixOverscroll(currentListState, overscrollOffset)
+                .verticalScroll(currentListState),
         ) {
             if (picking) {
-                item { FluixSmallTitle(text = "系统应用") }
+                FluixSmallTitle(text = "系统应用")
                 val current = choices
                 when {
                     current == null -> Unit
-                    current.isEmpty() -> item { FluixSmallTitle(text = "暂无应用") }
-                    else -> itemsIndexed(current, key = { _, entry -> entry.pkg }) { index, entry ->
+                    current.isEmpty() -> FluixSmallTitle(text = "暂无应用")
+                    else -> current.forEachIndexed { index, entry ->
                         FluixCardRow(first = index == 0, last = index == current.lastIndex) {
                             AppRemovalRow(entry, busy) { action -> perform(entry, action) }
                         }
                     }
                 }
             } else {
-                item { FluixSmallTitle(text = "停用应用设置") }
-                item {
-                    FluixCard {
-                        DisabledAppsHintRow { if (!busy) picking = true }
-                        FluixItemDivider()
-                        SettingsItemRow(HIDE_DISABLED_APPS_ITEM)
-                    }
+                FluixSmallTitle(text = "停用应用设置")
+                FluixCard {
+                    DisabledAppsHintRow { if (!busy) picking = true }
+                    FluixItemDivider()
+                    SettingsItemRow(HIDE_DISABLED_APPS_ITEM)
                 }
-                item { FluixSmallTitle(text = "已停用的应用") }
+                FluixSmallTitle(text = "已停用的应用")
                 val current = apps
                 when {
                     current == null -> Unit
-                    current.isEmpty() -> item { FluixSmallTitle(text = "无已停用或用户级卸载的应用") }
-                    // 每行一个独立的惰性 item: 行数上百时不能共用一个容器(见 FluixCardRow 注释)。
-                    else -> itemsIndexed(current, key = { _, entry -> entry.pkg }) { index, entry ->
+                    current.isEmpty() -> FluixSmallTitle(text = "无已停用或用户级卸载的应用")
+                    // 每行独立创建, 保持卡片间距与边缘圆角一致。
+                    else -> current.forEachIndexed { index, entry ->
                         FluixCardRow(first = index == 0, last = index == current.lastIndex) {
                             if (index > 0) FluixItemDivider()
                             DisabledAppActionsRow(entry, busy,
@@ -395,7 +392,7 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
                     }
                 }
             }
-            item { Box(Modifier.height(24.dp)) }
+            Box(Modifier.height(24.dp))
         }
     }
 }
