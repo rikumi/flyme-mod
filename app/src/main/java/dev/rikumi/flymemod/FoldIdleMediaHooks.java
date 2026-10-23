@@ -1,23 +1,18 @@
 package dev.rikumi.flymemod;
 
-import android.app.ActivityManager;
 import android.content.Context;
 import android.media.session.MediaController;
+import android.media.session.PlaybackState;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.WeakHashMap;
-import java.util.concurrent.Executors;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -33,7 +28,7 @@ final class FoldIdleMediaHooks {
     private final Class<?> networkClass, mediaClass, paramsClass;
     private final Field cellX, cellY, spanX, spanY, pageIndex, tempCoords, tmpCellX, tmpCellY, locked, x, y;
     private final Field cellWidth, cellHeight, horizontalGap, verticalGap, temporary;
-    private final Field currentPackage, currentSession;
+    private final Field currentSession;
     private final Method controllerView;
     private final Class<?> panelClass;
     private final Map<ViewGroup, String> reasons = new WeakHashMap<>();
@@ -42,11 +37,6 @@ final class FoldIdleMediaHooks {
     private final Map<View, Integer> hidden = new WeakHashMap<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean polling;
-    private final RunningPackagesSnapshot processes = new RunningPackagesSnapshot(
-            Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread=new Thread(runnable,"FlymeMod-media-processes");
-                thread.setDaemon(true); return thread;
-            }), runnable -> handler.post(runnable), SystemClock::uptimeMillis, this::processesChanged);
 
     FoldIdleMediaHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled,
                       SplitNetworkCardHooks split, BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
@@ -64,7 +54,7 @@ final class FoldIdleMediaHooks {
         horizontalGap = layout.getField("mCellMarginHorizontal"); verticalGap = layout.getField("mCellMarginVertical");
         temporary = layout.getField("isTemp");
         Class<?> controller = loader.loadClass(CONTROLLER);
-        currentPackage = controller.getField("mCurPkgName"); controllerView = controller.getMethod("getView");
+        controllerView = controller.getMethod("getView");
         currentSession = controller.getField("mMediaController");
         panelClass = loader.loadClass("com.flyme.systemui.controlcenter.phone.MzQSPanel");
         loader.loadClass(CONTROLLER + "$Factory").getMethod("create", panelClass);
@@ -85,6 +75,10 @@ final class FoldIdleMediaHooks {
         installer.hook(CONTROLLER, "getQsMediaData", chain -> {
             Object result = chain.proceed(); rememberController(chain.getThisObject()); return result;
         }, boolean.class);
+        // Playback callbacks always enter refreshUI, even if media-data hooks suppress rendering.
+        installer.hook(CONTROLLER, "refreshUI", chain -> {
+            Object result = chain.proceed(); rememberController(chain.getThisObject()); return result;
+        }, String.class);
         installer.hook(LAYOUT, "onMeasure", chain -> {
             ViewGroup layout = (ViewGroup) chain.getThisObject();
             try { prepare(layout); }
@@ -110,7 +104,6 @@ final class FoldIdleMediaHooks {
     }
 
     void refresh() {
-        processes.invalidate();
         for (ViewGroup layout : new ArrayList<>(plans.keySet())) if (layout != null) layout.requestLayout();
         startPolling();
     }
@@ -192,10 +185,10 @@ final class FoldIdleMediaHooks {
         Object controller = reference == null ? null : reference.get();
         if (controller == null) return reject(layout, "media controller not captured");
         MediaController session = (MediaController) currentSession.get(controller);
-        String pkg = session == null ? (String) currentPackage.get(controller) : session.getPackageName();
-        if (pkg != null && !pkg.isEmpty() && isRunning(layout.getContext(), pkg))
-            return reject(layout, "music app running or process list unavailable: " + pkg);
-        reason(layout, "compacted row=" + row + ", package=" + pkg);
+        PlaybackState state = session == null ? null : session.getPlaybackState();
+        if (state != null && state.getState() == PlaybackState.STATE_PLAYING)
+            return reject(layout, "media session playing");
+        reason(layout, "compacted row=" + row + ", playback=" + (state == null ? "none" : state.getState()));
         return new Plan(nw, mw, network, row);
     }
 
@@ -217,30 +210,6 @@ final class FoldIdleMediaHooks {
             log.accept("Idle media compaction [" + Integer.toHexString(System.identityHashCode(layout))
                     + "]: " + message, null);
         }
-    }
-
-    private boolean isRunning(Context context, String pkg) {
-        Context app=context.getApplicationContext();
-        return processes.isRunning(pkg, () -> {
-            ActivityManager manager = app.getSystemService(ActivityManager.class);
-            List<ActivityManager.RunningAppProcessInfo> list = manager == null ? null : manager.getRunningAppProcesses();
-            if(list==null)return null;
-            Set<String> packages=new HashSet<>();
-            for (ActivityManager.RunningAppProcessInfo process : list) {
-                if (process.pkgList != null) for (String name : process.pkgList) packages.add(name);
-                if (process.processName != null) {
-                    int separator=process.processName.indexOf(':');
-                    packages.add(separator<0?process.processName:process.processName.substring(0,separator));
-                }
-            }
-            return packages;
-        });
-    }
-
-    private void processesChanged() {
-        if(!enabled.getAsBoolean())return;
-        for(ViewGroup layout : new ArrayList<>(plans.keySet()))
-            if(layout!=null && layout.isAttachedToWindow() && layout.isShown())layout.requestLayout();
     }
 
     private void compact(ViewGroup layout, View child) throws ReflectiveOperationException {

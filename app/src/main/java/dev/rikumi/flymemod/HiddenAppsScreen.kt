@@ -130,7 +130,7 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
     }
     Scaffold(topBar = {
         FluixTopAppBar(
-            title = if (picking) "选择应用" else if (landscapeGames) "横屏游戏宽度适配" else if (navigationApplications) "应用列表" else "隐藏应用",
+            title = if (picking) "选择应用" else if (landscapeGames) "横屏游戏宽度适配" else if (navigationApplications) "强制沉浸应用列表" else "隐藏应用",
             navigationIcon = {
                 IconButton(onClick = { if (picking) picking = false else onBack() }) {
                     Icon(MiuixIcons.Back, "返回", tint = MiuixTheme.colorScheme.onSurface, modifier = Modifier.size(FLUIX_BACK_ICON))

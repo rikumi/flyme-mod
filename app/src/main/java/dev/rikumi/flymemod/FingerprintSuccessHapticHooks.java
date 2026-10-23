@@ -19,6 +19,7 @@ final class FingerprintSuccessHapticHooks {
         Class<?> identifier=loader.loadClass("android.hardware.biometrics.BiometricAuthenticator$Identifier");
         Method success=client.getMethod("wasAuthSuccessful");
         Method context=client.getMethod("getContext");
+        Method nativeEffect=VibrationEffect.class.getMethod("get", int.class);
         deoptimize.accept(client.getDeclaredMethod("onAuthenticated",identifier,boolean.class,ArrayList.class));
         installer.hook(client.getName(),"onAuthenticated",chain -> {
             Object result=chain.proceed();
@@ -27,9 +28,9 @@ final class FingerprintSuccessHapticHooks {
                 try {
                     Vibrator vibrator=((Context)context.invoke(chain.getThisObject())).getSystemService(Vibrator.class);
                     if(vibrator!=null && vibrator.hasVibrator())
-                        vibrator.vibrate(VibrationEffect.createOneShot(40,128),
+                        vibrator.vibrate((VibrationEffect)nativeEffect.invoke(null,31025),
                                 new VibrationAttributes.Builder().setUsage(VibrationAttributes.USAGE_HARDWARE_FEEDBACK).build());
-                } catch(RuntimeException error) {
+                } catch(ReflectiveOperationException | RuntimeException error) {
                     log.accept("Cannot play fingerprint success haptic feedback",error);
                 }
             }

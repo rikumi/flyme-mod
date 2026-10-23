@@ -37,7 +37,7 @@ internal fun AppNavigationPreference(onSelectApplications: () -> Unit) {
             .clickable(onClick = onSelectApplications)
             .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
             verticalAlignment = Alignment.CenterVertically) {
-            BasicText("应用列表", style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+            BasicText("强制沉浸应用列表", style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
                 modifier = Modifier.weight(1f))
             BasicText("${ModuleSettings.navigationApplications(preferences).size} 个应用",
                 style = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurfaceVariantSummary))
