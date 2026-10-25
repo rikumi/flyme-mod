@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Alpha silhouette distance only; artwork RGB never contributes to the contour. */
 final class IconContourPixels {
     static int[] mask(int[] pixels,int width,int height,float stroke) {
         stroke=Math.max(.5f,stroke);

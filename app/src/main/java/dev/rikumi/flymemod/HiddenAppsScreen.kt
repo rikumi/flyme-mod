@@ -66,7 +66,6 @@ private fun appEntry(context: Context, pkg: String): HiddenAppEntry {
     }.getOrElse { HiddenAppEntry(pkg, pkg, null) }
 }
 
-/** Resolve launchable activities as root; package visibility does not determine this list. */
 private fun readLauncherApps(context: Context, allApplications: Boolean): List<HiddenAppEntry>? {
     val output = runRoot(if (allApplications) "cmd package list packages -3 --user current" else
         "cmd package query-activities --components --user current -a android.intent.action.MAIN -c android.intent.category.LAUNCHER")
@@ -364,8 +363,7 @@ private fun HiddenAppIcon(context: Context, app: HiddenAppEntry, layout: HiddenF
     modifier: Modifier = Modifier, expanded: Boolean = false, onDismiss: () -> Unit = {}, onRemove: () -> Unit) {
     val textColor = MiuixTheme.colorScheme.onSurface.toArgb()
     Box(modifier) {
-        // Folder labels are native TextViews, not Fluix body text. Match their
-        // compound-drawable geometry and font metrics (including no font padding).
+
         AndroidView(modifier = Modifier.width(layout.textWidth.dp).fillMaxHeight(), factory = { ctx ->
             android.widget.TextView(ctx).apply {
                 includeFontPadding = false

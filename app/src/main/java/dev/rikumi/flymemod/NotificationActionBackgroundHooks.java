@@ -11,7 +11,6 @@ import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Remove the action bar's fill, preserving individual buttons and their interaction. */
 final class NotificationActionBackgroundHooks {
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled;
@@ -50,8 +49,7 @@ final class NotificationActionBackgroundHooks {
         Drawable background=view.getBackground();
         if (enabled.getAsBoolean()) {
             if (background!=null) {
-                // RemoteViews reapplication can replace the background while enabled.
-                // Save its latest native value rather than the first inflated value.
+
                 originals.put(view,background);
                 view.setBackground(null);
             }

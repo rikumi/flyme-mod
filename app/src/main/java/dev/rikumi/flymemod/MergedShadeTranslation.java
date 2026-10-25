@@ -4,7 +4,6 @@ import android.view.View;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-/** Flyme MzQSImpl's three translation groups, without rebuilding lists on each MOVE. */
 final class MergedShadeTranslation {
     private final Field[] views;
     private final Field notifications;

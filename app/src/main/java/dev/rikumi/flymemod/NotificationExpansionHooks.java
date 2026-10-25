@@ -15,7 +15,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Restores AOSP expansion eligibility and release decisions, using native row sizing and fling timing. */
 final class NotificationExpansionHooks {
     private static final String ROW = "com.android.systemui.statusbar.notification.row.ExpandableNotificationRow";
     private static final String HELPER = "com.android.systemui.ExpandHelper";
@@ -72,8 +71,7 @@ final class NotificationExpansionHooks {
 
     void install(SignalHooks.Installer installer) {
         String qs = "com.android.systemui.shade.QuickSettingsControllerImpl";
-        // Flyme's collapsed-QS interception treats any downward drag at the top of the
-        // notification list as a second QS pull. Reserve only a collapsed row's downward pull.
+
         installer.hook(qs, "onIntercept", chain -> {
             MotionEvent event = (MotionEvent) chain.getArg(0);
             boolean reserved = notificationPull(chain.getThisObject(), event);
@@ -111,8 +109,7 @@ final class NotificationExpansionHooks {
         installer.hook(HELPER, "startExpanding", chain -> {
             Object helper = chain.getThisObject();
             settings.accept((Context) field(helper, "mContext"));
-            // Flyme's onTouchEvent can call this without canChildBeExpanded, unlike
-            // onInterceptTouchEvent. Do not lock an unexpandable or fully expanded row.
+
             if (enabled.getAsBoolean() && (Integer) chain.getArg(1) == 1
                     && !fields.get("mExpanding").getBoolean(helper)
                     && !canPull(helper, chain.getArg(0))) return false;

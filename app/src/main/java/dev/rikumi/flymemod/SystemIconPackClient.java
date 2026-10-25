@@ -27,7 +27,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.UnaryOperator;
 
-/** Provider does O(1) lookups; clients never parse packs or enumerate installed applications. */
 final class SystemIconPackClient {
     private static final ThreadLocal<Integer> nativeDepth=ThreadLocal.withInitial(()->0);
     static boolean isNative() { return nativeDepth.get()>0; }
@@ -110,7 +109,7 @@ final class SystemIconPackClient {
         result.refresh();
         return result;
     }
-    /** Keep visible icons up to date without another PackageManager call on completion. */
+
     private static final class LiveIcon extends DrawableWrapper {
         private final Context context;
         private final String pkg,component;

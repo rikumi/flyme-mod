@@ -7,18 +7,37 @@ reference-apks/*.apk
 reference-apks/**/*.apk
 reference-apks/**/*.jar
 
-# Private APK signing material
 /signing.properties
 /signing/*.keystore
 /signing/*.jks
 
-# Raw theme resource extraction; reviewed target report is tracked.
 reference-apks/theme-meizu22/*/*-resources.txt
 reference-apks/theme-meizu22/inventory.json
 __pycache__/
 
-# Local device performance captures
 /.local/perf-traces/
 
-# Android native build intermediates
 .cxx/
+
+/.codebuddy/
+/AGENTS.md
+/.agents/
+/.codex/
+/tests/
+/reference-apks/
+.DS_Store
+*.md
+*.markdown
+*.rst
+*.adoc
+*.txt
+*.pdf
+*.html
+!CMakeLists.txt
+!**/*-OFL.txt
+/docs/*
+!/docs/releases/
+!/docs/releases/*.md
+/scripts/*
+!/scripts/verify-apk-signature.py
+!/README.md

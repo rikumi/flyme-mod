@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Applies the initial angle limit while later smart direction checks are disabled. */
 final class BackGestureDirectionPolicy {
     private BackGestureDirectionPolicy() {}
 

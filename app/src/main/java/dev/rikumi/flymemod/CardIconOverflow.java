@@ -5,7 +5,6 @@ import android.view.ViewGroup;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** Preserve card/row clipping while allowing enlarged icon children past their slots. */
 final class CardIconOverflow {
     private final Map<ViewGroup, Clip> originals = new WeakHashMap<>();
 

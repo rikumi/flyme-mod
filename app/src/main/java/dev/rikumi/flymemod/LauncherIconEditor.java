@@ -36,7 +36,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
-/** ColorOS edit-preview -> icon-pack pages -> select -> save flow, with a full-screen grid. */
 final class LauncherIconEditor {
     record Edit(String title, String pack, String drawable, boolean mask) {
         Edit(String title, String pack, String drawable) { this(title, pack, drawable, false); }
@@ -131,8 +130,7 @@ final class LauncherIconEditor {
         dialog.setOnShowListener(ignored -> {
             Window window = dialog.getWindow();
             if (window != null) {
-                // FlymeAlertController installs ADJUST_PAN during dialog creation.
-                // Use resizing alone, preserving its keyboard visibility preference.
+
                 int softInput = window.getAttributes().softInputMode;
                 window.setSoftInputMode((softInput & ~android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST)
                         | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
@@ -193,15 +191,13 @@ final class LauncherIconEditor {
         rowParams.leftMargin = dp(16); rowParams.rightMargin = dp(16);
         body.addView(packRow, rowParams);
         ListPopupWindow packPopup = new ListPopupWindow(ctx);
-        // Dialog mode avoids Spinner's private forwarding listener opening a
-        // second, independently measured popup during a drag/long press.
+
         Spinner packs = new Spinner(ctx, Spinner.MODE_DIALOG) {
             @Override public boolean performClick() {
                 android.graphics.Rect padding = new android.graphics.Rect();
                 android.graphics.drawable.Drawable background = packPopup.getBackground();
                 if (background != null) background.getPadding(padding);
-                // Align popup item text with the selected label, compensating
-                // for both the popup background and the fixed item padding.
+
                 packPopup.setContentWidth(getWidth() + dp(32));
                 packPopup.setHorizontalOffset(getLayoutDirection() == View.LAYOUT_DIRECTION_RTL
                         ? -dp(16) + padding.right : -dp(16) - padding.left);
@@ -272,8 +268,7 @@ final class LauncherIconEditor {
         dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(background));
         dialog.getWindow().getDecorView().setPadding(0, 0, 0, 0);
         dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        // Window content respects system-bar/IME insets; only the former half
-        // panel's height constraint is removed, never drawing under the keyboard.
+
         dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         contours.background(root);
         applyMask.setOnCheckedChangeListener((button, checked) -> {

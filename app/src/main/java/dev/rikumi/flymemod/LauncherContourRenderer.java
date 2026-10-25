@@ -6,7 +6,6 @@ import android.graphics.*;
 import android.view.View;
 import java.nio.charset.StandardCharsets;
 
-/** Shared white contour geometry for backgrounds and alpha silhouettes. */
 final class LauncherContourRenderer {
     private final RuntimeShader round, nativeCurve;
     private final UniformState roundUniforms = new UniformState(), nativeUniforms = new UniformState();
@@ -108,8 +107,7 @@ final class LauncherContourRenderer {
     }
     Bitmap pathMask(View view, Path path, int width, int height) {
         float stroke = 2f * view.getResources().getDisplayMetrics().density;
-        // Native outlines may rebuild an identical Path each frame. Compare the
-        // geometry before rasterizing another bitmap, as notification contours do.
+
         if (pathCache.matches(path,width,height,stroke)) return pathMask;
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas mask = new Canvas(bitmap); mask.clipPath(path);

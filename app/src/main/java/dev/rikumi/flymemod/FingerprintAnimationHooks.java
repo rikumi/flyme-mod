@@ -6,7 +6,6 @@ import java.lang.reflect.Method;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Suppress Flyme's fingerprint effect, independently of sensor and authentication handling. */
 final class FingerprintAnimationHooks {
     private static final String VIEW = "com.android.systemui.biometrics.UdfpsKeyguardViewLegacy";
     private static final String ANIMATION = "com.flyme.systemui.biometrics.FlymeFpAuthAnimView";

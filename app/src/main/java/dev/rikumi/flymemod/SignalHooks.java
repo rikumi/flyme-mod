@@ -32,7 +32,6 @@ import java.util.function.Consumer;
 import java.util.function.BiConsumer;
 import io.github.libxposed.api.XposedInterface;
 
-/** Flyme SystemUI 16260625 mobile pipeline and StatusIconContainer. */
 final class SignalHooks {
     interface Installer {
         void hook(String name, String method, XposedInterface.Hooker hooker, Class<?>... parameters);
@@ -347,8 +346,7 @@ final class SignalHooks {
                 || lower.getWidth() <= 0 || lower.getHeight() <= 0) return;
         int save = canvas.save();
         try {
-            // Draw the live drawable directly: the second root is transparent,
-            // but its ImageView still owns the bounds, matrix, level and tint.
+
             canvas.clipRect(0, height * 0.65f, width, height);
             canvas.scale((float) width / lower.getWidth(), (float) height / lower.getHeight());
             canvas.translate(lower.getPaddingLeft(), lower.getPaddingTop());

@@ -20,7 +20,6 @@ import top.yukonga.miuix.kmp.basic.SliderDefaults
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 
-/** Shared palette, hexadecimal input and explicit apply/cancel for all color settings. */
 @Composable
 internal fun ColorPickerEditor(
     savedColor: Int,
@@ -67,7 +66,6 @@ internal fun ColorPickerEditor(
     }
 }
 
-/** Float HSV state preserves continuous dragging, including hue selection for gray colors. */
 @Composable
 private fun SmoothColorPicker(color: Color, opaque: Boolean, onColorChanged: (Color) -> Unit) {
     val initial = remember { FloatArray(3).also { android.graphics.Color.colorToHSV(color.toArgb(), it) } }

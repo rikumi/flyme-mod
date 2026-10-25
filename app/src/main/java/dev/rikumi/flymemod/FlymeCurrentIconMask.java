@@ -6,7 +6,6 @@ import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
 import java.util.HashMap;
 
-/** Applies the active launcher's decoration without looking up a replacement app icon. */
 final class FlymeCurrentIconMask {
     private static final HashMap<String, Object> items = new HashMap<>();
     record Style(String theme, String pack, String corner, String signature) {}
@@ -45,9 +44,7 @@ final class FlymeCurrentIconMask {
                     var frontField = type.getDeclaredField("mFrontImages");
                     backField.setAccessible(true); maskField.setAccessible(true); frontField.setAccessible(true);
                     java.util.List<Bitmap> back = (java.util.List<Bitmap>) backField.get(item);
-                    // Native changeIcon skips the entire pipeline without an
-                    // iconback. An empty background enables mask/overlay-only
-                    // packs on this private instance without altering the pack.
+
                     if (back.isEmpty() && (!((java.util.List<?>) maskField.get(item)).isEmpty()
                             || !((java.util.List<?>) frontField.get(item)).isEmpty())) {
                         back.add(Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888));

@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.*;
 
-/** Flyme 13 TaskView thumbnails and TaskViewSimulator share this card-to-window interpolation. */
 final class RecentsCornerHooks {
     private static final String PARAMS = "com.android.quickstep.FullscreenDrawParams";
     private static final String TASK = "com.android.quickstep.views.TaskView";
@@ -137,8 +136,7 @@ final class RecentsCornerHooks {
         float width;
         Object profile;
         if(state.simulator) {
-            // apply() recalculates this rectangle before calling setProgress(). Read
-            // it here, not before apply, so rotations/layout changes cannot use stale geometry.
+
             width=((Rect)simulatorTaskBounds.get(owner)).width();
             profile=simulatorProfile.get(owner);
         } else {

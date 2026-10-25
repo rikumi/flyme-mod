@@ -5,7 +5,6 @@ import android.graphics.Typeface;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Shared font files and weight rules for live clocks and their editor previews. */
 final class ClockTypefaceLoader {
     private final Map<Integer,Typeface> fonts=new HashMap<>();
     private Context moduleContext;

@@ -8,7 +8,6 @@ import io.github.libxposed.service.XposedServiceHelper;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 
-/** Publish camera and miscellaneous switches independent of package visibility. */
 public final class CameraSettingsBridge extends Application {
     static final String REMOTE_FILE = "camera_settings";
     private final Set<XposedService> services = new CopyOnWriteArraySet<>();

@@ -13,7 +13,6 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 
-/** Flyme Android 16 installer: preserve the native scan/install lifecycle and normalize its verdict. */
 final class InstallerHooks {
     private static final String INSTALLER = "com.android.packageinstaller.FlymePackageInstallerActivity";
     private final Map<Object, Run> runs = Collections.synchronizedMap(new WeakHashMap<>());
@@ -57,8 +56,7 @@ final class InstallerHooks {
             Object activityInstance = chain.getArg(0);
             Message message = (Message) chain.getArg(1);
             if (enabled(activityInstance) && message.what == 4) {
-                // Preserve Flyme's scanner and continuation lifecycle, but normalize every
-                // completed scan result to safe before MainHandler consumes it.
+
                 message.arg1 = 1;
             }
             return chain.proceed();
@@ -66,9 +64,7 @@ final class InstallerHooks {
         installer.hook(INSTALLER, "onQueryPkgInfoFinish", chain -> {
             Object self = chain.getThisObject();
             if (enabled(self)) {
-                // The optional Meizu Store lookup can be missing or report an unregistered
-                // package even after the first-screen install confirmation. Normalize that
-                // advisory verdict so it cannot replace the install flow with a store warning.
+
                 Object info = storeInfo.get(self);
                 if (info != null) {
                     icpStatus.setBoolean(info, true);

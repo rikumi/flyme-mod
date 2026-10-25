@@ -28,7 +28,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Add only the real registered Google settings link to the native home loading task. */
 final class SettingsHomeGoogleHooks {
     private static final String HOME = "com.meizu.settings.home.FlymeDashboardSummary";
     private static final String GOOGLE = "com.google.android.gms";
@@ -71,8 +70,7 @@ final class SettingsHomeGoogleHooks {
                 Object result = chain.proceed();
                 ActivityInfo info = loadingGoogle.get();
                 Object row = chain.getThisObject();
-                // Flyme rejects title_uri entries before its dashboard can resolve the URI.
-                // Only our exact Google insertion may use the alias's native static label.
+
                 if (result == null && info != null && GOOGLE.equals(componentPackage.get(row))
                         && LINK.equals(component.get(row))) {
                     CharSequence label = info.loadLabel(((Context) chain.getArg(0)).getPackageManager());

@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Native slider tracks verified in Flyme APK resources, never arbitrary icon artwork. */
 final class ThemeControlResources {
     static boolean spectralSlider(String pkg, Class<?> type) {
         if (!"com.android.settings".equals(pkg)) return false;

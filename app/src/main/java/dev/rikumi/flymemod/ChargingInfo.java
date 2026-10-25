@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Input-side ADC readings in standard power_supply micro units. Never use battery voltage or negotiated maxima. */
 final class ChargingInfo {
     static final String METHOD = "charging_input_sample";
     static final int OFF = 0, POWER = 1, VOLTAGE_CURRENT = 2;

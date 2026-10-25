@@ -27,7 +27,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Native notification/blur parameters; retain grouping, clipping and animated roundness. */
 final class NotificationAppearanceHooks {
     // Flyme's native night-mode blur tint and opaque heads-up fallback.
     private static final int DARK_BLUR_COLOR = 0xB21A1A1A;
@@ -299,8 +298,7 @@ final class NotificationAppearanceHooks {
         }
         boolean lastNight;
         void restoreLandscapeTint() {
-            // setBackgroundResource may reuse the same drawable, so a native call
-            // alone does not necessarily clear our previous solid-background tint.
+
             if (tintedLandscape != null) {
                 tintedLandscape.setColorFilter(originalLandscapeFilter);
                 tintedLandscape = null;

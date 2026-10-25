@@ -9,7 +9,6 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.DrawableWrapper;
 
-/** Preserve concrete platform icon types at public PackageManager API boundaries. */
 final class SystemIconPackApiDrawable {
     static Drawable wrap(Resources resources, Drawable original, Drawable live) {
         if (original instanceof BitmapDrawable) return new BitmapIcon(resources, live);

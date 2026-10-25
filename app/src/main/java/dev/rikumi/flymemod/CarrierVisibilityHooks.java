@@ -10,7 +10,6 @@ import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Hide only carrier labels; retain the system's requested visibility for restoration. */
 final class CarrierVisibilityHooks {
     private static final String[] IDS = {"keyguard_carrier_text", "shade_carrier_text", "no_carrier_text"};
     private final Consumer<Context> settings;

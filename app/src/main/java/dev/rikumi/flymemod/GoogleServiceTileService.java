@@ -14,7 +14,6 @@ import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 import android.widget.Toast;
 
-/** Optional control-center tile; adding it never changes the native switch. */
 public final class GoogleServiceTileService extends TileService {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ContentObserver observer = new ContentObserver(main) {

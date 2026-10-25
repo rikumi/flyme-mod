@@ -13,7 +13,6 @@ import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Fullscreen landscape app configuration; optional nonuniform surface stretch. */
 final class GameWidthHooks {
     private static final String WM = "com.android.server.wm.";
     private final SharedPreferences preferences;
@@ -94,8 +93,7 @@ final class GameWidthHooks {
             } catch (ReflectiveOperationException | RuntimeException error) { report(error); }
             return result;
         }, Configuration.class);
-        // Selected apps get their new viewport instead of retaining a manifest-driven
-        // size-compat scale from an earlier launch/rotation.
+
         Method insets = activityClass.getDeclaredMethod("shouldCreateAppCompatDisplayInsets");
         installer.hook(activityClass.getName(), insets.getName(), chain -> {
             try { if (plan(chain.getThisObject()) != null) return false; }
@@ -187,8 +185,7 @@ final class GameWidthHooks {
         Object display = displayContent.get(record);
         if (display == null) return null;
         Object currentInfo = displayInfo.invoke(display);
-        // A game's fixed-rotation DisplayInfo is already landscape while the screen
-        // can still be portrait. Leave that transition to the native rotation pipeline.
+
         if (logicalWidth.getInt(currentInfo) <= logicalHeight.getInt(currentInfo)) return null;
         Object info = fixedInfo.invoke(record);
         if (info == null) info = currentInfo;
@@ -209,8 +206,7 @@ final class GameWidthHooks {
         Object wc = Configuration.class.getField("windowConfiguration").get(configuration);
         setBounds.invoke(wc, plan.viewport); setAppBounds.invoke(wc, plan.viewport); setMaxBounds.invoke(wc, plan.viewport);
         compute.invoke(record, configuration, parent);
-        // The explicit viewport includes fullscreen game content, including the areas
-        // that an app choosing NEVER cutout mode would otherwise exclude a second time.
+
         setAppBounds.invoke(wc, plan.viewport); setMaxBounds.invoke(wc, plan.viewport);
         configuration.orientation = Configuration.ORIENTATION_LANDSCAPE;
         if (configuration.densityDpi > 0) {
@@ -246,8 +242,7 @@ final class GameWidthHooks {
             Rect insets = (Rect) surfaceInsets.get(windowAttrs.get(window));
             crop = new Rect(insets.left, insets.top, insets.left + bounds.width(), insets.top + bounds.height());
         }
-        // Clip the application window, not its ActivityRecord parent: native black
-        // letterbox surfaces are siblings and must remain outside the rounded viewport.
+
         cropSurface.invoke(transaction, control, crop);
         cornerRadius.invoke(transaction, control, rounded ? 8f * plan.density : 0f);
         if (rounded) roundedWindows.put(window, true); else roundedWindows.remove(window);

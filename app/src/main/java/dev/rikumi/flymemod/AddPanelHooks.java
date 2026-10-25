@@ -10,7 +10,6 @@ import java.lang.reflect.*;
 import java.util.*;
 import java.util.function.*;
 
-/** Flyme 16260625: retain native background creation, pace UI attachment while idle. */
 final class AddPanelHooks {
     private static final String PANEL="com.flyme.systemui.controlcenter.qs.customize.TileWidgetLayoutContainer";
     private static final String COMMIT=PANEL+"$updateTileViews$1$1";
@@ -105,8 +104,7 @@ final class AddPanelHooks {
                         if(!map.containsKey(key)){map.put(key,child);view.addView(child);}
                     }else break;
                 }while(++count<2 && System.nanoTime()<deadline);
-                // Retain native geometry and header behavior, without hiding the entire
-                // panel and restarting its fade for each partial result.
+
                 layout.invoke(view);header.invoke(view);view.requestLayout();
                 if(removeIndex<removes.size()||addIndex<adds.size())view.postOnAnimation(this);else batches.remove(view);
             }catch(Exception error){cancel(view);log.accept("Cannot apply add-panel tile batch",error);}

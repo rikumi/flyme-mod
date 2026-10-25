@@ -27,7 +27,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import org.json.JSONObject;
 
-/** Flyme Launcher 13000000: native shortcut row and independent rendering overrides. */
 final class LauncherIconEditHooks {
     private static final String POPUP = "com.android.launcher3.popup.PopupContainerWithArrow";
     private static final String CONTAINER = "com.meizu.flyme.view.SystemShortcutContainer";
@@ -135,8 +134,7 @@ final class LauncherIconEditHooks {
                     log.accept("Cannot apply edited app name", error);
                     return chain.proceed();
                 }
-                // Native text wrapping, archived-app formatting and accessibility
-                // operate on a copy. Model title and future database writes stay native.
+
                 return copy == null ? chain.proceed() : chain.proceed(new Object[]{copy});
             }
             return chain.proceed();
@@ -148,8 +146,7 @@ final class LauncherIconEditHooks {
             if (custom == null) return chain.proceed();
             Object copy = cloneItem.invoke(item);
             bitmap.set(copy, custom);
-            // Retain the native disabled badge, work-profile badge, icon shape
-            // and press animation, without ever modifying the original ItemInfo.
+
             return chain.proceedWith(copy);
         }, Context.class, int.class);
         String workspace = "com.android.launcher3.model.data.WorkspaceItemInfo";

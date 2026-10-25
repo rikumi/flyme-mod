@@ -11,7 +11,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Keeps merged control center open and switches to all tiles after its last notification is removed. */
 final class CombinedEmptyShadeHooks {
     private static final String PANEL = "com.android.systemui.shade.NotificationPanelViewController";
     private static final String STACK = "com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout";
@@ -91,8 +90,7 @@ final class CombinedEmptyShadeHooks {
             }
             return result;
         }, notifStatsType);
-        // Keep native empty-view cleanup and resource updates, but hide its placeholder when
-        // both kinds of content are gone and the merged shade is being kept open.
+
         installer.hook(STACK, "updateEmptyShadeView", chain -> {
             Object panel = activePanel();
             if (panel != null && stackView.get(stackController.get(panel)) == chain.getThisObject()
@@ -121,8 +119,7 @@ final class CombinedEmptyShadeHooks {
             }
             return result;
         });
-        // Flyme media swipes close the shade synchronously, outside notification clear-all.
-        // Suppress only that dedicated request; the caller still runs setMediaDismiss().
+
         installer.hook(STACK + "Controller", "collapsePanelWhenMediaDismiss", chain -> {
             Object panel = activePanel();
             if (panel != null && stackController.get(panel) == chain.getThisObject()) return null;
@@ -155,8 +152,6 @@ final class CombinedEmptyShadeHooks {
             return result;
         });
 
-        // The clear-all animation schedules NPVC collapse after 200ms when this argument is true.
-        // Disable that request at its source rather than swallowing subsequent manual collapses.
         installer.hook(STACK, "clearNotifications", chain -> {
             View stack = (View) chain.getThisObject();
             settings.accept(stack.getContext());
@@ -190,8 +185,7 @@ final class CombinedEmptyShadeHooks {
             if (panel == null) return null;
             settings.accept(((View) panelView.get(panel)).getContext());
             if (!enabled.getAsBoolean()) return null;
-            // The combined shade belongs to NPVC, not the separate CenterController.
-            // Preserve lockscreen notification behavior.
+
             if (barState.getInt(panel) != 0 || expandedFraction.getFloat(panel) <= 0f) return null;
             Object interactor = shadeInteractor.get(panel);
             return Boolean.TRUE.equals(modeValue.invoke(isCombinedMode.invoke(interactor))) ? panel : null;

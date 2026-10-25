@@ -23,7 +23,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.ToIntFunction;
 
-/** Replace only QS volume mute presentation; leave volume state and native Lottie intact. */
 final class MuteSlashHooks {
     private static final String CONTROLLER = "com.flyme.systemui.volume.QSVolumeControllerImpl";
     private final Consumer<Context> settings;
@@ -73,8 +72,7 @@ final class MuteSlashHooks {
                 dispatch(icon, speakerStream(stream) && value <= minimum);
                 State state = states.get(icon);
                 int scale = chain.getThisObject().getClass().getField("SCALE_SIZE").getInt(chain.getThisObject());
-                // Frame zero contains the original cross, including near-zero
-                // non-muted volume values rounded down by the native controller.
+
                 if (state != null) state.nativeMuteFrame = speakerStream(stream)
                         && (value == minimum || value / Math.max(1, scale) == 0);
             }
@@ -117,8 +115,7 @@ final class MuteSlashHooks {
             if (state == null || !enabled.getAsBoolean()) return chain.proceed();
             Canvas canvas = (Canvas) chain.getArg(0);
             int save = canvas.save();
-            // Scale both native unmuted Lottie and the animated mute drawing,
-            // without changing the slider's layout or accumulating View scales.
+
             canvas.scale(.9f, .9f, icon.getWidth() / 2f, icon.getHeight() / 2f);
             try {
                 if (!state.muted && state.progress <= 0f && !state.nativeMuteFrame) return chain.proceed();
@@ -208,8 +205,7 @@ final class MuteSlashHooks {
             float endX = startX + side * .7f * progress, endY = startY + side * .7f * progress;
             float offset = stroke / (float) Math.sqrt(2);
             paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(stroke); paint.setStrokeCap(Paint.Cap.ROUND);
-            // Cut only this isolated icon layer: a parallel equally long line on
-            // the lower-left side, then draw the upper-right mute stroke.
+
             paint.setXfermode(clear);
             canvas.drawLine(startX - offset, startY + offset, endX - offset, endY + offset, paint);
             paint.setXfermode(null);

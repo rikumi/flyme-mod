@@ -19,7 +19,6 @@ import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
-/** Tracks exact native wireless debugging windows; never changes their backgrounds or inputs. */
 final class WirelessDebugTextHooks {
     private final String packageName;
     private final SharedPreferences preferences;

@@ -15,7 +15,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Flyme SystemUI 16260625 modern clock offsets and legacy AOD layout positioning. */
 final class AodMovementHooks {
     private static final String DATA = "com.flyme.systemui.keyguard.ui.binder.ClockContainerViewBinderData";
     private static final String DISPLAY = "com.flyme.aod.view.AODDisplayView";
@@ -107,15 +106,13 @@ final class AodMovementHooks {
             if (!enabled.getAsBoolean()) return chain.proceed();
             Object result = chain.proceed();
             int range = rangePx(ctx);
-            // Preserve Flyme's style-specific cadence, then clamp its calculated
-            // offsets. Style IDs outside the current 1..4 set must be bounded too.
+
             x.setInt(data, clamp(x.getInt(data), range));
             y.setInt(data, clamp(y.getInt(data), range));
             report("binder", "style=" + chain.getArg(0) + ", offset=" + x.getInt(data) + "," + y.getInt(data));
             return result;
         }, int.class, int.class, authController, boolean.class);
-        // The native onLayout publishes notification and wallpaper positions before
-        // returning. Clamp the content's layout before those consumers read it.
+
         installer.hook("android.view.View", "layout", chain -> {
             View owner = layout.get();
             if (owner == null || legacyContent.get(owner) != chain.getThisObject()) return chain.proceed();
@@ -137,8 +134,7 @@ final class AodMovementHooks {
             layout.set(view);
             try {
                 Object result = chain.proceed();
-                // Bound the actual layout too: optimized ROM code can inline the
-                // position algorithm, and first-entry branches bypass it entirely.
+
                 if (legacyContent.get(view) instanceof View content) {
                     int range = rangePx(view.getContext());
                     int top = anchor.getInt(view) + clamp(content.getTop() - anchor.getInt(view), range);
@@ -162,8 +158,7 @@ final class AodMovementHooks {
                 position = new Position(index, range, randomOffset(range));
                 positions.put(view, position);
             }
-            // Legacy AOD starts at its fixed top near the lock clock (15% of screen height).
-            // Keep that anchor instead of traversing the screen. Preserve the system's cadence.
+
             return anchor.getInt(view) + position.offset;
         }, int.class);
         installer.hook(COLORFUL, "createAodState", chain -> {
@@ -173,12 +168,10 @@ final class AodMovementHooks {
             if (enabled.getAsBoolean()) {
                 Point offset = (Point) burnInOffset.invoke(chain.getArg(1));
                 int range = rangePx(ctx);
-                // Stock rejects offsets when both axes are nonpositive and substitutes a large
-                // fingerprint-related shift. Accept signed movement and keep it inside the range.
+
                 ((PointF) contentOffset.get(state)).set(clamp(offset.x, range), clamp(offset.y, range));
                 report("colorful", "range=" + range + "px, offset=" + contentOffset.get(state));
-                // AOD also has per-digit offsets that move the layout toward screen center.
-                // Bounding only contentOffset leaves those large design offsets untouched.
+
                 Object lockState = colorfulLockscreenState.invoke(chain.getThisObject(),
                         chain.getArg(0), chain.getArg(1), chain.getArg(2));
                 for (Field field : colorfulOffsets) {
@@ -214,8 +207,7 @@ final class AodMovementHooks {
             Context ctx = (Context) selfContext.get(chain.getThisObject());
             settings.accept(ctx);
             if (enabled.getAsBoolean()) {
-                // The anchor belongs to the clock plugin's resources, not necessarily
-                // the SystemUI resource namespace. Ask the same plugin for its lock state.
+
                 Object lockState = selfLockscreenState.invoke(chain.getThisObject(),
                         chain.getArg(0), chain.getArg(1), chain.getArg(2), null);
                 Point offset = (Point) burnInOffset.invoke(chain.getArg(1));
@@ -224,9 +216,7 @@ final class AodMovementHooks {
             }
             return state;
         }, selfData, hostState, resourceState);
-        // These are the actual Kotlin flow producers and native position callers.
-        // Deoptimize callers as well as hooks so precompiled/inlined methods still
-        // pass through the clamp when the display first enters AOD or ticks again.
+
         deoptimizeCallers(loader.loadClass(DATA), deoptimizer);
         deoptimizeCallers(loader.loadClass(DISPLAY), deoptimizer);
         for (String producer : new String[]{

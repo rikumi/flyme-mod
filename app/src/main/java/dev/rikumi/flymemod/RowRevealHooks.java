@@ -23,7 +23,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.BiConsumer;
 
-/** Whole-shade row reveal/dismissal; secondary QS expansion keeps its geometry animation. */
 final class RowRevealHooks {
     private static final String CENTER = "com.flyme.systemui.controlcenter.phone.CenterController";
     private static final String QS = "com.flyme.systemui.qs.MzQSImpl";
@@ -100,8 +99,7 @@ final class RowRevealHooks {
 
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
         panelAlpha.getDeclaringClass().getDeclaredMethod("instantCollapse");
-        // Notification launches call instantCollapse directly through ShadeControllerImpl;
-        // instantCollapsePanel is only the dialog-aware wrapper around this shared entry.
+
         installer.hook(SHADE, "instantCollapse", chain -> {
             Object owner = chain.getThisObject();
             if (active(owner, false)) {
@@ -141,33 +139,27 @@ final class RowRevealHooks {
         installer.hook(View.class.getName(), "setAlpha", chain -> {
             NotificationRegion region = currentNotificationRegion.get();
             if (region != null && region.view == chain.getThisObject() && enabled.getAsBoolean()) {
-                // NPVC writes the undelayed parent alpha after setQsPanelAlpha. The
-                // pre-draw row renderer already owns this exact stack's delayed alpha.
-                // Suppress only that native write, not other views or endpoint/reset writes.
+
                 return null;
             }
             HeaderBinding binding = headerBindings.get(chain.getThisObject());
             Object owner = binding == null ? null : binding.owner.get();
             if (owner == null || reveals.get(owner) != binding.reveal || !enabled.getAsBoolean())
                 return chain.proceed();
-            // Separate headers are siblings of the QS container. Merged headers
-            // already inherit the root's reveal alpha and must not fade a second time.
+
             return chain.proceed(new Object[]{headerAlpha(binding.reveal, binding.separate)});
         }, float.class);
         installer.hook(CENTER, "setCollapseAnimationTranslationY", chain -> {
             Reveal reveal = reveals.get(chain.getThisObject());
             if (enabled.getAsBoolean() && reveal != null && reveal.progress > 0f
                     && (Float) chain.getArg(0) == 0f) {
-                // Native collapse $8 resets both header roots before our content fade
-                // finishes. The next origin/spring frame restores their old position,
-                // making the still-visible header jump down for one frame.
+
                 reveal.pendingTranslationReset = true;
                 return null;
             }
             return chain.proceed();
         }, float.class);
-        // Launcher handoff calls fling(open), then onTrackingStopped(false).
-        // Preserve those hook boundaries even if ART compiled the small wrappers.
+
         for (Class<?> owner : new Class<?>[]{centerAlpha.getDeclaringClass(), panelAlpha.getDeclaringClass()}) {
             for (Method method : owner.getDeclaredMethods()) {
                 if (method.getName().equals("finishInputFocusTransfer")
@@ -217,8 +209,7 @@ final class RowRevealHooks {
                     if (index >= 0) {
                         float drag = event.getY(index) - (separate ? centerY : panelY).getFloat(owner);
                         Context context = context(owner, separate);
-                        // A single physical boundary relative to the open position.
-                        // Neither native alpha nor origin/overscroll branches can retrigger it.
+
                         request(owner, reveal, RevealBoundary.visible(drag / context.getResources()
                                 .getDisplayMetrics().density, reveal.opening), separate);
                     }
@@ -226,8 +217,7 @@ final class RowRevealHooks {
                 Object result = chain.proceed();
                 if (reveal != null && reveal.settling) {
                     float fraction = (separate ? centerFraction : panelFraction).getFloat(owner);
-                    // Retire the release guard only after native height reaches its
-                    // chosen endpoint, after the old height thresholds have run.
+
                     if (reveal.target ? fraction >= 1f : fraction <= 0f) reveal.settling = false;
                 }
                 return result;
@@ -252,10 +242,6 @@ final class RowRevealHooks {
                     : new Class<?>[]{float.class, boolean.class, float.class, boolean.class});
         }
 
-        // Native animators read the visible (already eased) alpha to seed their next
-        // transition. Feeding it back through contentProgress/revealCurve a second
-        // time can reset a partially revealed shade to zero on launcher handoff.
-        // Seed only their content animator with the last untransformed progress.
         for (String owner : new String[]{CENTER, SHADE}) {
             int contentIndex = owner.equals(CENTER) ? 1 : 0;
             installer.hook(owner, "startExpandAnimator", chain -> {
@@ -297,17 +283,9 @@ final class RowRevealHooks {
         installer.hook(PANEL_CONTROLLER, "setQsScale", chain -> {
             View root = (View) controllerView.get(chain.getThisObject());
             if (root != null) settings.accept(root.getContext());
-            // Both the standalone opening scale animator and setQsExpansion write
-            // directly here, including after the reveal has reached alpha=1.
-            // Keep the native stored scale at 1 as well, so subsequently added tiles
-            // and new animators cannot inherit a stale, individually centered scale.
-            // Our pre-draw renderer supplies the shared row pivots and transition
-            // scale; outside that transition the tiles remain at their open size.
+
             if (!enabled.getAsBoolean()) return chain.proceed();
-            // The renderer owns the tile scales until pre-draw. Native expansion
-            // used to reset every tile to 1 each frame, immediately undone below.
-            // Keep its stored endpoint (also used when adding a tile), without
-            // invalidating every tile twice on every merged-shade height update.
+
             if (nativeScale.getFloat(chain.getThisObject()) == 1f) return null;
             return chain.proceed(new Object[]{1f});
         }, float.class);
@@ -331,9 +309,7 @@ final class RowRevealHooks {
             rememberAlpha(panel, input);
             if (!active(panel, false)) { retire(panel); return chain.proceed(); }
             Reveal reveal = visual(panel, input, false);
-            // MOVE/height/native alpha callbacks do not advance the row timeline.
-            // Applying the same content pose again rebuilds endpoint state and
-            // repeats backdrop/header/notification writes while dragging.
+
             if (reveal.hasApplied && !Boolean.TRUE.equals(writingReveal.get())) return null;
             for (BiConsumer<Object, Float> listener : progressListeners) listener.accept(panel, reveal.progress);
             View previous = currentNotifications.get();
@@ -358,9 +334,7 @@ final class RowRevealHooks {
             if (enabled.getAsBoolean()) {
                 Reveal reveal = visual(chain.getThisObject(), progress, true);
                 bindHeaders(chain.getThisObject(), reveal, true);
-                // The content timer can finish while tracking still retains a
-                // positive height/radius. Publish its actual pose so release
-                // callbacks cannot keep or recreate a dismissed dim surface.
+
                 for (BiConsumer<Object, Float> listener : progressListeners)
                     listener.accept(chain.getThisObject(), reveal.progress);
                 progress = encodedProgress(reveal.progress);
@@ -393,8 +367,7 @@ final class RowRevealHooks {
     }
 
     private void closeImmediately(Object owner) {
-        // Keep an initialized zero pose, including its QS/header aliases. Removing
-        // the entry lets a delayed native alpha=1 callback initialize a new reveal.
+
         Reveal reveal = reveals.computeIfAbsent(owner, ignored -> new Reveal());
         ValueAnimator animator = reveal.animator;
         reveal.animator = null;
@@ -406,18 +379,15 @@ final class RowRevealHooks {
     }
     static float headerAlpha(float progress, boolean separate) {
         float alpha = revealCurve((progress - .20f) / .80f);
-        // Merged headers inherit the container alpha. Compensate for that alpha
-        // so both panel modes use the same delayed header visibility curve.
+
         float parent = revealCurve(progress);
         return separate ? alpha : parent <= 0f ? 0f : Math.min(1f, alpha / parent);
     }
     private static float headerAlpha(Reveal reveal, boolean separate) {
-        // Merged headers share the row timeline. Native alpha callbacks and the
-        // gesture-position animator must not introduce a second fading clock.
+
         if (!separate) return headerAlpha(reveal.progress, false);
         if (reveal.target) return headerAlpha(reveal.progress, separate);
-        // Closing headers use the real native/gesture alpha rather than the
-        // 300ms row timeline, so a short upward swipe can clear them immediately.
+
         float alpha = Math.min(reveal.closingHeaderAlpha,
                 revealCurve((contentProgress(reveal.nativeInput) - .20f) / .80f));
         reveal.closingHeaderAlpha = alpha;
@@ -463,8 +433,7 @@ final class RowRevealHooks {
         return reveal;
     }
     private void settle(Object owner, Reveal reveal, boolean visible, boolean separate) {
-        // fling is the actual release decision. onTrackingStopped's boolean is
-        // merely bookkeeping on launcher input-focus transfer, not another goal.
+
         reveal.gesture = false;
         reveal.settling = true;
         request(owner, reveal, visible, separate);
@@ -473,7 +442,6 @@ final class RowRevealHooks {
         visibilityListeners.add(listener);
     }
 
-    /** A horizontal switch owns both full-open poses; stop independent vertical timers. */
     void setHorizontalPose(Object owner, boolean visible) {
         Reveal reveal = reveals.computeIfAbsent(owner, ignored -> new Reveal());
         ValueAnimator animator = reveal.animator;
@@ -507,8 +475,7 @@ final class RowRevealHooks {
         if (reveal.initialized && reveal.target == visible) return;
         if (!visible) reveal.closingHeaderAlpha = revealCurve((reveal.progress - .20f) / .80f);
         reveal.initialized = true; reveal.target = visible;
-        // The threshold can start a fade while the finger is still down. Tell
-        // position and backdrop owners before the first alpha animation frame.
+
         for (BiConsumer<Object, Boolean> listener : visibilityListeners) listener.accept(owner, visible);
         ValueAnimator old = reveal.animator;
         reveal.animator = null;
@@ -588,8 +555,7 @@ final class RowRevealHooks {
             restore(state);
             return;
         }
-        // Only the fixed content timeline drives this mapping. Physical gesture
-        // reversal selects an endpoint; it never writes per-tile animation progress.
+
         state.animating = true;
         state.fullRoot = root;
         watch(root, state);
@@ -629,8 +595,7 @@ final class RowRevealHooks {
         root = root.getRootView();
         if (state.draws.containsKey(root)) return;
         ViewTreeObserver.OnPreDrawListener listener = () -> {
-            // Secondary expansion can overwrite the network wrapper after the alpha hook.
-            // Reapply only while the whole shade is transitioning, after all frame updates.
+
             if (state.animating && enabled.getAsBoolean()) render(state);
             else if (!enabled.getAsBoolean()) restore(state);
             return true;
@@ -724,8 +689,7 @@ final class RowRevealHooks {
                 tile.animationLeft = coordinate(tile.view, tile.page, true);
                 tile.animationPivotY = previousTop - top;
             }
-            // The collapsed row has its own padded wrapper. Use the actual row span,
-            // rather than assuming its center is half the full-screen panel width.
+
             for (int first = 0; first < tiles.size();) {
                 int end = first + 1;
                 float delay = tiles.get(first).delay;
@@ -808,8 +772,7 @@ final class RowRevealHooks {
 
     private static void applyFrame(View view, float pivotX, float pivotY,
                                    float scaleX, float scaleY, float alpha) {
-        // Compare actual properties, not cached values: secondary expansion can
-        // change them between frames and must still be corrected before drawing.
+
         if (!view.isPivotSet() || view.getPivotX() != pivotX || view.getPivotY() != pivotY) {
             view.setPivotX(pivotX);
             view.setPivotY(pivotY);
@@ -852,8 +815,7 @@ final class RowRevealHooks {
         state.draws.clear();
         for (Tile tile : state.tiles.values()) {
             tile.view.setAlpha(tile.alpha);
-            // Captured scale can be the native opening animator's initial .8 value.
-            // Returning that value at alpha=1 would leave the shade permanently shrunk.
+
             tile.view.setScaleX(1f);
             tile.view.setScaleY(1f);
             if (tile.explicitPivot) {

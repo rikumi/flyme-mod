@@ -26,7 +26,6 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** Called only from IO tasks; a denied or failed command must not appear successful. */
 internal fun runRoot(command: String): String? = runCatching {
     val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
     val output = process.inputStream.bufferedReader().use { it.readText() }

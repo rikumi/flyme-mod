@@ -11,7 +11,6 @@ import java.lang.reflect.*;
 import java.util.*;
 import java.util.function.*;
 
-/** Edit-mode actions share the desktop icon contour switch and their native blur geometry. */
 final class LauncherEditContourHooks {
     private final Class<?> top,bottom,frame,image;
     private final Method frameBlur,imageBlur,setRadius;

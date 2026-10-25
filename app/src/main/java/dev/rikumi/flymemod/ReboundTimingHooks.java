@@ -5,7 +5,6 @@ import java.util.function.BooleanSupplier;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-/** Slow only control-center release springs, preserving their damping ratio and shape. */
 final class ReboundTimingHooks {
     private static final float TIME_SCALE = 1.4f;
     private final BooleanSupplier enabled;
@@ -62,9 +61,7 @@ final class ReboundTimingHooks {
             }
             Field shared = notifications;
             Method setSharedTranslation = notificationTranslation;
-            // MzQSImpl's native method only moves these three roots and emits
-            // notification translation. Avoid allocating animator groups and
-            // emitting .6 followed by .57 to the notification StateFlow each frame.
+
             Field[] mergedRoots = shared == null ? null : new Field[]{
                     owner.getField("mQSStatusBar"), owner.getField("mHeader"),
                     owner.getField("mMzQSContainer")};

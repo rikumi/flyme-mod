@@ -16,7 +16,6 @@ import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Hide the covered clock and release its layout space so following icons move left. */
 final class StatusBarLyricHooks {
     private final BooleanSupplier enabled;
     private final Consumer<Context> settings;

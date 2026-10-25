@@ -8,7 +8,6 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.LongSupplier;
 
-/** No loader or callback runs under the cache lock, or on a lookup caller's thread. */
 final class SystemIconPackCache<K,V> {
     record Result<V>(V value,int bytes,long lifetime) {}
     interface Loader<K,V> { Result<V> load(K key); }
@@ -58,8 +57,7 @@ final class SystemIconPackCache<K,V> {
         boolean notify;
         synchronized(this) {
             pending.remove(key);
-            // Notifications can arrive while provider acquisition or decoding is blocked.
-            // Never let that old request repopulate a newer generation.
+
             if(ticket!=generation) { notify=true; }
             else {
                 Entry<V> old=entries.remove(key);

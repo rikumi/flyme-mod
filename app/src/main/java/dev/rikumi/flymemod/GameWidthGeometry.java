@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Stable stored mode IDs; conditional menu entries never change another mode's ID. */
 final class GameWidthGeometry {
     static final String[] NAMES = {"避开挖孔居中", "16:9 居中", "18:9 居中", "19.5:9 居中", "19.5:9 拉伸"};
     static int[] options(int width, int height) {

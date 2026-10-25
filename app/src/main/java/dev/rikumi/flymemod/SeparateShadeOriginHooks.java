@@ -15,7 +15,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Flyme 16260625 separate control center: compensate the physical 56dp reveal travel. */
 final class SeparateShadeOriginHooks {
     private static final String CENTER = "com.flyme.systemui.controlcenter.phone.CenterController";
     private static final float CARD_FACTOR = .54f;
@@ -64,8 +63,7 @@ final class SeparateShadeOriginHooks {
             Object center = chain.getThisObject();
             settings.accept((Context) context.get(center));
             State active = states.get(center);
-            // Preserve the visual origin when launcher focus transfer and the
-            // synthesized touch both announce the same tracking session.
+
             if (active() && active != null && !active.settling
                     && tracking.getBoolean(center)) return chain.proceed();
             State previous = states.remove(center);
@@ -114,8 +112,7 @@ final class SeparateShadeOriginHooks {
             if (motion != null && motion.getActionMasked() == MotionEvent.ACTION_MOVE) {
                 int index = motion.findPointerIndex(pointer.getInt(center));
                 float drag = motion.getY(Math.max(0, index)) - initialY.getFloat(center);
-                // A closing gesture begins at the open position; an opening one still has
-                // the status-bar-to-center travel to cover. Both retain half-speed overshoot.
+
                 state.translation = CombinedShadeAnimationHooks.originTranslation(
                         drag + (state.opening ? 0f : state.reference), state.reference);
             }

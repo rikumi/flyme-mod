@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-/** Filters Mine's final rows, including the presenter's offline fallback. */
 final class StoreMineEntryHooks {
     private StoreMineEntryHooks() {}
 

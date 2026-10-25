@@ -14,7 +14,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Camera 12.7.2: prepend cached frames before the native 1.6 s replay window. */
 final class CameraLivePhotoHooks {
     private static final String LIVE = "com.meizu.media.camera.livephoto.";
     private static final long NATIVE_WINDOW_NS = 1_600_000_000L;
@@ -103,8 +102,7 @@ final class CameraLivePhotoHooks {
                 int totalFrames = (Integer) get(device, "P3", null);
                 int afterFrames = ((AtomicInteger) get(video, "mAfterCaptureSavedFrameCount",
                         chain.getThisObject())).get() + 1;
-                // Both pipelines count real cached frames. Keep the native total budget
-                // and shorten the tail by the extra frames actually recorded.
+
                 int tailFrames = tailFrames(totalFrames, state.preFrames);
                 if (afterFrames >= tailFrames)
                     return chain.proceed(new Object[]{chain.getArg(0), true, true, chain.getArg(3)});

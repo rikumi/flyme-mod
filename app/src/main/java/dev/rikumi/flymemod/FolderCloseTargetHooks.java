@@ -11,7 +11,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Restore app-close targets only on the displayed page of an open Flyme folder. */
 final class FolderCloseTargetHooks {
     private static final String LAUNCHER = "com.android.launcher3.Launcher";
     private final Consumer<Context> settings;

@@ -25,7 +25,6 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Flyme SystemUI 16260625 digit TextViews; bitmap/vector clocks stay native. */
 final class ClockFontHooks {
     private static final String LOCK = "com.flyme.keyguard.clock.FlymeDigitalClockLockScreen";
     private static final String AOD = "com.flyme.aod.view.ClockView";
@@ -203,8 +202,7 @@ final class ClockFontHooks {
             applyControlCenterControllerClock(chain.getThisObject());
             return result;
         });
-        // Both Flyme clock implementations obtain cached digits before adding them to
-        // their layouts, so apply spacing at the factory boundary for each clock type.
+
         for (String clockClass : new String[]{LOCK, AOD}) {
             boolean aod = AOD.equals(clockClass);
             installer.hook(clockClass, "getTimeView", chain -> {
@@ -217,16 +215,13 @@ final class ClockFontHooks {
             }, char.class, int.class);
             installer.hook(clockClass, "setClockImageList", chain -> {
                 Object result = chain.proceed();
-                // Flyme reuses cached digit views and rebuilds the hour/minute lists
-                // on every time tick. Reapply after that update, when the final
-                // TextViews are already stored in mCacheTextViewArray.
+
                 applyCachedSpacing(chain.getThisObject(), aod);
                 return result;
             }, CharSequence.class);
             installer.hook(clockClass, "addImageViewToClock", chain -> {
                 Object result = chain.proceed();
-                // The native method attaches cached digits after setClockImageList;
-                // apply again here so the final, attached views keep the selected spacing.
+
                 applyCachedSpacing(chain.getThisObject(), aod);
                 return result;
             });
@@ -306,8 +301,7 @@ final class ClockFontHooks {
             }
             if (controlCenterHeaderClocks.containsKey(view)
                     && Boolean.TRUE.equals(customFontApplied.get(view))) {
-                // MzTextClockAlignBottom centers a custom-painted string inside its canvas.
-                // Measure that current string rather than retaining TextClock's reserved width.
+
                 CharSequence text = view.getText();
                 int desired = (int) Math.ceil(android.text.Layout.getDesiredWidth(
                         text == null ? "" : text, view.getPaint()))
@@ -328,8 +322,7 @@ final class ClockFontHooks {
                     && !controlCenterMonospace.getAsBoolean())) return chain.proceed();
             android.text.Layout layout = view.getLayout();
             if (layout == null || layout.getLineCount() == 0) return chain.proceed();
-            // Native drawing copies only typeface/size into an independent Paint and converts
-            // the text to String. Draw the measured layout so 'tnum' and colon spans survive.
+
             view.getPaint().setColor(view.getCurrentTextColor());
             view.getPaint().drawableState = view.getDrawableState();
             float left = layout.getLineLeft(0);
@@ -555,8 +548,7 @@ final class ClockFontHooks {
         try {
             if (owner instanceof View header && !headerObservers.containsKey(header)) {
                 headerObservers.put(header, true);
-                // TextClock ticks can relayout only its child LinearLayout. Correct after
-                // that layout and any native animation writes, immediately before drawing.
+
                 android.view.ViewTreeObserver.OnPreDrawListener observer = () -> {
                     applyControlCenterHeaderBaseline(owner);
                     return true;
@@ -617,8 +609,7 @@ final class ClockFontHooks {
             TextView lunar = (TextView) headerLunar.get(owner);
             TextView baselineTarget = !hideLunar.getAsBoolean() && lunar != null && lunar.isShown()
                     ? lunar : date;
-            // SplitClockView follows the bottom visible date/lunar baseline. Its horizontal parent
-            // still has the pre-translation bounds, which otherwise cuts off the clock top.
+
             if (clock != null) headerClockOverflow.apply(clock, header,
                     true);
             if (clock == null || baselineTarget == null || !baselineTarget.isShown() || baselineTarget.getHeight() == 0
@@ -634,8 +625,7 @@ final class ClockFontHooks {
                 nativeAmPmTranslation = amPm.getTranslationY();
                 originalHeaderTranslationY.put(amPm, nativeAmPmTranslation);
             }
-            // Move the complete SplitClockView, keeping the glyphs inside its clipping
-            // bounds. Its TextClock draws at height - 3px, not TextView.getBaseline().
+
             if (Float.compare(clock.getTranslationY(), nativeClockTranslation) != 0) {
                 clock.setTranslationY(nativeClockTranslation);
             }
@@ -771,8 +761,7 @@ final class ClockFontHooks {
         ColonCenterSpan(float verticalOffset) { this.verticalOffset = verticalOffset; }
 
         @Override public void updateMeasureState(TextPaint paint) {
-            // Keep native glyph metrics and advance so the colon remains part of the
-            // clock's original shaping and layout path.
+
         }
 
         @Override public void updateDrawState(TextPaint paint) {

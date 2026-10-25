@@ -4,7 +4,6 @@ import java.lang.ref.WeakReference;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** Keep gesture ownership independent of the temporary native animation leash. */
 final class SmallWindowDragOrder {
     private static final Map<Object, WeakReference<Object>> active = new WeakHashMap<>();
 

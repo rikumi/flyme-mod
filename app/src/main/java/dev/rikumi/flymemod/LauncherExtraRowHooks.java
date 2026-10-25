@@ -12,7 +12,6 @@ import java.lang.reflect.Method;
 import java.util.function.BiConsumer;
 import io.github.libxposed.api.XposedInterface;
 
-/** A process-lifetime storage namespace: toggles take effect on the next launcher start. */
 final class LauncherExtraRowHooks {
     private static final String PACKAGE = "com.meizu.flyme.launcher";
     private static final String IDP = "com.android.launcher3.InvariantDeviceProfile";
@@ -165,9 +164,7 @@ final class LauncherExtraRowHooks {
             if (!active) return result;
             Object source = dragSource.get(chain.getThisObject());
             Object item = currentItem.get(chain.getThisObject());
-            // Flyme only detaches/reuses FlymeLauncherAppWidgetHostView. Its pending
-            // configuration view is a different subclass: otherwise preload creates
-            // a second view for the SAME widget and the old view remains on the page.
+
             if (item != null && pendingWidget.isInstance(source) && boundWidget.get(item) == null
                     && Boolean.TRUE.equals(launcherSource.invoke(item))) {
                 android.view.View view = (android.view.View) source;

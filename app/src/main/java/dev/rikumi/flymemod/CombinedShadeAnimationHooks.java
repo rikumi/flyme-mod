@@ -18,7 +18,6 @@ import java.util.function.Consumer;
 import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 
-/** Flyme SystemUI 16260625: gesture-driven reveal and dismissal, with native height settling. */
 final class CombinedShadeAnimationHooks {
     private static final String PANEL = "com.android.systemui.shade.NotificationPanelViewController";
     private static final String QS = "com.android.systemui.shade.QuickSettingsControllerImpl";
@@ -232,16 +231,14 @@ final class CombinedShadeAnimationHooks {
             if (secondaryOwner.test(qs.get(panel))) return chain.proceed();
             Gesture gesture = gestures.get(qs.get(panel));
             if (gesture != null && gesture.releasedByFling && gesture.expanding != (Boolean) chain.getArg(1)) {
-                // A command or reversed gesture can change the endpoint before the old
-                // visual timer finishes. Preserve its current position, but retire its writer.
+
                 ValueAnimator previousAnimator = gesture.positionAnimator;
                 gesture.positionAnimator = null;
                 if (previousAnimator != null) previousAnimator.cancel();
                 gesture.nativeFinished = false;
                 gesture.releasedByFling = false;
             }
-            // Launcher input-focus transfer and command-driven expansion can reach fling
-            // without a tracking height callback. Give that path the same visual timer.
+
             if (animationFix.getAsBoolean() && gesture == null && (Boolean) chain.getArg(1)
                     && isCombined(panel) && !filter.getBoolean(panel)
                     && fraction.getFloat(panel) <= REVEAL_FRACTION
@@ -275,9 +272,7 @@ final class CombinedShadeAnimationHooks {
                     && !secondaryOwner.test(qs.get(panel))
                     && (releaseEvent == null || releaseEvent.getActionMasked() != MotionEvent.ACTION_CANCEL)) {
                 gesture.openingRemaining = remainingOpeningDuration(SystemClock.uptimeMillis() - gesture.openingStarted);
-                // Even a long-held opening needs one position owner after release;
-                // otherwise a native spring bypasses the controller and later snaps
-                // the still-visible content to zero at height completion.
+
                 gesture.minimumDuration = true;
             }
             if (animationFix.getAsBoolean() && gesture != null && gesture.dismissal
@@ -287,14 +282,12 @@ final class CombinedShadeAnimationHooks {
             }
             if (enabled.getAsBoolean() && gesture != null && (gesture.dismissal || gesture.originFixed || gesture.minimumDuration)
                     && isCombined(panel) && !filter.getBoolean(panel)) {
-                // Native height settling retains the release height on an upward drag (<= 7%).
-                // Own visual translation/alpha through that animation; do not return to QS spring.
+
                 gesture.released = true;
                 gesture.releasedByFling = true;
                 gesture.settling = true;
                 gesture.expanding = (Boolean) chain.getArg(1);
-                // Flyme starts the return spring at 7% even after a downward overshoot.
-                // Use that native animation endpoint, retaining our actual visual position.
+
                 gesture.releaseFraction = Math.min(REVEAL_FRACTION, fraction.getFloat(panel));
                 gesture.releaseTranslation = gesture.translation;
                 gesture.releaseAlpha = gesture.alpha;
@@ -303,14 +296,12 @@ final class CombinedShadeAnimationHooks {
                     startPositionAnimator(panel, qs.get(panel), gesture);
                 }
             }
-            // endMotionEvent has already decided whether the release should collapse. Avoid
-            // intercepting opening, canceled swipes, programmatic closure or lockscreen gestures.
+
             if (collapseFix.getAsBoolean() && (gesture == null || (!gesture.originFixed && !gesture.minimumDuration)) && !(Boolean) chain.getArg(1)
                     && (Float) chain.getArg(0) < 0f && (Boolean) tracking.invoke(panel)
                     && !closedOnDown.getBoolean(panel) && !filter.getBoolean(panel)
                     && Boolean.TRUE.equals(flowValue.invoke(expandEnabled.invoke(interactor.get(panel))))) {
-                // Native cleanup aborts height animations, resets expansion and finishes closing.
-                // No new fling is started, so neither fixed 7% start nor blur collapse is replayed.
+
                 instantCollapse.invoke(panel);
                 Object quickSettings = qs.get(panel);
                 Object plugin = getQs.invoke(quickSettings);
@@ -325,8 +316,7 @@ final class CombinedShadeAnimationHooks {
             Object panel = chain.getThisObject();
             settings.accept(((View) view.get(panel)).getContext());
             Gesture active = gestures.get(qs.get(panel));
-            // Launcher focus transfer can start tracking before the synthesized touch
-            // starts it again. That is the same opening, not a new reveal timer.
+
             if (enabled.getAsBoolean() && active != null && !active.released
                     && (Boolean) tracking.invoke(panel) && isCombined(panel)
                     && !filter.getBoolean(panel)) return chain.proceed();
@@ -334,14 +324,11 @@ final class CombinedShadeAnimationHooks {
             if (previous != null && previous.positionAnimator != null) previous.positionAnimator.cancel();
             if (enabled.getAsBoolean() && isCombined(panel)
                     && !filter.getBoolean(panel)) {
-                // A quick reopen may interrupt the previous close before its final height update.
-                // Stop all old writers before letting this gesture own alpha and translation.
+
                 cancel(expand, panel);
                 cancel(collapse, panel);
                 stopSpring(qs.get(panel));
-                // A completed upward dismissal does not always leave mPanelClosedOnDown set
-                // for the next gesture. At zero expansion, discard every writer and stale
-                // alpha/translation before the new gesture starts so a quick reopen is visible.
+
                 if (fraction.getFloat(panel) <= 0f) resetReveal(panel);
             }
             return chain.proceed();
@@ -407,16 +394,14 @@ final class CombinedShadeAnimationHooks {
             if (secondaryOwner.test(quickSettings)) return chain.proceed();
             Gesture gesture = gestures.get(quickSettings);
             if (enabled.getAsBoolean() && gesture != null && (gesture.originFixed || gesture.minimumDuration)) {
-                // fling may request another native header spring after our release animator
-                // has started. Keep one position writer and restore the release position.
+
                 writeTranslation(quickSettings, gesture.translation);
                 gesture.released = true;
                 stopSpring(quickSettings);
                 return null;
             }
             if (enabled.getAsBoolean() && gesture != null && !gesture.released) {
-                // Stock ACTION_UP resets translation to maxHeight * .07. Restore the last drag
-                // position so the original velocity/damping spring starts without a jump.
+
                 writeTranslation(quickSettings, gesture.translation);
                 gesture.released = true;
                 if (gesture.dismissal || gesture.originFixed || gesture.minimumDuration) {
@@ -440,8 +425,7 @@ final class CombinedShadeAnimationHooks {
                 int index = event.findPointerIndex(pointer.getInt(panel));
                 gesture.fingerDistance = event.getY(Math.max(0, index)) - initialY.getFloat(panel);
             }
-            // A layout callback can still report fraction=1 before the first MOVE. The finger
-            // has not moved; neither that value nor the native 7% height is an overshoot.
+
             float distance = DISMISSAL_DISTANCE_DP * ((View) view.get(panel)).getResources()
                     .getDisplayMetrics().density;
             if (gesture.originFixed && !gesture.dismissal) {
@@ -457,8 +441,7 @@ final class CombinedShadeAnimationHooks {
             return;
         }
         if (gesture.settling && gesture.expanding) {
-            // A canceled dismissal returns from its actual visual position, rather than jumping
-            // to the native fade-in threshold at 7% height.
+
             float remaining = Math.max(.0001f, 1f - gesture.releaseFraction);
             float amount = Math.max(0f, Math.min(1f, (progress - gesture.releaseFraction) / remaining));
             gesture.translation = gesture.releaseTranslation * (1f - amount);
@@ -494,12 +477,9 @@ final class CombinedShadeAnimationHooks {
         settings.accept(((View) view.get(panel)).getContext());
         if (enabled.getAsBoolean() && fraction.getFloat(panel) <= 0f && isCombined(panel)
                 && !filter.getBoolean(panel)) {
-            // A held upward drag can finish both the height and content fade.
-            // Keep its owner until ACTION_UP: dropping it here makes fling take
-            // the instant-collapse fallback instead of the gesture's release path.
+
             if ((Boolean) tracking.invoke(panel)) return;
-            // Native height can finish before the row fade. Resetting translation
-            // now moves still-visible headers and controls back to their rest pose.
+
             if (visibleContent.test(panel)) return;
             Gesture gesture = gestures.get(qs.get(panel));
             if (gesture != null && (gesture.originFixed || gesture.minimumDuration) && gesture.positionAnimator != null) {
@@ -544,13 +524,11 @@ final class CombinedShadeAnimationHooks {
 
     static float dismissalTranslation(float progress, float height, float fadeDistance) {
         if (progress > REVEAL_FRACTION) {
-            // MOVE uses 0.7 * finger delta; MzQSImpl moves the card container by 0.54 *
-            // the supplied translation. Compensate so the cards follow at half finger speed.
+
             float fingerDistance = (progress - REVEAL_FRACTION) * height / .7f;
             return fingerDistance * .5f / CONTAINER_TRANSLATION_FACTOR;
         }
-        // The opening/reversal path has no upward travel beyond the resting position.
-        // A fresh dismissal must use the same lower bound while its content fades.
+
         return 0f;
     }
 
@@ -583,8 +561,7 @@ final class CombinedShadeAnimationHooks {
     }
 
     private void startPositionAnimator(Object panel, Object quickSettings, Gesture gesture) throws ReflectiveOperationException {
-        // Dismiss in place. Native height still settles independently, but cannot
-        // move visible content back to its fixed 7% release threshold.
+
         float target = gesture.expanding ? 0f : gesture.releaseTranslation;
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         ValueAnimator previousAnimator = gesture.positionAnimator;

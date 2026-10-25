@@ -15,7 +15,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Flyme SystemUI 16260625 connectivity, focus-mode and device-center labels. */
 final class SimpleQsTextHooks {
     private static final String NETWORK = "com.flyme.systemui.qs.tileimpl.ConnectivityQSTileViewImpl";
     private static final String DEVICE = "com.flyme.systemui.qs.tileimpl.DeviceCenterQSTileViewImpl";

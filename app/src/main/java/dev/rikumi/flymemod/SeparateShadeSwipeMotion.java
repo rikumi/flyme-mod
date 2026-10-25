@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Physical, left-to-right coordinates: notifications at 0, control center at 1. */
 final class SeparateShadeSwipeMotion {
     private SeparateShadeSwipeMotion() {}
 

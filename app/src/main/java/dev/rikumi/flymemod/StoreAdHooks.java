@@ -5,7 +5,6 @@ import android.database.Cursor;
 import java.lang.reflect.Field;
 import java.util.function.BiConsumer;
 
-/** Application store 11.1.5: skip only the splash redirect, keeping setup and privacy flow. */
 final class StoreAdHooks {
     private final BiConsumer<String, Throwable> log;
     private boolean readErrorLogged;

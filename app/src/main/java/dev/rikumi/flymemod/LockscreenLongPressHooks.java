@@ -8,7 +8,6 @@ import java.lang.reflect.Method;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Flyme SystemUI 16260625: block the editor gesture before hints, authentication or scaling. */
 final class LockscreenLongPressHooks {
     private static final String PANEL = "com.android.systemui.shade.NotificationPanelViewController";
     private final Field view;

@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.TreeSet;
 import java.util.zip.ZipFile;
 
-/** Flyme ThemeIconPackLoader index, native MTPK icon modules and adaptive-icon naming. */
 final class FlymeThemeIconCatalog {
     static final String PREFIX = "flyme-theme:";
     static final String SYNTHETIC = "flyme-synth:";
@@ -144,8 +143,7 @@ final class FlymeThemeIconCatalog {
         } else {
             pixels = ColorOsIconPackCatalog.render(icon, Math.max(1, Math.max(icon.getIntrinsicWidth(), icon.getIntrinsicHeight())));
         }
-        // Each selected theme gets a separate native filter instance. Never
-        // replace IconFilter's global singleton or the currently applied theme.
+
         var config = zip.getEntry("filter_config.xml");
         if (config != null) {
             Class<?> filterClass = ctx.getClassLoader().loadClass("android.content.res.flymetheme.iconfilter.IconFilter");

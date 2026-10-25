@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Only neutral, unreadably dark text in the verified wireless-debugging windows. */
 final class WirelessDebugTextPolicy {
     static boolean pageIconPreference(String key) {
         return "adb_pair_method_qrcode_pref".equals(key) || "adb_pair_method_code_pref".equals(key);

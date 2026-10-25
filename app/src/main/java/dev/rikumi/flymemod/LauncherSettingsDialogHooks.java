@@ -7,7 +7,6 @@ import android.preference.ListPreference;
 import java.lang.reflect.Method;
 import java.util.function.Consumer;
 
-/** Flyme removes negative buttons in device-default ListPreference dialogs. */
 final class LauncherSettingsDialogHooks {
     private final ClassLoader loader;
     LauncherSettingsDialogHooks(ClassLoader loader){this.loader=loader;}

@@ -12,7 +12,6 @@ import java.util.WeakHashMap;
 import java.util.function.Consumer;
 import java.util.function.BiConsumer;
 
-/** Flyme filters side swipes in system_server before consulting SystemUI. */
 final class BackGestureServiceHooks {
     private static final int FIRST_MOVE_VERTICAL = 0;
     private static final int FIRST_MOVE_HORIZONTAL = 1;

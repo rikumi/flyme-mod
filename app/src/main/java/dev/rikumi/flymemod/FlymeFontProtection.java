@@ -5,7 +5,6 @@ import android.content.SharedPreferences;
 import android.util.Log;
 import java.lang.reflect.Method;
 
-/** MEIZU 22 framework: Paint and Typeface route theme fonts through FlymeFontsHelper. */
 final class FlymeFontProtection {
     private static boolean installed;
     static synchronized void install(XposedInit module, ClassLoader loader) {

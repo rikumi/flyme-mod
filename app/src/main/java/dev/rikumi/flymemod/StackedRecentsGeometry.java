@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Continuous stack coordinates in units of the original page spacing. */
 final class StackedRecentsGeometry {
     private static final double LOG_TWO = Math.log(2d);
     private static final float LEFT_EFFECT_START = 1.25f;
@@ -16,10 +15,7 @@ final class StackedRecentsGeometry {
     }
 
     static float offset(float distance, float cardWidth, float anchor, float edgeInset) {
-        // Only horizontal spacing converges just beyond the viewport edge.
-        // Cards retain a readable minimum scale and opacity there.
-        // The right branch expands with d * (1 + log(1 + d)), whose positive
-        // second derivative keeps successive gaps growing instead of shrinking.
+
         return distance < 0f ? -(anchor + edgeInset) * leftProgress(distance)
                 : cardWidth * .425f * distance * (1f + curve(distance));
     }
@@ -36,7 +32,6 @@ final class StackedRecentsGeometry {
                 + (startScale - nativeScale) * (1f - progress);
     }
 
-    /** Absolute translation for a projected center, including native scroll/pivot changes. */
     static float translationForCenter(float center, float origin, float scroll,
             float size, float pivot, float scale) {
         return center - (origin - scroll + pivot + (size * .5f - pivot) * scale);
@@ -68,14 +63,12 @@ final class StackedRecentsGeometry {
         return running >= 0 && next == running && running + 1 < count ? running + 1 : -1;
     }
 
-    /** Original child index of the native page selected after removing one task. */
     static int dismissFocus(int current, int removed, int count) {
         if (count <= 1 || removed < 0 || removed >= count) return -1;
         current = Math.max(0, Math.min(current, count - 1));
         return current != removed ? current : removed == count - 1 ? removed - 1 : removed + 1;
     }
 
-    /** Per-card cache: native writers can change inputs even within one frame. */
     static final class Projection {
         private boolean valid;
         private float distance, size, anchor, inset;

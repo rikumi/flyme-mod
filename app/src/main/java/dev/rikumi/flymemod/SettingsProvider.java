@@ -9,7 +9,6 @@ import android.net.Uri;
 import android.os.Binder;
 import android.os.Process;
 
-/** Read-only settings bridge, accessible only to this app and supported system apps. */
 public final class SettingsProvider extends ContentProvider {
     private final ChargingInputReader chargingInputReader = new ChargingInputReader();
     @Override public boolean onCreate() { return true; }

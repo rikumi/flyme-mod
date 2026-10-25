@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Retain the native bar controllers by task instead of replacing the top-task singleton. */
 final class WeltWindowHandles {
     private static final String BAR="com.flyme.systemuitools.windowmode.views.A";
     private final SharedPreferences preferences;
@@ -73,8 +72,7 @@ final class WeltWindowHandles {
         move=ext.getMethod("moveWindowModeBound",int.class,int.class,int.class,Rect.class,float[].class,float[].class,boolean.class);
         fling=ext.getMethod("flingWindowMode",int.class,int.class,int.class,float.class,float.class,Point.class);
         Method instance=ext.getMethod("getInstance",Context.class);
-        // WindowMode may already have initialized its bar before onPackageReady,
-        // or its call to t0 may be AOT-inlined. Recover the native context directly.
+
         Class<?> windowMode=loader.loadClass("com.flyme.systemuitools.windowmode.WindowMode");
         Field nativeBar=windowMode.getDeclaredField("o");nativeBar.setAccessible(true);
         nativeWeltBar=nativeBar;
@@ -113,8 +111,7 @@ final class WeltWindowHandles {
             if(callbackMode==12 || callbackMode==268)requestRefresh();
             return result;
         },Object.class,Method.class,Object[].class);
-        // Scope every native callback, including animation callbacks that re-enter through
-        // static synthetic methods, so native gestures never address the top task by mistake.
+
         for(Method method:barClass.getDeclaredMethods()) {
             installer.hook(BAR,method.getName(),chain->{
                 Object owner=chain.getThisObject();
@@ -128,8 +125,7 @@ final class WeltWindowHandles {
                     Object result=chain.proceed();
                     if(entry!=null && method.getName().equals("l0")
                             && owner!=nativePinBar.get(null) && owner!=nativeWeltBar.get(null)) {
-                        // Preserve the original native handle registration; additional
-                        // native controller instances have their own window identity.
+
                         ((WindowManager.LayoutParams)layoutParams.get(owner))
                                 .setTitle("Flyme Mod Welt task "+entry.task);
                     }
@@ -145,8 +141,7 @@ final class WeltWindowHandles {
             },method.getParameterTypes());
             deoptimize.accept(method);
         }
-        // These are the native singleton dispatch points, all on the UI thread.
-        // Reconcile task ownership instead of hiding/recreating the previous bar.
+
         installer.hook(windowMode.getName(),"M0",chain->{
             int mode=(Integer)chain.getArg(1);
             if(enabled() && started && (mode==12 || mode==268)){reconcile();requestRefresh();return null;}
@@ -270,8 +265,7 @@ final class WeltWindowHandles {
     }
     private void release(int task) throws ReflectiveOperationException {
         Entry entry=active.get(task);
-        // Native hide refuses while its task is still offscreen. Mark this handle
-        // inactive first so s0() returns null and native cleanup actually runs.
+
         entry.task=0;toggle.invoke(entry.controller,false);entry.bounds.setEmpty();
         active.remove(task);pool.add(entry);
     }

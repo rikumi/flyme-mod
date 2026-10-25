@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Verified Flyme 12.1 home, native application lists and details; no sibling activities. */
 final class AppManagementBackgroundPolicy {
     // surface_default and surface_container_lowest, including ROM v888 variants.
     static final int[] SHADES = {0x0b0b0c, 0x232323, 0x1c1c1e, 0x2d2d2d};

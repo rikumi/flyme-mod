@@ -16,7 +16,6 @@ import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Flatten tile, notification and media SF effects into one live background sample and one foreground sample. */
 final class TileBackdropBatch {
     static final int MAX_TILES = 24;
     static final String SHADER = shader(MAX_TILES);
@@ -84,8 +83,7 @@ final class TileBackdropBatch {
             long shaderId=(Long)createEffect.invoke(root,shader(capacity));
             if(shaderId==0) throw new IllegalStateException("Flyme rejected enlarged backdrop union");
             Batch replacement=new Batch(createDrawable.invoke(root,shaderId),capacity);
-            // Attached states retain the first batch. Keep its larger replacement
-            // alive too, without introducing a strong ViewRoot map entry.
+
             batch.successor=replacement;
             batch=replacement;
             batches.put(root,new WeakReference<>(batch));
@@ -217,8 +215,6 @@ final class TileBackdropBatch {
         }
     }
 
-    // Include every member's full rectangle. Shader inside() expands by one pixel
-    // at both levels, preserving the existing antialiasing support at all edges.
     static void includeBounds(float[] group,float left,float top,float right,float bottom,boolean first) {
         if(first) {group[0]=left;group[1]=top;group[2]=right;group[3]=bottom;}
         else {group[0]=Math.min(group[0],left);group[1]=Math.min(group[1],top);
@@ -248,8 +244,7 @@ final class TileBackdropBatch {
             if(i%4==0) shader.append("if(tileCount>").append(i)
                     .append(".0 && inside(p,group").append(i/4).append(")) {\n");
             String t="tile"+i+"_";
-            // No later tile can exceed full coverage or this batch's largest
-            // saturation. Avoid testing every other tile for each covered pixel.
+
             shader.append("if((coverage<1.0 || amount<maximumSaturation || boost<maximumBrightnessBoost) && tileCount>")
                     .append(i).append(".0 && inside(p,").append(t).append("0)) { float c=clamp(mask(p,");
             for(int j=0;j<10;j++) shader.append(j==0?"":",").append(t).append(j);

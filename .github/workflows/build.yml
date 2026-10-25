@@ -82,6 +82,18 @@ jobs:
               output.write(f'version={name}\nprevious_tag={previous[1] if previous else ""}\n')
           print(f'Next version: {name} ({code})')
 
+      - name: Generate release changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          NOTES="docs/releases/$VERSION.md"
+          if [ -f "$NOTES" ]; then
+            cp "$NOTES" release-notes.md
+            exit 0
+          fi
+          echo "Missing release notes: $NOTES" >&2
+          exit 1
+
       - name: Restore persistent signing key
         env:
           ANDROID_SIGNING_BUNDLE: ${{ secrets.ANDROID_SIGNING_BUNDLE }}
@@ -130,23 +142,6 @@ jobs:
           fi
           git tag "v$VERSION"
           git push origin "v$VERSION"
-
-      - name: Generate release changelog
-        env:
-          PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          NOTES="docs/releases/$VERSION.md"
-          if [ -f "$NOTES" ]; then
-            cp "$NOTES" release-notes.md
-            exit 0
-          fi
-          RANGE=HEAD
-          if [ -n "$PREVIOUS_TAG" ]; then
-            RANGE="${PREVIOUS_TAG}..HEAD"
-          fi
-          git log "$RANGE" --pretty=format:'- %s (%h)' \
-            --invert-grep --grep='^chore: bump version to ' > release-notes.md
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

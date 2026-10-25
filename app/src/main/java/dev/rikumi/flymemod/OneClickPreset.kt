@@ -2,7 +2,6 @@ package dev.rikumi.flymemod
 
 import android.content.SharedPreferences
 
-/** Developer preset; app lists and system Settings values are preserved. */
 internal object OneClickPreset {
     // Only these switches are disabled by the developer preset.
     private val disabledSwitches = setOf(

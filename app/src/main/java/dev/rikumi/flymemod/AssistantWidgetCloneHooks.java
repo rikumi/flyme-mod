@@ -8,7 +8,6 @@ import android.os.Bundle;
 import java.lang.reflect.Method;
 import java.util.function.BiConsumer;
 
-/** Assistant 13.0.6: QuotesHelper.w() is the provider's live Quotation_data preferences. */
 final class AssistantWidgetCloneHooks {
     private final BiConsumer<String, Throwable> log;
     AssistantWidgetCloneHooks(BiConsumer<String, Throwable> log) { this.log = log; }

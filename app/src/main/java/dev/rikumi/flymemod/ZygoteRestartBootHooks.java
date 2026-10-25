@@ -7,7 +7,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Avoid restarting the exited APEX daemon for a duplicate boot notification after Zygote restart. */
 final class ZygoteRestartBootHooks {
     static void install(ClassLoader loader, SignalHooks.Installer installer, BooleanSupplier enabled,
                         Consumer<Method> deoptimize, BiConsumer<String, Throwable> log)
@@ -31,8 +30,7 @@ final class ZygoteRestartBootHooks {
             List<?> sessions = (List<?>) successfulSessions.get(chain.getThisObject());
             synchronized (sessions) {
                 if (sessions.isEmpty()) {
-                    // restoreSessions() already skips this warm restart using the same property.
-                    // Keep all session-success processing and the real boot notification native.
+
                     log.accept("Skipped duplicate APEX boot notification after Zygote restart", null);
                     return null;
                 }

@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Names and geometry shared by the settings UI and the launcher hooks. */
 final class LauncherExtraRowPolicy {
     static final String DIRECTORY = "flymemod-extra-row-v1";
     static final int WIDGET_HOST = 0x464d01;

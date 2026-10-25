@@ -3,7 +3,6 @@ package dev.rikumi.flymemod;
 import android.graphics.ColorFilter;
 import java.lang.reflect.Method;
 
-/** Map only verified surface pixels while preserving alpha and all other background colors. */
 final class ThemeBackgroundFilter {
     final ColorFilter filter;
 

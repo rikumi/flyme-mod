@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Shared media/notification displacement keeps returning inside the threshold reversible. */
 final class MediaSwipeMotion {
     static final float THRESHOLD_DP = 56f;
     static final float DAMPING = .22f;

@@ -14,7 +14,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Set explicit dp edge widths; disabling always recomputes native policy. */
 final class BackGestureWidthHooks {
     private static final String OWNER = "com.android.systemui.navigationbar.gestural.EdgeBackGestureHandler";
     private final Field context, left, right, mlWidth, uiThread;

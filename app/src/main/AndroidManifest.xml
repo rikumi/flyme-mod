@@ -2,9 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Fluix 控件的触摸反馈 -->
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Complete background icon index, including installed packages without Launcher activities. -->
+
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <permission android:name="dev.rikumi.flymemod.permission.CONTROL_GOOGLE_SERVICE"
         android:protectionLevel="signature" />
@@ -29,7 +28,7 @@
         <package android:name="com.meizu.media.camera" />
         <package android:name="com.meizu.media.gallery" />
         <package android:name="com.meizu.flyme.sdkstage" />
-        <!-- Recommended scope visibility -->
+
         <package android:name="com.android.alarmclock" />
         <package android:name="com.android.calendar" />
         <package android:name="com.android.dialer" />
@@ -58,7 +57,7 @@
         <package android:name="com.meizu.safe" />
         <package android:name="com.meizu.voiceassistant" />
         <package android:name="com.meizu.wear" />
-        <!-- End recommended scope visibility -->
+
     </queries>
 
     <application
@@ -146,14 +145,13 @@
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.FlymeMod">
-            <!-- 在 LSPosed 管理器中提供模块设置入口。 -->
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
             </intent-filter>
         </activity>
 
-        <!-- 普通桌面启动入口。 -->
         <activity-alias
             android:name=".MainActivityLauncher"
             android:enabled="true"
@@ -170,5 +168,4 @@
 
     </application>
 
-    <!-- libxposed module configuration is under META-INF/xposed. -->
 </manifest>

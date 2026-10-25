@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-/** Read the packaged declaration on every click; only installed packages contribute process names. */
 public final class ScopeRestartPlan {
     private static boolean safe(String name) { return name != null && !name.equals("system_server") && !name.equals("system") && name.matches("[A-Za-z0-9_.:]+"); }
     private static void add(Set<String> names, String name) { if (safe(name)) names.add(name); }

@@ -14,8 +14,7 @@ final class SeparateShadeSwipeTouchTargets {
         Rect bounds = new Rect();
         if (!view.getGlobalVisibleRect(bounds) || !bounds.contains((int) x, (int) y)) return false;
         String name = view.getClass().getName();
-        // ViewPager2$RecyclerViewImpl also contains "ViewPager" in its name. It belongs
-        // to this tile pager, rather than being an independent nested paging target.
+
         boolean tilePagerMember = belongsTo(view, tilePager);
         boolean pagerInternal = tilePagerMember && name.startsWith(tilePager.getClass().getName() + "$");
         if (view instanceof SeekBar || name.contains("Slider") || name.contains("MediaScrollView")

@@ -17,7 +17,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 
-/** Keep an in-flight restart and its loading screen across Activity recreation. */
 internal object RestartUiState {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var running = false
@@ -55,7 +54,6 @@ internal object RestartUiState {
     }
 }
 
-/** 首页和二级页面共用的重启菜单，操作仅在用户点击菜单项时执行。 */
 @Composable
 internal fun RestartMenu() {
     val context = LocalContext.current

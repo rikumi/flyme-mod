@@ -10,7 +10,6 @@ import java.lang.reflect.Method;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Traced against Camera 12.7.2 on the connected Flyme device. */
 final class CameraHooks {
     private final BiConsumer<String, Throwable> log;
     private volatile boolean systemRotation;
@@ -75,8 +74,7 @@ final class CameraHooks {
             }
             if (systemRotation && intent != null && locked) {
                 intent.putExtra("Rotation", 0);
-                // Preserve CAMERA_VIEW, secure flags, album selection, URI and
-                // thumbnail transition. Gallery scope handles its delayed SENSOR request.
+
             }
             return intent;
         }, Uri.class);

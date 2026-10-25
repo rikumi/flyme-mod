@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Locale;
 import org.xmlpull.v1.XmlPullParser;
 
-/** Port of ColorOS UxIconPackLoader / util.d's resource catalog, without Oplus framework APIs. */
 final class ColorOsIconPackCatalog {
     record Pack(String pkg, String name) {
         @Override public String toString() { return name; }
@@ -37,8 +36,7 @@ final class ColorOsIconPackCatalog {
     List<Pack> packs(Context ctx) throws Exception {
         PackageManager pm = ctx.getPackageManager();
         LinkedHashMap<String, Pack> found = new LinkedHashMap<>();
-        // Flyme's AppIconPackLoader discovers these two actions. Extra standard
-        // actions also allow packs whose launcher entry differs from ADW's.
+
         for (String action : new String[]{"org.adw.launcher.THEMES", "com.gau.go.launcherex.theme",
                 "com.novalauncher.THEME", "com.anddoes.launcher.THEME"}) {
             for (ResolveInfo info : pm.queryIntentActivities(new Intent(action), 0)) {
@@ -58,14 +56,12 @@ final class ColorOsIconPackCatalog {
         if (pkg.startsWith(FlymeThemeIconCatalog.PREFIX)) return FlymeThemeIconCatalog.entries(ctx, pkg);
         Resources resources = ctx.getPackageManager().getResourcesForApplication(pkg);
         LinkedHashMap<String, Entry> found = new LinkedHashMap<>();
-        // ColorOS tries theme_iconpack first, then icon_pack, followed by
-        // res/xml/appfilter or assets/appfilter.xml. Keep the same precedence.
+
         int array = resources.getIdentifier("theme_iconpack", "array", pkg);
         if (array == 0) array = resources.getIdentifier("icon_pack", "array", pkg);
         if (array != 0) for (String name : resources.getStringArray(array)) add(resources, pkg, found, name, null);
         readXml(resources, pkg, "appfilter", found);
-        // drawable.xml includes manually selectable alternatives that have no
-        // application mapping; expose those as well in the full-screen picker.
+
         readXml(resources, pkg, "drawable", found);
         ArrayList<Entry> result = new ArrayList<>(found.values());
         result.sort((a, b) -> a.drawable.compareToIgnoreCase(b.drawable));

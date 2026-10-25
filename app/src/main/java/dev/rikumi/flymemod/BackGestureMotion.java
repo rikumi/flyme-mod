@@ -3,7 +3,6 @@ package dev.rikumi.flymemod;
 import android.graphics.PointF;
 import android.view.MotionEvent;
 
-/** Read the first sample beyond touch slop, including samples batched into a MOVE event. */
 final class BackGestureMotion {
     private BackGestureMotion() {}
 

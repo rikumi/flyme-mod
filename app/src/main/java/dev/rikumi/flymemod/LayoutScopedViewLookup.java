@@ -7,7 +7,6 @@ import java.lang.ref.WeakReference;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** Cache both hits and misses until the window hierarchy has been laid out again. */
 final class LayoutScopedViewLookup {
     private final Class<?> target;
     private final Map<View, Window> windows=new WeakHashMap<>();

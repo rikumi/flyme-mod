@@ -9,7 +9,6 @@ import android.widget.TextView;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** The standalone and combined panels both use this Flyme header. */
 final class HeaderDateHooks {
     private static final String HEADER = "com.flyme.systemui.statusbar.phone.StatusBarHeaderView";
     private final Consumer<Context> settings;

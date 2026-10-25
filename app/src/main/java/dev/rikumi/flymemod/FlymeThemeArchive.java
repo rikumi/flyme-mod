@@ -15,7 +15,6 @@ import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
-/** CustomizeCenter 12.5.0 bf.i / gf.a icon-module decoder; never applies a theme. */
 final class FlymeThemeArchive {
     static void extract(File theme, File output) throws Exception {
         try (ZipFile mtpk = new ZipFile(theme)) {

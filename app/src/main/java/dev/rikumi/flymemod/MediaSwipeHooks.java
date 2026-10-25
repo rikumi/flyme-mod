@@ -21,7 +21,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Both shade hosts use Flyme's full-player MediaScrollView, not the compact QS tile. */
 final class MediaSwipeHooks {
     private static final String HANDLER = "com.android.systemui.media.controls.ui.view.MediaCarouselScrollHandler";
     private static final String SCROLL = "com.android.systemui.media.controls.ui.view.MediaScrollView";
@@ -50,8 +49,7 @@ final class MediaSwipeHooks {
         Class<?> animator = loader.loadClass("com.android.wm.shell.shared.animation.PhysicsAnimator");
         animatorInstance = animator.getMethod("getInstance", Object.class);
         animatorCancel = animator.getMethod("cancel");
-        // Flyme's Switch/QSTileViewImpl use this named preset via View feedback.
-        // Short createOneShot effects are remapped to mBack press with fixed strength.
+
         horizontalHapticFeedback = loader.loadClass("android.view.HapticFeedbackConstants")
                 .getField("FLYME_SLIDE_HORIZONTAL").getInt(null);
     }

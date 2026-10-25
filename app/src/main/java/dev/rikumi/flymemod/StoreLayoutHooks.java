@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
 
-/** Store 12.5.1 / 11.1.5: filter the shared navigation data and complete feed blocks. */
 final class StoreLayoutHooks {
     private volatile boolean[] options = new boolean[KEYS.length];
     private volatile int applicationPosition = -1;
@@ -93,8 +92,7 @@ final class StoreLayoutHooks {
             }, method.getParameterTypes());
             installed++;
         }
-        // Cached MainValue bypasses ResultModel#getValue. Capture the actual navigation
-        // immediately before either cached or network data creates the first fragment.
+
         Field pageId = navItem.getField("page_id");
         installer.hook("com.meizu.flyme.appcenter.activitys.AppMainActivity", "setupViewPager", chain -> {
             applicationPosition = -1;
@@ -185,9 +183,7 @@ final class StoreLayoutHooks {
     }
 
     static Object emptyDetailRecommendations(ClassLoader loader) throws ReflectiveOperationException {
-        // DetailPresenter flatMaps into recommendations before updating its install
-        // button and pager. empty() skips that final onNext entirely. The mapper
-        // additionally requires a non-null blocks list to produce its Pair.
+
         Class<?> resultType = loader.loadClass("com.meizu.mstore.data.net.requestitem.base.ResultModel");
         Class<?> valueType = loader.loadClass("com.meizu.mstore.data.net.requestitem.detail.RecommendValue");
         Object value = valueType.getConstructor().newInstance();
@@ -199,10 +195,7 @@ final class StoreLayoutHooks {
     }
 
     static Object emptyUpdateRecommendations(ClassLoader loader) throws ReflectiveOperationException {
-        // Store 12.5.1 UpdatePresenter.H zips installed updates with recommendations.
-        // empty() completes that zip without emitting the installed-app list. Emit
-        // one successful empty block instead, including the non-null list required
-        // by the downstream mapper (also present in Store 11.1.5).
+
         Class<?> resultType = loader.loadClass("com.meizu.mstore.data.net.requestitem.base.ResultModel");
         Class<?> valueType = loader.loadClass("com.meizu.mstore.data.net.requestitem.base.ValueBlock");
         Object value = valueType.getConstructor().newInstance();
@@ -230,12 +223,11 @@ final class StoreLayoutHooks {
         Method cancel = presenter.getMethod("G");
         Method name = fragment.getMethod("setPageName", String.class);
         Method setData = fragment.getMethod("setData", rows);
-        // R8 removed qb.d's declared constructor. Use the app's verified factory.
+
         Method emptyRows = Class.forName("com.meizu.mstore.tools.AssembleTool", false, loader)
                 .getMethod("assembleFeedBlock", List.class);
         var historyConstructor = history.getConstructor(List.class);
-        // The empty-query landing page has its own entry point. Do not intercept
-        // the search-result or query-suggestion pipelines which also call setData.
+
         installer.hook(fragment.getName(), "s", chain -> {
             if (!options[3]) return chain.proceed();
             Object view = chain.getThisObject();
@@ -273,8 +265,7 @@ final class StoreLayoutHooks {
                 pageInfo = candidate;
                 break;
             } catch (NoSuchFieldException ignored) {
-                // Locate the page metadata by its page-id field; obfuscation prefixes
-                // on the containing jd.b fields vary between JADX and runtime names.
+
             }
         }
         if (pageInfo == null) throw new NoSuchFieldException("Store page metadata field");
@@ -292,8 +283,7 @@ final class StoreLayoutHooks {
         Field selectedPosition = current ? appMainActivity.getDeclaredField("q") : null;
         if (selectedPosition != null) selectedPosition.setAccessible(true);
         if (current && headerBinding != null) {
-            // v9.e#a commits the new tab synchronously, then changes the toolbar.
-            // A plain Fragment cannot execute the multitab page's native rebind.
+
             Class<?> tabs = loader.loadClass("v9.e");
             Field tabActivity = findFieldByType(tabs, appMainActivity);
             tabActivity.setAccessible(true);
@@ -313,10 +303,7 @@ final class StoreLayoutHooks {
             Bundle bundle = (Bundle) arguments.get(config);
             Integer expectedPage = homePages.get(bundle.getInt("position", -1));
             if (expectedPage == null || pageId.getInt(resolvedPageInfo.get(config)) != expectedPage) return chain.proceed();
-            // Keep the activity's toolbar and navigation, without creating any feed or nested tabs.
-            // Returning a plain Fragment skips the app page's menu callbacks. Rebind the
-            // Activity-owned search/download header after the tab transaction, especially when
-            // returning from Mine where its ActionBar custom view was replaced.
+
             new Handler(Looper.getMainLooper()).post(() -> {
                 restoreApplicationHeader((Activity) context, headerBinding, selectedPosition);
             });
@@ -367,8 +354,7 @@ final class StoreLayoutHooks {
         }, List.class, behavior);
         installer.hook(assemble.getName(), "assembleSingleRowRecommendation", chain -> options[6]
                 ? emptyRows.invoke(null, java.util.Collections.emptyList()) : chain.proceed(), List.class);
-        // Legacy download-click recommendations: prevent requests and suppress
-        // already cached rows before their layout inserts a recommendation view.
+
         Class<?> update = loader.loadClass("com.meizu.cloud.app.request.structitem.AppUpdateStructItem");
         installer.hook("com.meizu.cloud.app.block.RecommendClickImpl", "isNeedShowRecommend",
                 chain -> options[6] ? false : chain.proceed(), update);

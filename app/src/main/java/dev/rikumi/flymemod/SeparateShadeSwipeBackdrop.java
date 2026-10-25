@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Apart notifications use a mirrored wallpaper Surface; QS blurs the application window. */
 final class SeparateShadeSwipeBackdrop {
     private static final String WALLPAPER = "com.flyme.systemui.wallpaper.LockscreenWallpaperManager";
     private static final String BINDER = "com.flyme.systemui.controlcenter.ui.binder.MzRootContainerBlurBinder";
@@ -88,8 +87,7 @@ final class SeparateShadeSwipeBackdrop {
             return chain.proceed();
         }, float.class);
         installer.hook(BINDER, "applyBlurState", chain -> {
-            // Wallpaper blur stays in its BackgroundBlurDrawable. Applying the repository's
-            // application blur to mz_root_container as well would blur the foreground twice.
+
             return session != null && !session.ending && chain.getThisObject() == session.binder ? null : chain.proceed();
         }, binderApply.getParameterTypes()[0]);
         installer.hook("com.android.systemui.statusbar.NotificationShadeDepthController", "onBlurApplied", chain -> {
@@ -97,8 +95,7 @@ final class SeparateShadeSwipeBackdrop {
             Session completing = pending;
             if (completing != null && completing.depth == chain.getThisObject()
                     && ((Integer) chain.getArg(0) >= completing.nativeRadius || centerExpanded.getFloat(completing.center) <= 0f)) {
-                // The full-strength native window blur and removal of our region are
-                // submitted for the same render frame, instead of dropping the blur early.
+
                 completing.blur.close(); pending = null;
             }
             return result;
@@ -139,21 +136,17 @@ final class SeparateShadeSwipeBackdrop {
         current.rootContainer = id == 0 ? null : root.findViewById(id);
         current.fraction = sourceCenter ? 1f : 0f;
         session = current;
-        // Keep the lower background opaque. Wallpaper opacity supplies the visible
-        // crossfade; fading both stacked layers would leak f*(1-f) of the raw app.
+
         current.blur.alpha(1f);
         publish(current, 0f);
-        // Clear the full-window backend once. BackgroundBlurDrawable independently
-        // composites a fixed-radius region with the gesture's alpha.
+
         Method getViewRoot = View.class.getDeclaredMethod("getViewRootImpl"); getViewRoot.setAccessible(true);
         nativeApplyBlur.invoke(nativeBlur, getViewRoot.invoke(root), 0, false, 0f);
-        // Both foregrounds may be expanded, but that must not remove the notification
-        // wallpaper or switch the full-screen RenderEffect at the gesture threshold.
+
         current.writingVisibility = true;
         try { setWallpaperVisible.invoke(current.wallpaper, true); }
         finally { current.writingVisibility = false; }
-        // A center-only source has a one-pixel wallpaper mirror and an offscreen
-        // blur view. Prepare the notification endpoint before its flow collectors run.
+
         mirrorHeight.invoke(current.wallpaper, root.getHeight());
         wallpaperY.invoke(current.wallpaper, 0f, (float)root.getHeight());
         applyWallpaperSurface(current);
@@ -164,8 +157,7 @@ final class SeparateShadeSwipeBackdrop {
         Session current = session;
         if (current == null) return;
         current.fraction = Math.max(0f, Math.min(1f, centerFraction));
-        // Radius stays unchanged throughout the gesture, including spring overshoot.
-        // The window backend stays off until the full-opacity control-center endpoint.
+
         publish(current, 0f);
         current.blur.alpha(1f);
         current.frame.setVisibility(View.VISIBLE);
@@ -210,8 +202,7 @@ final class SeparateShadeSwipeBackdrop {
                 publish(current, 0f);
                 setWallpaperVisible.invoke(current.wallpaper, current.requestedVisibility);
             }
-            // Restore drawing alpha separately from native visibility. A source-center
-            // frame was originally GONE but must stay visible when returning to notifications.
+
             for (Layer layer : current.layers) layer.restore();
             current.frame.setAlpha(current.frameAlpha);
             float nativeAlpha = ((Number) flowValue.invoke(wallpaperAlpha.get(current.wallpaper))).floatValue();

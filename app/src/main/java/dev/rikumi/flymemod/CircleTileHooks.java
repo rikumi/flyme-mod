@@ -16,7 +16,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Flyme SystemUI 16260625 square tiles; retain native colors, grid and text. */
 final class CircleTileHooks {
     private static final String TILE = "com.android.systemui.qs.tileimpl.QSTileViewImpl";
     private final Consumer<Context> settings;

@@ -17,7 +17,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Media output chooser uses the same independently switched surfaces as QS detail dialogs. */
 final class MediaOutputSurfaceHooks {
     static void install(ClassLoader loader, SignalHooks.Installer installer,
             Consumer<Context> settings, BooleanSupplier light, BooleanSupplier saturation,

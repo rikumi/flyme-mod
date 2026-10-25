@@ -6,7 +6,6 @@ import java.util.concurrent.Executor;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/** Owner-thread cache. Only the process query runs on the worker; unknown means running. */
 final class RunningPackagesSnapshot {
     private final Executor worker, owner;
     private final LongSupplier clock;

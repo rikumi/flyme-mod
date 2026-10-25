@@ -7,7 +7,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
-/** Snapshot the actual folder profile for the module's hidden-app grid. */
 final class LauncherFolderMetrics {
     static final String METHOD = "save_launcher_folder_metrics";
     static final String PREFIX = "hidden_folder_metric_";
@@ -24,8 +23,7 @@ final class LauncherFolderMetrics {
 
     static void publishAsync(Context launcher, ClassLoader loader, BiConsumer<String, Throwable> log)
             throws ReflectiveOperationException {
-        // Read the live profile on the UI thread, but never wait for the provider's
-        // synchronous preferences commit while resuming the launcher for a gesture.
+
         Bundle metrics = snapshot(launcher, loader);
         long revision = REVISION.incrementAndGet();
         Context application = launcher.getApplicationContext();

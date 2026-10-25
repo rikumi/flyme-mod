@@ -24,7 +24,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 采用 Flyme Settings 首页账号头像行的尺寸和排版，保留模块的设备信息来源。 */
 @Composable
 internal fun HomeDeviceBanner() {
     val context = LocalContext.current

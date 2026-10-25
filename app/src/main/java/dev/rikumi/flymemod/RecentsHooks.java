@@ -14,7 +14,6 @@ import java.util.function.Predicate;
 import java.util.function.BooleanSupplier;
 import io.github.libxposed.api.XposedInterface;
 
-/** Flyme 12.6 launcher recent-task actions. */
 final class RecentsHooks {
     interface Installer {
         void hook(String name, String method, XposedInterface.Hooker hooker, Class<?>... parameters);
@@ -46,16 +45,13 @@ final class RecentsHooks {
             boolean filter = hideNotRunning.getAsBoolean();
             synchronized (filteredLists) {
                 Boolean previous = filteredLists.get(chain.getThisObject());
-                // A preference transition invalidates the old projection once.
-                // Once loaded, use the native generation check. Returning false
-                // throughout a gesture made every reloadIfNeeded rebuild all cards.
+
                 if ((filter && !stackedRecents.getAsBoolean())
                         || filter != Boolean.TRUE.equals(previous)) return false;
             }
             return chain.proceed();
         }, int.class);
-        // Native UI/background caches outlive an overview session and preference
-        // changes. Refresh through the native loader, including when switched off.
+
         installer.hook(recentTasksList.getName(), "getTasks", chain -> {
             boolean filter = hideNotRunning.getAsBoolean();
             Object owner = chain.getThisObject();
@@ -77,7 +73,7 @@ final class RecentsHooks {
                 .getDeclaredMethod("isTaskListValid", int.class));
         deoptimize.accept(loader.loadClass("com.android.quickstep.views.RecentsView")
                 .getDeclaredMethod("reloadIfNeeded"));
-        // Verified in the Flyme 12.6.0.0A MEIZU 21 Pro launcher reference APK.
+
         installer.hook(SYSTEM_UI_PROXY, "getRecentTasks", chain -> {
             Object result = chain.proceed();
             if (!(result instanceof List<?> tasks) || !hideNotRunning.getAsBoolean()) return result;

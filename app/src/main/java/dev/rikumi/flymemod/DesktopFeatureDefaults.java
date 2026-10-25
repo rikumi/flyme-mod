@@ -2,7 +2,6 @@ package dev.rikumi.flymemod;
 
 import android.content.SharedPreferences;
 
-/** First defaults only: absent switches stay disabled; explicit choices and numeric values are retained. */
 final class DesktopFeatureDefaults {
     static synchronized void initialize(SharedPreferences preferences) {
         SharedPreferences.Editor editor=null;

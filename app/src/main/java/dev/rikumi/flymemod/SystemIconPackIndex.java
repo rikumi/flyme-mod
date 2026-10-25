@@ -2,7 +2,6 @@ package dev.rikumi.flymemod;
 
 import java.util.*;
 
-/** Ordered appfilter declarations, independent of the manually selectable/sorted catalog. */
 final class SystemIconPackIndex {
     private final Map<String,String> exact=new LinkedHashMap<>(), first=new LinkedHashMap<>();
     static String component(String value) {

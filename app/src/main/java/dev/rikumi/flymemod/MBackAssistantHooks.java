@@ -7,7 +7,6 @@ import java.lang.reflect.Method;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Select Flyme's native home action when the mBack assistant is uninstalled. */
 final class MBackAssistantHooks {
     private static final String ACTIONS = "com.flyme.systemui.navigationbar.actions.NavBarActionsConfig";
     private static final String ASSISTANT = "com.meizu.voiceassistant";
@@ -31,8 +30,7 @@ final class MBackAssistantHooks {
             settings.accept(context);
             if (!enabled.getAsBoolean() || !"ai".equals(action)) return action;
             try {
-                // No MATCH_UNINSTALLED_PACKAGES: a system package removed for the
-                // current user must also be treated as absent. Disabled is installed.
+
                 context.getPackageManager().getApplicationInfo(ASSISTANT, 0);
                 return action;
             } catch (PackageManager.NameNotFoundException absent) {

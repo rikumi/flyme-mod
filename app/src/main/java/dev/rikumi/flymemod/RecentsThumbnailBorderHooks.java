@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Consumer;
 
-/** A faint inner 1dp border follows Flyme's actual thumbnail outline. */
 final class RecentsThumbnailBorderHooks {
     private final SharedPreferences preferences;
     private final Class<?> legacy, modern;
@@ -83,8 +82,7 @@ final class RecentsThumbnailBorderHooks {
         if(path==null || path.isEmpty())return;
         int save=canvas.save();
         try {
-            // Half the stroke falls outside the outline. Clip that half so exactly
-            // 1dp remains inside, preserving the native smoothed-corner path.
+
             stroke.setStrokeWidth(2f*view.getResources().getDisplayMetrics().density);
             canvas.clipPath(path);
             canvas.drawPath(path,stroke);

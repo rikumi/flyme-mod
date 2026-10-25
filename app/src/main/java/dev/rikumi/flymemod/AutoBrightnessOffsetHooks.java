@@ -5,7 +5,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.function.Consumer;
 
-/** Adjust automatic targets only, preserving native manual and temporary adjustments. */
 final class AutoBrightnessOffsetHooks {
     static void install(ClassLoader loader, SharedPreferences preferences, SignalHooks.Installer installer,
                         Consumer<Method> deoptimize) throws ReflectiveOperationException {

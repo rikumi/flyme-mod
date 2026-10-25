@@ -29,7 +29,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** ColorOS stack behavior reimplemented on Flyme 12.6 Quickstep's native pager. */
 final class StackedRecentsHooks {
     private static final String RECENTS = "com.android.quickstep.views.RecentsView";
     private static final String TASK = "com.android.quickstep.views.TaskView";
@@ -157,8 +156,7 @@ final class StackedRecentsHooks {
         }, pendingType, taskType, boolean.class, boolean.class, long.class, boolean.class, boolean.class);
         installer.hook("com.meizu.flyme.launcher.MzLauncher", "onStateSetStart", chain -> {
             if (enabled.getAsBoolean() && chain.getArg(0) == overviewState) {
-                // Use Flyme's own immersive policy before any overview frames;
-                // onStateSetEnd(NORMAL) still performs the native restoration.
+
                 showStatusBar.invoke(chain.getThisObject(), false);
             }
             return chain.proceed();
@@ -262,8 +260,7 @@ final class StackedRecentsHooks {
             Object result = chain.proceed();
             State state = states.get(chain.getThisObject());
             if (state != null && !state.dirty) {
-                // Native layout also runs for icon/thumbnail updates. Keep the
-                // native baselines and blur cache when page geometry is unchanged.
+
                 state.dirty = layoutChanged((ViewGroup) chain.getThisObject(), state);
             }
             return result;
@@ -289,21 +286,18 @@ final class StackedRecentsHooks {
         }, Canvas.class);
         installer.hook(RECENTS, "dispatchScrollChanged", chain -> {
             State state = states.get(chain.getThisObject());
-            // The entry endpoint snaps the native pager before publishing the final pose.
-            // Suppress only its intermediate notifications; the caller flushes after render.
+
             if (state != null && state.batchingEntryScroll && enabled.getAsBoolean()) return null;
             return chain.proceed();
         });
         installer.hook(RECENTS, "getUndampedOverScrollShift", chain -> {
             State state = states.get(chain.getThisObject());
-            // RecentsView's dispatchDraw translates the whole canvas by this
-            // value. It is already represented by our individual projections.
+
             return state != null && state.drawing ? 0f : chain.proceed();
         });
         installer.hook("android.view.ViewGroup", "drawChild", chain -> {
             ViewGroup parent = (ViewGroup) chain.getThisObject();
-            // This base-class hook also sees every folder, icon and widget subtree.
-            // Only RecentsView can own a stacked card; reject others before map lookups.
+
             if (!recentsType.isInstance(parent)) return chain.proceed();
             Canvas canvas = (Canvas) chain.getArg(0);
             View child = (View) chain.getArg(1);
@@ -314,9 +308,7 @@ final class StackedRecentsHooks {
             if (state == null || (!state.drawing && !active(parent))) return chain.proceed();
             if (card.hidden) return false;
             if (card.effect == null || !canvas.isHardwareAccelerated()) return chain.proceed();
-            // Native drawChild preserves the task's matrix, alpha and cached
-            // display list. Blur its output in a larger node, not the tight
-            // task node whose layer allocation truncates the blur kernel.
+
             if (card.blurNode == null) card.blurNode = new RenderNode("Flyme stack task blur");
             card.bounds.set(0, 0, child.getWidth(), child.getHeight());
             child.getMatrix().mapRect(card.bounds);
@@ -361,16 +353,11 @@ final class StackedRecentsHooks {
                 SurfaceState surface = surfaces.get(simulator);
                 ViewGroup parent = surface == null ? null : (ViewGroup) surface.owner.get();
                 Matrix incoming = (Matrix) chain.getArg(0);
-                // Correct at the actual transaction setter as well. The builder's
-                // callback can be inlined or its matrix can be overwritten later.
-                // Identity restricts this to the running app's simulator matrix;
-                // wallpaper and home-target matrices remain native.
+
                 if (parent == null || !active(parent) || incoming != surfaceMatrix.get(simulator)) return chain.proceed();
                 if (surface.builderCorrecting) {
                     if (!deferred) return chain.proceed();
-                    // Flyme queues a lambda capturing this Matrix reference. Keep
-                    // the corrected frame immutable after the builder restores the
-                    // simulator's native matrix, and after subsequent frames run.
+
                     surface.submissions++;
                     return chain.proceed(new Object[]{new Matrix(incoming)});
                 }
@@ -407,9 +394,7 @@ final class StackedRecentsHooks {
             matrix.getValues(surface.savedMatrix);
             surface.bounds.set((Rect) surfaceCrop.get(chain.getThisObject()));
             matrix.mapRect(surface.bounds);
-            // The simulator has its own fullscreen/carousel interpolators. Map
-            // its actual crop to the rendered snapshot, rather than multiplying
-            // a task scale into an unrelated native surface trajectory.
+
             thumbnailBounds.invoke(task, surface.targetBounds, true);
             if (!surface.targetBounds.isEmpty() && surface.bounds.width() > 0f && surface.bounds.height() > 0f) {
                 matrix.postScale(surface.targetBounds.width() / surface.bounds.width(),
@@ -450,8 +435,7 @@ final class StackedRecentsHooks {
                     || index < 0 || index >= view.getChildCount()) return chain.proceed();
             Card card = cards.get(view.getChildAt(index));
             if (card == null) return chain.proceed();
-            // The current app is a live surface during gesture completion.
-            // Keep its simulator aligned with the same projected task position.
+
             return Math.round((Integer) scrollForPage.invoke(view, index)
                     - (state.horizontal ? view.getScrollX() : view.getScrollY())
                     + (state.horizontal ? card.offsetX : card.offsetY));
@@ -464,8 +448,7 @@ final class StackedRecentsHooks {
         installer.hook(RECENTS, "lambda$loadVisibleTaskData$16", chain -> {
             ViewGroup view = (ViewGroup) chain.getThisObject();
             if (!active(view) || !states.containsKey(view) || states.get(view).step <= 0) return chain.proceed();
-            // Load only the retained stack, preserving native cache/privacy and
-            // unload behavior for cards culled from either side.
+
             int index = (Integer) chain.getArg(6);
             boolean visible = visible(view, (View) chain.getArg(7), 0f);
             Object[] args = chain.getArgs().toArray();
@@ -521,8 +504,7 @@ final class StackedRecentsHooks {
             Card card = cards.get(task);
             if (card == null || card.writingZ || !enabled.getAsBoolean()
                     || !(task.getParent() instanceof View parent) || !active(parent)) return chain.proceed();
-            // Drag start, spring completion and resetViewTransforms all write
-            // a flat native Z. Preserve our sibling order throughout the drag.
+
             return chain.proceed(new Object[]{card.projectedZ});
         }, float.class);
         for (String setter : new String[]{"setTranslationX", "setTranslationY"}) {
@@ -609,8 +591,7 @@ final class StackedRecentsHooks {
         for (String type : new String[]{"com.meizu.flyme.launcher.MzLauncher", "com.android.launcher3.uioverrides.QuickstepLauncher"}) {
             deoptimizer.accept(loader.loadClass(type).getDeclaredMethod("onStateSetStart", launcherStateType));
         }
-        // These private final writers and the visibility lambda are commonly
-        // inlined by ART. Keep their callers going through the installed hooks.
+
         for (Method method : taskType.getDeclaredMethods()) {
             String name = method.getName();
             if ((name.startsWith("set") && (name.contains("Scale") || name.contains("Translation")))
@@ -653,9 +634,7 @@ final class StackedRecentsHooks {
         deoptimizer.accept(loadVisible);
         deoptimizer.accept(loader.loadClass(RECENTS).getDeclaredMethod("getScrollOffset"));
         deoptimizer.accept(dispatchScroll);
-        // The simulator callback can be inlined into apply or its bridge even
-        // when createSurfaceParams itself is deoptimized. Keep the real app's
-        // transaction on the same corrected matrix as the task snapshot.
+
         Class<?> simulator = loader.loadClass("com.android.quickstep.util.TaskViewSimulator");
         for (Method method : simulator.getDeclaredMethods()) {
             if (method.getName().equals("apply") || method.getName().equals("onBuildTargetParams")) {
@@ -666,7 +645,7 @@ final class StackedRecentsHooks {
                 loader.loadClass("com.android.quickstep.util.TransformParams$BuilderProxy")));
         deoptimizer.accept(loader.loadClass(RECENTS).getDeclaredMethod("dispatchDraw", Canvas.class));
         deoptimizer.accept(ViewGroup.class.getDeclaredMethod("dispatchDraw", Canvas.class));
-        // Verified caller generated for Flyme RecentsView.loadVisibleTaskData.
+
         try {
             Class<?> visibility = loader.loadClass(RECENTS + "$$ExternalSyntheticLambda46");
             deoptimizer.accept(visibility.getDeclaredMethod("accept", Object.class, Object.class));
@@ -738,8 +717,7 @@ final class StackedRecentsHooks {
     }
 
     private float stackStrength(View view, State state) throws IllegalAccessException {
-        // Gesture completion and mFullscreenProgress are separate native
-        // callbacks. Never interpret the tail of entry as launching an app.
+
         float progress = fullscreen.getFloat(view);
         if (state.entryStarted && !state.entrySettled) {
             if (state.entryFinished && state.nativeEntryEnded && state.handoffProgress == 1f && progress <= .0001f) {
@@ -808,9 +786,7 @@ final class StackedRecentsHooks {
 
     private void writeCenteredPose(ViewGroup parent, View task, Card card,
             float centerX, float centerY, float scaleX, float scaleY) {
-        // Native property writers and scroll listeners can run after our animator
-        // but before the live-window transaction. Recompute from this frame's
-        // absolute pose instead of adding the previous render's offset to a new baseline.
+
         float x = StackedRecentsGeometry.translationForCenter(centerX, task.getLeft(), parent.getScrollX(),
                 task.getWidth(), task.getPivotX(), scaleX);
         float y = StackedRecentsGeometry.translationForCenter(centerY, task.getTop(), parent.getScrollY(),
@@ -845,15 +821,12 @@ final class StackedRecentsHooks {
         if (animation instanceof AnimatorSet set) {
             for (Animator child : set.getChildAnimations()) rewriteSpringTranslations(child, dragged, horizontal);
         } else if (animation instanceof ObjectAnimator object && cards.containsKey(object.getTarget())) {
-            // Read the animation's start in native coordinates: reading the
-            // already projected task would otherwise add our offset twice.
+
             boolean x = "translationX".equals(object.getPropertyName()) || "translateX".equals(object.getPropertyName());
             boolean y = "translationY".equals(object.getPropertyName()) || "translateY".equals(object.getPropertyName());
             if (!x && !y) return;
             if (object.getTarget() != dragged && x == horizontal) {
-                // Flyme's down-drag moves every other task by +/- mTaskWidth/5.5.
-                // Those absolute native targets belong to the parallel layout;
-                // the stack must retain its horizontal arrangement throughout.
+
                 FloatProperty<View> baseline = x ? nativeTranslationX : nativeTranslationY;
                 object.setProperty(new FloatProperty<View>(object.getPropertyName()) {
                     @Override public Float get(View view) { return baseline.get(view); }
@@ -924,17 +897,14 @@ final class StackedRecentsHooks {
                 if (horizontal) pose.x = Math.min(pose.x, start);
                 else pose.y = Math.min(pose.y, start);
             }
-            // updatePageScales settles the carousel at scale 1, not the
-            // fullscreen/non-grid size correction used during the gesture.
+
             float finalScale = ((Number) sizeAdjustment.invoke(child, false)).floatValue();
             Card card = cards.get(child);
             float translationX = card == null ? child.getTranslationX() : card.translationX;
             float translationY = card == null ? child.getTranslationY() : card.translationY;
             float anchor = (horizontal ? view.getWidth() : view.getHeight()) * .5f;
             int step = count > 1 ? pageStep : size;
-            // Page scrolls already include each task's width/alignment. The running
-            // task still carries gesture translations and noncentral pivots here;
-            // its transient view center is not its final page position.
+
             int index = ((ViewGroup) view).indexOfChild(child);
             float distance = ((Integer) scrollForPage.invoke(view, index) - state.entryTargetScroll) / Math.max(1, step);
             pose.targetCenter = anchor + StackedRecentsGeometry.offset(distance, size, anchor, 24f * density);
@@ -957,9 +927,7 @@ final class StackedRecentsHooks {
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         state.entryAnimator = animator;
         long entryDuration = StackedRecentsTiming.entryDuration(nativeAnimation);
-        // Quickstep's gesture AnimatorSet sets a uniform duration (normally 450ms).
-        // Its start() would otherwise overwrite our longer child duration. Extend
-        // that shared timeline too, keeping the live window and cards synchronized.
+
         if (nativeAnimation != null && nativeAnimation.getDuration() >= 0L)
             nativeAnimation.setDuration(entryDuration);
         animator.setDuration(entryDuration);
@@ -973,8 +941,7 @@ final class StackedRecentsHooks {
             }
             state.entryProgress = (Float) animation.getAnimatedValue();
             try {
-                // Update before the native surface transaction in this frame;
-                // dispatchDraw alone can leave the live app one frame behind.
+
                 render((ViewGroup) current);
                 if (state.entryProgress != 1f || state.entryFinished) dispatchScroll.invoke(current);
             } catch (ReflectiveOperationException error) {
@@ -1129,8 +1096,7 @@ final class StackedRecentsHooks {
         State state = state(view);
         if (state.pendingFocus && endTarget.get(view) == null && !(Boolean) gestureActive.invoke(view)) {
             state.pendingFocus = false;
-            // dispatchDraw follows layout: capture and apply the offscreen
-            // start now instead of exposing a native frame before a posted start.
+
             beginEntry(view, null, true);
             return;
         }
@@ -1162,13 +1128,11 @@ final class StackedRecentsHooks {
             state.clipChildren = view.getClipChildren();
             state.clipPadding = view.getClipToPadding();
             state.clippingChanged = true;
-            // Also clears clipToBounds on each task's RenderNode, allowing the
-            // blur kernel to extend beyond the task rather than truncate there.
+
             view.setClipChildren(false);
             view.setClipToPadding(false);
         }
-        // Fade our geometry out as Quickstep goes fullscreen, retaining its own
-        // launch/dismiss translations, scale channels and thumbnail privacy blur.
+
         float fullscreenStrength = stackStrength(view, state);
         float strength = fullscreenStrength * state.entryProgress;
         boolean visibilityChanged = false;
@@ -1240,8 +1204,7 @@ final class StackedRecentsHooks {
             float stackOffset = (animatedTarget - center) * strength
                     - (size * .5f - pivot) * ((state.horizontal ? scaleX : scaleY) - baseScale)
                     + (startCenter - center) * (1f - state.entryProgress);
-            // Native updatePageScales changes both pivots during entry. Keep
-            // the cross-axis center fixed instead of scaling from that pivot.
+
             float crossSize = state.horizontal ? child.getHeight() : child.getWidth();
             float crossPivot = state.horizontal ? child.getPivotY() : child.getPivotX();
             float crossScale = state.horizontal ? scaleY : scaleX;
@@ -1301,10 +1264,7 @@ final class StackedRecentsHooks {
                 if (title.getAlpha() != titleAlpha) title.setAlpha(titleAlpha);
             }
             writeZ(child, card, card.z + Math.max(0f, Math.min(8f, distance + 4f)) * density * strength);
-            // Keep the existing kernel during launch; animating its radius
-            // reallocates blur layers while the large app surface is scaling.
-            // Apply the final kernel once the entry/handoff geometry is stable.
-            // Growing it every settle frame repeatedly reallocates GPU blur layers.
+
             int blur = launching ? card.blur : state.blurProgress < 1f ? 0
                     : Math.round((entering ? StackedRecentsGeometry.blurDp(distance) : projection.blur) * fullscreenStrength * 2f);
             if (card.blur != blur) {

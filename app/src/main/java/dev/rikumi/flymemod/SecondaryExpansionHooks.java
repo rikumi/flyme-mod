@@ -21,7 +21,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Flyme SystemUI 16260625: aligned collapsed cards, per-card transitions and expanded overpull. */
 final class SecondaryExpansionHooks {
     private static final String QS = "com.android.systemui.shade.QuickSettingsControllerImpl";
     private static final String IMPL = "com.flyme.systemui.qs.MzQSImpl";
@@ -216,13 +215,11 @@ final class SecondaryExpansionHooks {
             }
             if (action == MotionEvent.ACTION_DOWN) {
                 clear(qs);
-                // QS can remain fully expanded while the shade itself is closed (especially
-                // with no notifications). That DOWN belongs to opening the whole shade.
+
                 if ((Boolean) chain.getArg(1) || shadeFraction.getFloat(qs) <= 0f) return chain.proceed();
                 Drag drag = new Drag();
                 drag.fullOnDown = shadeFraction.getFloat(qs) >= .99f && isAllTilesExpanded(qs);
-                // In merged shade mode, the all-tiles QS can be fully expanded
-                // while the overall shade fraction is well below 1.0.
+
                 if (!drag.fullOnDown && ((Boolean) chain.getArg(1) || shadeFraction.getFloat(qs) < .99f)) {
                     return chain.proceed();
                 }
@@ -254,8 +251,7 @@ final class SecondaryExpansionHooks {
                 drag.overpull = false;
                 translation.invoke(qs, 0f);
             }
-            // Do not let the native QS fling race the position-based rebound.
-            // Running both animations caused the occasional one-frame snap.
+
             if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) && drag.overpull) {
                 finishTracking(qs);
                 rebound(qs, drag);
@@ -313,10 +309,7 @@ final class SecondaryExpansionHooks {
         if (left < 0 || top < 0 || right < 0) { state.geometryDirty = true; return; }
         if (mini.getPaddingLeft() != left || mini.getPaddingTop() != top || mini.getPaddingRight() != right) {
             mini.setPadding(left, top, right, state.bottom);
-            // alignMini also runs after LinearLayout.onLayout. A padding change there
-            // can leave the children measured/positioned with the previous padding:
-            // the current traversal may clear its in-layout requestLayout flags.
-            // Request once after that traversal, when a fresh measure is guaranteed.
+
             requestGeometryLayout(state);
         }
         alignSpacers(state, state.wrapper, spacing);
@@ -365,8 +358,7 @@ final class SecondaryExpansionHooks {
         boolean[] matched = state.matched;
         java.util.Arrays.fill(matched, false);
         View[] collapsed = state.collapsed;
-        // During the initial merged-shade reveal QS expansion remains zero.
-        // Its hidden all-tiles panel does not need a traversal on every height frame.
+
         int count = state.active && state.fraction <= 0f ? 0 : ((Number) pageCount.invoke(layout)).intValue();
         for (int page = 0; page < count; page++) {
             ViewGroup group = (ViewGroup) pageAt.invoke(layout, page);
@@ -382,9 +374,7 @@ final class SecondaryExpansionHooks {
                 // Native scaling affects the content tile, not the decorated grid cell.
                 if (child instanceof ViewGroup cell && cell.getChildCount() > 0) {
                     View tile = cell.getChildAt(0);
-                    // Fading the stationary cell creates an alpha layer bounded by its
-                    // original rectangle. The row pivot moves the tile outside that rectangle,
-                    // so fade the transformed tile itself instead of its untransformed parent.
+
                     child.setAlpha(1f);
                     tile.setAlpha(tileAlpha);
                     applyRowPivot(tile, child, group, transitioning && !fixed && fullFade < 1f, state);
@@ -430,8 +420,7 @@ final class SecondaryExpansionHooks {
         if (state.clipListener == null) {
             state.clipObserver = state.full.getViewTreeObserver();
             state.clipListener = () -> {
-                // Native layout and the primary reveal animation can overwrite these flags
-                // after setQsExpansion. Reassert only the cached ancestor chain before draw.
+
                 for (ViewGroup group : state.clips.keySet()) releaseClip(group);
                 return true;
             };
@@ -442,8 +431,7 @@ final class SecondaryExpansionHooks {
             tile.setPivotX(original.targetX); tile.setPivotY(original.targetY);
             return;
         }
-        // Sparse rows must share the same horizontal pivot as complete rows.
-        // Convert the screen-wide shade root's center into each tile's local coordinates.
+
         View screenRoot = state.full.getRootView();
         original.targetX = screenRoot.getWidth() / 2f - coordinate(tile, screenRoot, false);
         original.targetY = coordinate(cell, rowRoot, true) - coordinate(tile, rowRoot, true);

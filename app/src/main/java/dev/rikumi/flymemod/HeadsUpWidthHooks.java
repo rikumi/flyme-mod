@@ -10,7 +10,6 @@ import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Flyme SystemUI 16260625: measure only floating notifications and keyguard containers with 8dp side gaps. */
 final class HeadsUpWidthHooks {
     private static final String ROW = "com.android.systemui.statusbar.notification.row.ExpandableNotificationRow";
     private static final String STACK = "com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout";
@@ -50,8 +49,7 @@ final class HeadsUpWidthHooks {
     void install(SignalHooks.Installer installer) throws ReflectiveOperationException { install(installer, null); }
 
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
-        // MediaContainerView inherits ExpandableView.onMeasure. Its host forwards
-        // this spec into the media measurement manager and transition layout.
+
         Method mediaMeasure = media.getMethod("onMeasure", int.class, int.class);
         installer.hook(mediaMeasure.getDeclaringClass().getName(), "onMeasure", chain -> {
             View view = (View) chain.getThisObject();
@@ -91,9 +89,7 @@ final class HeadsUpWidthHooks {
                     contentWidth(available, row.getResources().getDisplayMetrics().density),
                     View.MeasureSpec.EXACTLY), chain.getArg(1)});
         }, int.class, int.class);
-        // Native setters invalidate state/height but do not consistently request
-        // measurement. Re-measure the actual container for every presentation
-        // transition, even when a pinned/expanded row shares the same entry.
+
         installer.hook(STACK, "setIsExpanded", chain -> {
             View parent = (View) chain.getThisObject();
             boolean changed = expanded.getBoolean(parent) != (Boolean) chain.getArg(0);
@@ -135,8 +131,7 @@ final class HeadsUpWidthHooks {
                     View.MeasureSpec.EXACTLY), chain.getArg(1)});
         }, int.class, int.class);
         if (deoptimize != null) {
-            // These real Flyme callers can inline state setters; preserve the
-            // measurement invalidation when switching KEYGUARD/SHADE_LOCKED.
+
             deoptimize.accept(stack.getDeclaredMethod("setExpandedHeight", float.class));
             deoptimize.accept(loader.loadClass(STACK + "Controller$6").getDeclaredMethod("onStateChanged", int.class));
         }
@@ -150,9 +145,7 @@ final class HeadsUpWidthHooks {
     }
 
     private boolean mergedPresentation(View parent) throws ReflectiveOperationException {
-        // Match the real merged-shade container, independent of our width setting
-        // or retained entry/row flags. Configured classics mode alone must not
-        // exclude collapsed heads-up cards or the actual KEYGUARD presentation.
+
         return expanded.getBoolean(parent) && !(Boolean) onKeyguard.invoke(parent)
                 && !(Boolean) filter.invoke(parent)
                 && Boolean.TRUE.equals(value.invoke(classics.invoke(shade.get(parent))));
@@ -166,9 +159,7 @@ final class HeadsUpWidthHooks {
     private void invalidate(View parent) {
         boolean needed = enabled.getAsBoolean();
         for (View row : rows) if (row.getParent() == parent && (needed || widened.contains(row))) {
-            // View.measure caches the original native spec, even though onMeasure
-            // used a temporary width. Force children, not only their parent, so an
-            // unchanged native spec cannot retain the floating measured width.
+
             row.forceLayout(); needed = true;
         }
         if (needed) parent.requestLayout();
@@ -176,8 +167,7 @@ final class HeadsUpWidthHooks {
 
     static boolean isolated(int presentationState, boolean expandedShade,
                             boolean pinned, boolean animatingAway) {
-        // KEYGUARD=1 is a presentation state. SHADE_LOCKED=2 is still the
-        // notification center, regardless of entry/row flags retained from HUN.
+
         return presentationState == 1 || (presentationState == 0 && !expandedShade && (pinned || animatingAway));
     }
 

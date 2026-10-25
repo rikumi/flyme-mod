@@ -2,7 +2,6 @@ package dev.rikumi.flymemod;
 
 import java.util.Set;
 
-/** Package inventory retained for the independent dark-background hooks. */
 final class DarkBackgroundTargets {
     private static final Set<String> PACKAGES = Set.of(
             "com.android.DeviceAsWebcam",

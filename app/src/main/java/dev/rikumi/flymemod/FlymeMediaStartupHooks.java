@@ -11,7 +11,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
 
-/** Flyme QS bypasses MediaDataFilter: it renders active MediaSessions directly. */
 final class FlymeMediaStartupHooks {
     private static final String QS = "com.flyme.systemui.qs.media.QsMediaController";
     private final XposedInit module;

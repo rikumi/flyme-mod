@@ -7,7 +7,6 @@ import android.graphics.drawable.ClipDrawable;
 import android.graphics.drawable.Drawable;
 import android.view.Gravity;
 
-/** Retains the ClipDrawable API expected by BrightnessSliderView's volume updates. */
 final class RoundedSliderProgress extends ClipDrawable {
     private final float radius;
     private final Path path = new Path();

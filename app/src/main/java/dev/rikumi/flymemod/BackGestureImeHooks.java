@@ -12,7 +12,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Reject keyboard-height edge gestures at the shared native admission check. */
 final class BackGestureImeHooks {
     static void install(ClassLoader loader, Consumer<Context> settings, BooleanSupplier enabled,
                         BiConsumer<String, Throwable> log, SignalHooks.Installer installer,

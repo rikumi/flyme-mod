@@ -7,7 +7,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
-/** This Binder is instantiated by Shizuku with shell/root identity, not as an Android Service. */
 public final class InstallerService extends IInstallerService.Stub {
     public InstallerService() {}
 
@@ -37,8 +36,7 @@ public final class InstallerService extends IInstallerService.Stub {
                 byte[] buffer = new byte[65536];
                 for (int n; (n = input.read(buffer)) != -1;) sink.write(buffer, 0, n);
             } catch (Exception error) {
-                // pm can reject an APK before consuming stdin. Preserve its actual
-                // INSTALL_FAILED_* diagnostic instead of replacing it with EPIPE.
+
                 writeError = error;
             }
             int result = process.waitFor();

@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Share the native pin-window input consumer across all retained pin windows. */
 final class SmallWindowInputHooks {
     private static final String WM = "com.android.server.wm.";
     private final SharedPreferences preferences;
@@ -94,8 +93,7 @@ final class SmallWindowInputHooks {
                     report(error);
                     return chain.proceed();
                 }
-                // Keep queued handler animations behind this lock until the gesture's
-                // priority and task order have both been updated.
+
                 synchronized (lock) {
                     boolean finish = motion.getActionMasked() == MotionEvent.ACTION_UP
                             || motion.getActionMasked() == MotionEvent.ACTION_CANCEL;
@@ -138,9 +136,7 @@ final class SmallWindowInputHooks {
         Method resolve=accessible(base.getDeclaredMethod("getWindowModeRootTask",int.class));
         Field taskId=field(task,"mTaskId");
         String targetKey="dev.rikumi.flymemod.pin_task";
-        // Pin's drag/fling messages retain geometry but discard the explicit task
-        // argument. Stamp messages while they are produced, including delayed
-        // follow-ups, and restore the target only for their own dispatch scope.
+
         installer.hook(android.os.Handler.class.getName(),"sendMessageAtTime",chain->{
             Object[] selected=target.get();
             if(selected!=null && handlerField.get(selected[0])==chain.getThisObject())
@@ -201,9 +197,7 @@ final class SmallWindowInputHooks {
             Rect from=new Rect((Rect)bounds.invoke(info));
             boolean minimize=(Boolean)chain.getArg(1);
             android.os.Handler handler=(android.os.Handler)handlerField.get(controller);
-            // Native message 6 only stores a Rect and loses its Task. Keep the
-            // asynchronous handler/animation path, but retain the selected task
-            // in this callback instead of resolving the current top pin later.
+
             handler.post(()->{
                 Object[] previous=target.get();target.set(new Object[]{controller,selected});
                 android.os.Message message=android.os.Message.obtain(handler,6,minimize?1:0,0,from);
@@ -225,8 +219,7 @@ final class SmallWindowInputHooks {
     private boolean enabled() { return preferences.getBoolean(ModuleSettings.SMALL_WINDOW_LIMIT_ENABLED, false); }
 
     private void restoreExpanded(Object area) throws ReflectiveOperationException {
-        // Native findMinPositionForRootTask refuses to lower an always-on-top pin.
-        // Raise the expanded task instead, using its native mini-window ordering path.
+
         for (int i = ((Number) count.invoke(area)).intValue() - 1; i >= 0; i--) {
             Object task = asTask.invoke(child.invoke(area, i));
             if (task != null && Boolean.TRUE.equals(visible.invoke(task))

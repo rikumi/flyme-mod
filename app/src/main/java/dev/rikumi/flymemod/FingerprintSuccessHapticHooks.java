@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Feedback after Flyme accepts a fingerprint authentication result. */
 final class FingerprintSuccessHapticHooks {
     static void install(ClassLoader loader, SharedPreferences preferences, SignalHooks.Installer installer,
                         Consumer<Method> deoptimize, BiConsumer<String,Throwable> log)

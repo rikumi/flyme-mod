@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.Consumer;
 
-/** Replace only Flyme's generic multi-device Bluetooth subtitle, preserving device names. */
 final class BluetoothDeviceCountHooks {
     private static final String CONNECTIVITY = "com.flyme.systemui.qs.tiles.ConnectivityTile";
     private static final String BLUETOOTH = "com.android.systemui.qs.tiles.BluetoothTile";

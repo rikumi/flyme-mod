@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Native ripple size is unscaled; its final capsule uses a 1.35x expansion. */
 final class GestureBarGeometry {
     static final float PRESSED_SCALE = 1.35f;
     static int rippleSize(int nativeSize, float barLength, float rippleHeight, float barThickness) {

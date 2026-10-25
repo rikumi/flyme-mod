@@ -17,7 +17,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Reflect the current user's secure setting; no separate module preference. */
 @Composable
 internal fun NotificationBubblesPreference() {
     val context = LocalContext.current

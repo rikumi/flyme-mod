@@ -2,7 +2,6 @@ package dev.rikumi.flymemod;
 
 import android.view.View;
 
-/** Compare live properties: native animation callbacks may overwrite them in the same frame. */
 final class ShadeViewProperties {
     static void alpha(View view, float alpha) {
         if (view.getAlpha() != alpha) view.setAlpha(alpha);

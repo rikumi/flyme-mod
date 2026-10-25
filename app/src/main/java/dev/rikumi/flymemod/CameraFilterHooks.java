@@ -13,7 +13,6 @@ import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Camera 12.7.2 FilterManager: F/J select; A temporarily resets; C restores. */
 final class CameraFilterHooks {
     private static final String FILE = "flymemod_filter_selection";
     private static final String NONE = "Mznone";
@@ -36,7 +35,7 @@ final class CameraFilterHooks {
     void install(ClassLoader loader, SignalHooks.Installer installer, Consumer<Method> deoptimize)
             throws ReflectiveOperationException {
         Class<?> manager = loader.loadClass("com.meizu.media.camera.filter.h");
-        // Field names verified in the original DEX, rather than jadx's renamed fields.
+
         context = manager.getField("a");
         current = manager.getField("b");
         pending = manager.getField("c");
@@ -149,8 +148,7 @@ final class CameraFilterHooks {
                 if (!enabled() || !state(manager).previewReady) return;
                 Object target = controls.get(manager);
                 if (target != null) {
-                    // Use the native setter: it updates the drawable, mIsFilterOn
-                    // and the related video settings from the actual restored result.
+
                     setButtonPressed.invoke(target, hasEffect.invoke(manager));
                 }
             } catch (ReflectiveOperationException | RuntimeException error) {
@@ -163,8 +161,7 @@ final class CameraFilterHooks {
         if (!enabled() || ui.get(manager) == null) return;
         String effect = (String) current.get(manager);
         if (effect == null || effect.equals("null")) return;
-        // Only actual selection methods write this record. Lifecycle/mode resets
-        // must never overwrite it with Mznone; explicitly choosing Mznone does.
+
         saved(manager).edit().putString("effect", effect)
                 .putBoolean("my_filter", (Boolean) isMy.invoke(manager)).apply();
         state(manager).initialized = true;

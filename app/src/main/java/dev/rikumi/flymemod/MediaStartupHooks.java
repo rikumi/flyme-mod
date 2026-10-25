@@ -17,7 +17,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
 
-/** SystemUI 16260625: disable browser-driven discovery; keep passive session playback updates. */
 final class MediaStartupHooks {
     private static final String PIPE = "com.android.systemui.media.controls.domain.pipeline.";
     private static final String RESUME = "com.android.systemui.media.controls.domain.resume.";

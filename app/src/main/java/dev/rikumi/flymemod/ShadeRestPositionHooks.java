@@ -9,7 +9,6 @@ import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Align the resting shade using matching icons, without feeding animated positions back. */
 final class ShadeRestPositionHooks {
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled;
@@ -124,8 +123,7 @@ final class ShadeRestPositionHooks {
                 set(content, pose.original);
                 return;
             }
-            // The native edit transition hides the status bar before animating the
-            // header and container padding. Keep the content's resting origin.
+
             if (editing.getBoolean(panel) || bar.getVisibility() != View.VISIBLE) {
                 restoreStatusBar(bar, pose);
                 set(content, pose.offset);
@@ -144,8 +142,7 @@ final class ShadeRestPositionHooks {
                     return;
                 }
             }
-            // A newly attached status bar can finish measurement after the panel.
-            // Retain the last valid offset until layout provides matching anchors.
+
         } catch (IllegalAccessException error) {
             throw new IllegalStateException(error);
         }
@@ -163,8 +160,7 @@ final class ShadeRestPositionHooks {
             float parentScale = screenScaleY(bar.getParent() instanceof View parent ? parent : null);
             if (parentScale <= 0f) return;
             float current = bar.getTranslationY();
-            // Native springs may replace the last value between frames. Never accumulate
-            // our correction into either the spring position or the stable layout offset.
+
             float applied = current == pose.lastBarTranslation ? pose.barCorrection : 0f;
             float actualCenter = animatedCenterOnScreen(source, pose.location);
             float minimumCenter = layoutCenterOnScreen(target);
@@ -186,8 +182,7 @@ final class ShadeRestPositionHooks {
             current = parent;
         }
         root.getLocationOnScreen(location);
-        // Preserve fractional positions: getLocationOnScreen on the icon itself rounds
-        // them and can create a one-pixel correction loop at the resting position.
+
         return center + location[1];
     }
 

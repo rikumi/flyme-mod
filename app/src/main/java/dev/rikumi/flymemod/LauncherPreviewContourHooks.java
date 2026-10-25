@@ -15,7 +15,6 @@ import java.lang.reflect.Field;
 import java.util.*;
 import java.util.function.*;
 
-/** Icon-setting previews include raw adaptive/bitmap drawables outside FastBitmapDrawable. */
 final class LauncherPreviewContourHooks {
     private final Class<?> activity,fast,transition;
     private static final ThreadLocal<TextView> transitionHost=new ThreadLocal<>();
@@ -63,8 +62,7 @@ final class LauncherPreviewContourHooks {
             try{return chain.proceed();}finally{transitionHost.set(previous);}
         },Canvas.class);
         deoptimize.accept(transition.getDeclaredMethod("draw",Canvas.class));
-        // Decorate each actual icon inside the native crossfade's alpha layer and scale.
-        // Never cache a composite TransitionDrawable that later changes its wrapped artwork.
+
         for(String name:new String[]{"android.graphics.drawable.BitmapDrawable",
                 "android.graphics.drawable.AdaptiveIconDrawable","android.graphics.drawable.ScaleDrawable",
                 "com.meizu.flyme.launcher.view.RoundCornerDrawableWrapper",fast.getName()}) {

@@ -8,7 +8,6 @@ import java.lang.reflect.Method;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Bound TYPE_HOME's width spring to the actual destination icon, rather than half its width. */
 final class HomeIconMinimumSizeHooks {
     private static final String CONFIG = "com.meizu.flyme.launcher.quickstep.util.FlymeSpringConfig";
     private static final String ANIMATION = "com.meizu.flyme.launcher.quickstep.util.FlymeRectFSpringAnim";

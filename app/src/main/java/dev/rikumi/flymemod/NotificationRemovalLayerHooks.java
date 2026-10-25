@@ -14,7 +14,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Keep Flyme's shrinking removal animation below the remaining notification rows. */
 final class NotificationRemovalLayerHooks {
     private static final String ACTIVATABLE = "com.android.systemui.statusbar.notification.row.ActivatableNotificationView";
     private static final String ROW = "com.android.systemui.statusbar.notification.row.ExpandableNotificationRow";
@@ -66,8 +65,7 @@ final class NotificationRemovalLayerHooks {
                 finally { finish((View) chain.getThisObject()); }
             });
         }
-        // Native live-notification updates may change the custom layer while removal is running.
-        // Preserve their latest values for restoration without allowing the row to rise again.
+
         installer.hook(ROW, "setCustomTranslationZ", chain -> {
             View row = (View) chain.getThisObject();
             State state = states.get(row);

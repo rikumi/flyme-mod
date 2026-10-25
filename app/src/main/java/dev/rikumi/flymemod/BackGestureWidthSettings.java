@@ -5,7 +5,6 @@ import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.provider.Settings;
 
-/** Initialize and migrate the configured edge width before publishing it to either process. */
 final class BackGestureWidthSettings {
     static synchronized void initialize(Context context, SharedPreferences preferences) {
         if (preferences.contains(ModuleSettings.BACK_GESTURE_WIDTH_DP)) {
@@ -36,7 +35,7 @@ final class BackGestureWidthSettings {
         if (preferences.contains("back_gesture_width_scale_tenths")) {
             Resources resources = context.getResources();
             float density = resources.getDisplayMetrics().density;
-            // IDs and names verified against the target Flyme framework.
+
             int servicePixels = resources.getDimensionPixelSize(dimension(resources,
                     "left_right_swip_gesture_valid_offset", 0x01050404));
             float insetDp = resources.getDimension(dimension(resources,

@@ -13,7 +13,6 @@ import android.os.Looper;
 import android.provider.Settings;
 import java.util.function.BiConsumer;
 
-/** Execute the native global-setting write with SystemUI's existing permission. */
 final class GoogleServiceTileHooks {
     private final BiConsumer<String, Throwable> log;
     private BroadcastReceiver receiver;

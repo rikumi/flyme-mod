@@ -11,7 +11,6 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 
-/** Retain pin windows while allowing only the selected window to remain expanded. */
 final class SmallWindowLimitHooks {
     private static final String WM = "com.android.server.wm.";
     private final SharedPreferences preferences;
@@ -117,8 +116,7 @@ final class SmallWindowLimitHooks {
             Object target = chain.getThisObject();
             if (enabled() && ((Number) mode.invoke(target)).intValue() == 12
                     && ((Number) subtype.invoke(null, target)).intValue() == 0) {
-                // Press/release scale and fling leashes must share the task's ordering.
-                // The native upper animation group would raise idle pins above expanded windows.
+
                 Object surface = taskParentSurface.invoke(target);
                 if (surface != null) return surface;
             }
@@ -156,9 +154,7 @@ final class SmallWindowLimitHooks {
             if (enabled() && retainedPair(chain.getArg(0), chain.getArg(1))) return false;
             return chain.proceed();
         }, container, container);
-        // TaskFragment seeds the result from matchParentBounds(). For Flyme mini windows
-        // that remains true even when their Surface is scaled, and the native injection
-        // skips the controller/factory entirely. Correct the seeded result at this entry.
+
         installer.hook(inject.getName(), "isWindowContainerWillInvisible", chain -> {
             Object result = chain.proceed();
             if (enabled() && retainedPair(chain.getArg(1), chain.getArg(2)))
@@ -174,8 +170,7 @@ final class SmallWindowLimitHooks {
                     && keep(chain.getThisObject(), incoming, old)) return false;
             return result;
         }, task, task);
-        // Do not cancel native pausing/front-task switches: they turn an expanded
-        // window into a draggable pin window, rather than evicting it.
+
         for (String name : new String[]{"FlymeMiniWindowControllerImpl", "FlymeFreeFormWindowControllerImpl"}) {
             installer.hook(WM + name, "onTaskMoveToFront", chain -> {
                 Object result = chain.proceed();
@@ -210,8 +205,7 @@ final class SmallWindowLimitHooks {
                         || trim.controller != chain.getThisObject() || trim.incoming != chain.getArg(0) || !enabled()) return result;
                 Object candidate = chain.getArg(1);
                 if (candidate == trim.incoming) return false;
-                // Apply one shared quota across raw modes and pin subtypes. Native
-                // predicates only evict their own type, allowing mixed modes to exceed it.
+
                 if (isFloating(candidate) && !Boolean.TRUE.equals(home.invoke(candidate)))
                     return !keep(trim.controller, trim.incoming, candidate);
                 return result;
@@ -331,13 +325,10 @@ final class SmallWindowLimitHooks {
             }
             collapsing.set(true);
             try {
-                // Native mode 12 owns the pin surface, drag/tap consumer and shrink animation.
-                // Invoke directly: postSwitchTasksToOtherWindow removes the previous pending
-                // message, so queuing one message per task would only shrink the last window.
+
                 for (Object candidate : expanded) {
                     if (isMoreApps(candidate)) {
-                        // This picker is an auxiliary task, not an application to retain.
-                        // Finish its activities and remove recents, without killing SystemUITools.
+
                         removeTask.invoke(taskSupervisor.get(candidate), candidate, false, true,
                                 "flyme-mod-more-apps-selected");
                     } else moveWindow.invoke(controller, candidate, 12, 0, true, true);
@@ -424,7 +415,6 @@ final class SmallWindowLimitHooks {
 
     static boolean floatingMode(int mode) { return mode == 11 || mode == 12 || mode == 1035 || mode == 268; }
 
-    /** Reserve one slot for the incoming task, which can still be fullscreen before its mode changes. */
     static boolean retain(List<Object> ordered, Object incoming, Object candidate, int limit,
                           ToIntFunction<Object> mode, Predicate<Object> home) {
         if (candidate == incoming) return true;

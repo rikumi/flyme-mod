@@ -12,7 +12,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Icon layout optimization for Flyme's native focus-mode and device-center 2x1 cards. */
 final class CardIconLayoutHooks {
     private static final String TILE = "com.android.systemui.qs.tileimpl.QSTileViewImpl";
     private static final String DEVICE = "com.flyme.systemui.qs.tileimpl.DeviceCenterQSTileViewImpl";
@@ -107,8 +106,7 @@ final class CardIconLayoutHooks {
         if (padding == null || label == null) return;
         restore(padding); restore(label);
         if (!device && label.getLayoutParams() instanceof ViewGroup.MarginLayoutParams params) {
-            // Native horizontal constraints reserve the circle width plus the label gap.
-            // Init/state callbacks can precede applyConstraints, so a saved margin may be zero.
+
             int circleId = card.getResources().getIdentifier("circle_qs_icon_size", "dimen", "com.android.systemui");
             if (circleId != 0) {
                 int gap = labelGap(card);

@@ -13,7 +13,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Flyme 16260625: replace the mini panel's fixed row height with the expanded grid height. */
 final class CollapsedCardHeightHooks {
     private static final String IMPL = "com.flyme.systemui.qs.MzQSImpl";
     private static final String MINI = "com.flyme.systemui.controlcenter.phone.MzQQSPanel";
@@ -98,8 +97,7 @@ final class CollapsedCardHeightHooks {
                 return original;
             }
             View wrapper = state.wrapper.get();
-            // During a requested relayout the old bottom is still cached. Report the pending
-            // height delta now, so clipping/notification padding never use the shorter endpoint.
+
             return wrapper == null ? original : pendingMinimum(original,
                     wrapper.getHeight(), wrapper.getLayoutParams().height);
         });
@@ -112,8 +110,7 @@ final class CollapsedCardHeightHooks {
                 syncHeight(state, false);
                 if (state.managed || geometryEnabled.getAsBoolean()) {
                     float before = ((Number) getHeight.invoke(controller)).floatValue();
-                    // Native updateMinHeight synchronously asks the hooked QS minimum
-                    // again. The current card measurements were just synchronized above.
+
                     boolean previous = state.syncingMinimum;
                     state.syncingMinimum = true;
                     try { updateMin.invoke(controller); }
@@ -134,8 +131,7 @@ final class CollapsedCardHeightHooks {
         if (panel == null || parent == null) return;
         View wrapper = find(panel, "connectivity_slider_wrapper");
         if (wrapper == null) return;
-        // Resource names are stable for this component's lifetime. Resolving the
-        // full panel on each height query scans the APK's resource string pool.
+
         int fullPanelId = panel.getResources().getIdentifier(
                 "mz_quick_settings_panel", "id", "com.android.systemui");
         State state = new State(owner, wrapper, wrapper.getLayoutParams().height, fullPanelId);
@@ -146,8 +142,7 @@ final class CollapsedCardHeightHooks {
             Object controller = state.controller.get();
             if (controller != null) {
                 try {
-                    // Native setter refreshes min height, QS clip, notification top padding and
-                    // expansion state together. The existing operating-area scale hook composes.
+
                     setHeight.invoke(controller, ((Number) getHeight.invoke(controller)).floatValue());
                 } catch (ReflectiveOperationException error) {
                     log.accept("Cannot refresh restored collapsed QS height", error);
@@ -179,16 +174,14 @@ final class CollapsedCardHeightHooks {
         boolean active = enabled.getAsBoolean() && isCombined(owner);
         int desired = state.originalHeight;
         if (active) {
-            // Look up the current view by cached ID rather than retaining the view:
-            // panel replacement and fresh measurements must remain observable.
+
             View full = find((View) root.get(owner), state.fullPanelId);
             int measured = 0;
             if (full != null) for (Field field : cards) {
                 View card = (View) field.get(full);
                 if (card != null) measured = Math.max(measured, card.getMeasuredHeight());
             }
-            // Expanded children are measured before the overlaid mini panel in the FrameLayout.
-            // Keep the original height if the full grid is not ready on the first measure.
+
             if (measured > 0) desired = measured;
 
         }

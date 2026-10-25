@@ -8,7 +8,6 @@ import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Camera 12.7.2: NightSceneUtil detection and i0.Ma/I8 capture request construction. */
 final class CameraNightHooks {
     private final SharedPreferences settings;
     private final BiConsumer<String, Throwable> log;
@@ -55,8 +54,7 @@ final class CameraNightHooks {
         mode = loader.loadClass("com.meizu.media.camera.mode.CameraModeType").getDeclaredMethod("d");
         Class<?> night = loader.loadClass("com.meizu.media.camera.camcontroller.NightSceneUtil");
         Method close = night.getDeclaredMethod("closeNightScene");
-        // Update the native detector state so its change flag and metadata callbacks
-        // agree with isNightScene(), HDR and lens-selection consumers.
+
         for (Class<?>[] args : new Class<?>[][]{
                 {int.class, float.class, float.class, int.class},
                 {int.class, int.class, int.class}}) {
@@ -181,8 +179,7 @@ final class CameraNightHooks {
         if (!state.burst) {
             CaptureRequest.Key<float[]> key = (CaptureRequest.Key<float[]>) evList.invoke(meizu);
             float[] ev = key == null ? null : (float[]) getTag.invoke(null, builder, key);
-            // Camera 12.7.2 uses T8 - 1 as its native frame-count slot.
-            // Keep the native default when no count is supplied by the HAL.
+
             if (ev != null) {
                 int index = frameCountIndex.getInt(null) - 1;
                 if (index >= 0 && index < ev.length && ev[index] > 0)

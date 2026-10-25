@@ -8,7 +8,6 @@ import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Replace SystemUI Wi-Fi labels at their resource source, never user SSIDs. */
 final class WifiLabelHooks {
     private static final Set<String> LABELS = Set.of("quick_settings_wifi_label", "status_bar_settings_wlan",
             "wifi_is_off", "quick_settings_wifi_detail_empty_text");

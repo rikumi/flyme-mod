@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 
-/** Use one GPU filter for video and static frames, independent of window focus. */
 final class WeatherBackgroundHooks {
     private static final String BACKGROUND = "com.hy.weather.mz.modules.home.weatherVideo.WeatherBackGroundView";
     private final Map<View, Boolean> backgrounds = new WeakHashMap<>();
@@ -135,8 +134,7 @@ final class WeatherBackgroundHooks {
             if (video(view) != null) hideOriginal(view);
             return result;
         });
-        // Retain SurfaceHolder callbacks for the stock player lifecycle, but do not
-        // punch a transparent hole for the unused native video layer.
+
         for (String method : new String[]{"draw", "dispatchDraw"}) {
             installer.hook("android.view.SurfaceView", method, chain ->
                     video((SurfaceView) chain.getThisObject()) != null ? null : chain.proceed(), Canvas.class);

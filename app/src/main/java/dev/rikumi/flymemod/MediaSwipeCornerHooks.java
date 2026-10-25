@@ -14,7 +14,6 @@ import java.util.WeakHashMap;
 import java.util.function.Consumer;
 import java.util.function.ToDoubleFunction;
 
-/** Keep Flyme's carousel clipping bounds/activation, changing only its configured corner. */
 final class MediaSwipeCornerHooks {
     private static final String HANDLER = "com.android.systemui.media.controls.ui.view.MediaCarouselScrollHandler";
     private final Class<?> handler;
@@ -65,7 +64,6 @@ final class MediaSwipeCornerHooks {
         }
     }
 
-    /** Immutable delegation prevents two hook states from creating A -> B -> A cycles. */
     private static final class CornerOutline extends ViewOutlineProvider {
         final ViewOutlineProvider nativeProvider;
         final ToDoubleFunction<View> radius;

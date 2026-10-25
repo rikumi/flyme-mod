@@ -24,7 +24,6 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Charging information beside Flyme's native battery/charging drawable. */
 final class ChargingInfoHooks {
     private static final String BATTERY = "com.flyme.statusbar.battery.FlymeBatteryMeterView";
     private final Consumer<Context> settings;
@@ -203,8 +202,7 @@ final class ChargingInfoHooks {
         int index = parent.indexOfChild(battery);
         int existing = parent.indexOfChild(label);
         if (existing >= 0 && existing < index) index--;
-        // LinearLayout's logical ordering reverses in RTL. Place the sibling on
-        // the physical left of the complete battery/charging drawable in either direction.
+
         return index + (parent.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL ? 1 : 0);
     }
 
@@ -274,8 +272,7 @@ final class ChargingInfoHooks {
                     LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT);
                     params.gravity = Gravity.CENTER_VERTICAL;
-                    // A sibling beside the battery keeps its native charging
-                    // drawable and the weighted status-icon container unchanged.
+
                     parent.addView(label, leading, params);
                     trace.accept("Charging information placement: battery left, index=" + leading
                             + ", rtl=" + (parent.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL));
@@ -306,8 +303,7 @@ final class ChargingInfoHooks {
                 int gap = reference.getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams margins
                         ? margins.getMarginStart() : id == 0 ? 0 : battery.getResources().getDimensionPixelSize(id);
                 float density = battery.getResources().getDisplayMetrics().density;
-                // Keep the physical 2dp gap on both sides of voltage/current.
-                // Preserve the existing power-mode gap.
+
                 if (currentMode == ChargingInfo.VOLTAGE_CURRENT) gap = 2 * Math.round(2f * density);
                 boolean rtl = parent.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
                 if (configureMargins(params, gap, density, rtl))

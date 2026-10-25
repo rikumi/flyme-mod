@@ -34,7 +34,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Narrow system_server broker. Never changes export flags or component permission checks. */
 final class HeyMelodyNoiseBridge {
     static final String DESCRIPTOR = "dev.rikumi.flymemod.IHeyMelodyNoise.v1";
     // Private extension outside IActivityManager's generated transaction range.
@@ -53,8 +52,7 @@ final class HeyMelodyNoiseBridge {
     private volatile Handler worker;
     private Messenger remote, responses;
     private boolean bound, bindingRegistered;
-    // LoadedApk retains the dispatcher even when bindService returns false.
-    // A ServiceConnection must always be paired with the same Executor instance.
+
     private final java.util.concurrent.Executor connectionExecutor = command -> worker.post(command);
     private int sequence;
     private String lastError;
@@ -100,8 +98,7 @@ final class HeyMelodyNoiseBridge {
             if (enabled() && worker != null) {
                 Snapshot state = snapshots.get(address);
                 if (target == 0 && state != null) result = state.mode();
-                // Display reads never initialize, bind, refresh or release the service.
-                // Keep at most one user command queued while provider work is running.
+
                 if (target != 0 && state != null && busy.compareAndSet(false, true)) {
                     worker.post(() -> control(address, target));
                     result = 1;
@@ -296,9 +293,7 @@ final class HeyMelodyNoiseBridge {
     private void bindForOutput(String address) throws Exception {
         bind();
         if (!bound && enabled() && audioOutput(address) && trusted()) {
-            // Flyme rejects binds to frozen apps before BIND_AUTO_CREATE can wake
-            // them. Use its own temporary UID thaw, only for this verified app
-            // and a live earphone request; do not disable freezing globally.
+
             int uid = context.getPackageManager().getPackageUid(PACKAGE, 0);
             unfreezeUid.invoke(cachedAppOptimizer, uid);
             bind();

@@ -5,7 +5,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import java.lang.reflect.Method;
 
-/** A stationary compositor blur region: radius is set once; only region alpha changes. */
 final class SeparateShadeFixedBlur {
     final ViewGroup root;
     final int radius;

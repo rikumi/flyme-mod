@@ -11,7 +11,6 @@ import java.lang.reflect.Field;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Include scaled QS ancestors in Flyme network/focus dialog source and return geometry. */
 final class NetworkCardAnimationHooks {
     private static final String CONTROLLER = "com.android.systemui.animation.GhostedViewTransitionAnimatorController";
     private final Consumer<Context> settings;
@@ -53,8 +52,7 @@ final class NetworkCardAnimationHooks {
             Matrix matrix = new Matrix();
             view.transformMatrixToGlobal(matrix);
             matrix.mapRect(bounds);
-            // Keep the system's screen origin, including window offsets, while using
-            // the full view/ancestor matrix for dimensions and launch padding.
+
             float[] origin = {0f, 0f};
             matrix.mapPoints(origin);
             int[] screen = new int[2];

@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** A faint inward shade along only the bottom exterior of the icon silhouette. */
 final class IconInnerShadow {
     private IconInnerShadow() {}
     static int[] pixels(int[] silhouette, int width, int height, float depth) {

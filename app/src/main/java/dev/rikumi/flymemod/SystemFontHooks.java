@@ -10,7 +10,6 @@ import java.security.MessageDigest;
 import java.util.*;
 import java.util.zip.ZipFile;
 
-/** Replace system fallback families before FontManagerService serializes the shared font map. */
 public final class SystemFontHooks {
     public static final String PREFS = "system_fonts";
     public static final String ZH = "system_font_zh", LATIN = "system_font_latin", MONO = "system_font_mono";
@@ -150,8 +149,7 @@ public final class SystemFontHooks {
     private static File materialize(String source) throws Exception {
         File existing = files.get(source);
         if (existing != null && existing.isFile()) return existing;
-        // Typeface serialization stores file paths. Apps must be able to reopen them after fork.
-        // The parent must already have init's font_data_file label; do not create it ourselves.
+
         if (!new File(FONT_ROOT).isDirectory()) throw new IOException("System font directory unavailable");
         File directory = new File(FONT_ROOT, CACHE_NAME);
         if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Cannot create font cache");

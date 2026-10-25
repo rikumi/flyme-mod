@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeSet;
 
-/** Immutable window coordinates shared through an event-driven SystemUI bridge. */
 final class StatusBarOverlayFrames {
     static final String KEY = "flyme_mod_statusbar_overlay_frames";
     record Frame(int display, int left, int top, int right, int bottom) {

@@ -15,7 +15,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Keep native geometry while removing ML admission and later direction rejection. */
 final class BackGestureSmartHooks {
     private final Class<?> handler, view, listener;
     private final Consumer<Context> settings;

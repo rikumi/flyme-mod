@@ -15,7 +15,6 @@ import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Make ROM blacklist changes observable in scoped system and non-launcher processes too. */
 final class NightModeBlacklistHooks {
     private static final String TYPE = "flyme.widget.FlymeDarkModeInjectImpl";
     private final Set<Object> registered = Collections.newSetFromMap(new WeakHashMap<>());

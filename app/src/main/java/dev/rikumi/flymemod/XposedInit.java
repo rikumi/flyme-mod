@@ -44,7 +44,6 @@ import java.util.Set;
 import java.util.WeakHashMap;
 import io.github.libxposed.api.XposedInterface;
 
-/** Hooks verified against MEIZU 21 Pro / Flyme 12.6.0.0A, SystemUI 16260625. */
 public final class XposedInit extends XposedModule {
     private static final String PHONE = "com.flyme.systemui.controlcenter.phone.";
     private static final int DARK_BACKGROUND = 0x73000000;
@@ -1170,8 +1169,7 @@ public final class XposedInit extends XposedModule {
         install(loader, PHONE + "MzQSContainerImpl", "onFinishInflate", chain -> {
             Object result = chain.proceed();
             View container = (View) chain.getThisObject();
-            // Both panel modes share this container. Its width is zero during inflation,
-            // so establish the center pivot after layout, including later size changes.
+
             container.addOnLayoutChangeListener((view, left, top, right, bottom,
                     oldLeft, oldTop, oldRight, oldBottom) -> {
                 loadSettings(view.getContext());
@@ -1198,8 +1196,7 @@ public final class XposedInit extends XposedModule {
                         if (container != null) {
                             int target = notificationTargetWidth(container);
                             if (target > 0) {
-                                // Use the measured mini-panel content, not a screen-width
-                                // assumption or a resource from a different density context.
+
                                 target = Math.min(width, target);
                                 stack.getClass().getField("mSidePaddings").setInt(stack,
                                         Math.max(0, Math.round((width - target) / 2f)));
@@ -1212,8 +1209,7 @@ public final class XposedInit extends XposedModule {
                 "calculateNotificationsTopPadding", chain -> {
                     float original = (Float) chain.proceed();
                     Object controller = chain.getThisObject();
-                    // Clear the previous mode's spacer before any early return (split shade,
-                    // landscape or an unbound QS), so later setting changes cannot subtract it.
+
                     if (activeCombinedNotificationWidthHooks != null) activeCombinedNotificationWidthHooks.reset(controller);
                     Object qs = controller.getClass().getField("mQs").get(controller);
                     if (qs == null) return original;
@@ -1226,8 +1222,7 @@ public final class XposedInit extends XposedModule {
                     Object interactor = controller.getClass().getField("mShadeInteractor").get(controller);
                     Object mode = interactor.getClass().getMethod("isClassicsMode").invoke(interactor);
                     if (!Boolean.TRUE.equals(mode.getClass().getMethod("getValue").invoke(mode))) return original;
-                    // Compensate only the operating area below the fixed scale pivot.
-                    // Recalculate from the original QS height on each frame, without accumulation.
+
                     float operatingHeight = Math.max(0f,
                             original - container.getY() - container.getPaddingTop());
                     float adjusted = scaleEnabled ? original + operatingHeight * (operationScale(container) - 1f) : original;
@@ -1315,8 +1310,7 @@ public final class XposedInit extends XposedModule {
                     }
                     return result;
                 }, int.class);
-        // ToggleSeekBar is a Meizu VerticalSeekBar, not android.widget.SeekBar.
-        // Its attach/configuration/resource refresh paths all replace the layered drawable here.
+
         install(loader, "com.meizu.common.widget.ProgressBar", "setProgressDrawable", chain -> {
             View slider = (View) chain.getThisObject();
             if (slider.getClass().getName().equals("com.android.systemui.settings.brightness.ToggleSeekBar")) {
@@ -1369,21 +1363,18 @@ public final class XposedInit extends XposedModule {
 
     private void installNotificationAppearanceLayout(ClassLoader loader) {
         String row = "com.android.systemui.statusbar.notification.row.";
-        // Flyme's redacted base/live public templates bypass getViewHeight():
-        // the row returns the inner public view height without the content insets.
+
         install(loader, row + "ExpandableNotificationRow", "getMinHeight", chain ->
                 notificationPublicHeight((View) chain.getThisObject(), (Integer) chain.proceed()));
         install(loader, row + "ExpandableNotificationRow", "onLayout", chain -> {
             Object result = chain.proceed();
             View notification = (View) chain.getThisObject();
-            // Padding changes before native onLayout snapshots intrinsic height.
-            // Notify after children have their final bounds, including restoration.
+
             if (notificationPaddingHeightChanges.remove(notification))
                 notification.getClass().getMethod("notifyHeightChanged", boolean.class).invoke(notification, false);
             return result;
         }, boolean.class, int.class, int.class, int.class, int.class);
-        // The content container includes padding in measured, collapsed, expanded
-        // and heads-up heights. Header-only padding cannot enlarge the card.
+
         install(loader, row + "NotificationContentView", "onMeasure", chain -> {
             View content = (View) chain.getThisObject();
             loadSettings(content.getContext());
@@ -1395,17 +1386,14 @@ public final class XposedInit extends XposedModule {
                 View notification = (View) content.getClass().getField("mContainingNotification").get(content);
                 if (notification != null) notificationPaddingHeightChanges.add(notification);
             }
-            // measureChildWithMargins subtracts outer padding from both expanded and
-            // heads-up caps. Contracted measurement already adds it before measuring.
+
             java.lang.reflect.Field maxHeight = content.getClass().getField("mNotificationMaxHeight");
             java.lang.reflect.Field headsHeight = content.getClass().getField("mHeadsUpHeight");
             int originalMaxHeight = maxHeight.getInt(content);
             int originalHeadsHeight = headsHeight.getInt(content);
             int extra = notificationAddedVerticalPadding(content);
             if (extra > 0) {
-                // Only enlarge parent caps. getChildMeasureSpec uses a fixed child
-                // LayoutParams.height verbatim, without subtracting parent padding.
-                // Enlarging that height as well would add our insets twice.
+
                 maxHeight.setInt(content, originalMaxHeight + extra);
                 headsHeight.setInt(content, originalHeadsHeight + extra);
             }
@@ -1414,12 +1402,7 @@ public final class XposedInit extends XposedModule {
                 if (extra > 0) {
                     View expanded = (View) content.getClass().getField("mExpandedChild").get(content);
                     View contracted = (View) content.getClass().getField("mContractedChild").get(content);
-                    // The short contracted-template fallback passes mMinContractedHeight
-                    // directly to measureChildWithMargins, unlike the first measurement.
-                    // Restore only our padding deduction, keeping native insets intact.
-                    // An EXACTLY parent spec still gives WRAP_CONTENT an AT_MOST
-                    // child spec. Preserve that distinction: this is a cap, not a
-                    // minimum height for a naturally shorter notification.
+
                     int nativePadding = content.getPaddingTop() + content.getPaddingBottom() - extra;
                     int minimum = content.getClass().getField("mMinContractedHeight").getInt(content) - nativePadding;
                     if (contracted != null) {
@@ -1433,10 +1416,7 @@ public final class XposedInit extends XposedModule {
                                 View.MeasureSpec.makeMeasureSpec(Math.max(0, minimum),
                                         contracted.getLayoutParams().height == android.view.ViewGroup.LayoutParams.MATCH_PARENT
                                                 ? View.MeasureSpec.EXACTLY : View.MeasureSpec.AT_MOST));
-                    // Native onMeasure remeasures a shorter expanded child using the
-                    // contracted child's height as a parent spec. That fallback subtracts
-                    // our outer padding again, unlike the initial expanded measurement.
-                    // Restore only our deduction before layout/stack expansion reads it.
+
                     if (expanded != null && expanded.getLayoutParams().height < 0 && contracted != null) {
                         android.view.ViewGroup.MarginLayoutParams margins =
                                 (android.view.ViewGroup.MarginLayoutParams) expanded.getLayoutParams();
@@ -1447,8 +1427,7 @@ public final class XposedInit extends XposedModule {
                                             expanded.getLayoutParams().height == android.view.ViewGroup.LayoutParams.MATCH_PARENT
                                                     ? View.MeasureSpec.EXACTLY : View.MeasureSpec.AT_MOST));
                     }
-                    // A contracted-only card also needs its outer measured height
-                    // updated; otherwise FrameLayout still clips the restored child.
+
                     int childHeight = 0;
                     for (View child : new View[]{contracted, expanded}) {
                         if (child != null) childHeight = Math.max(childHeight, child.getMeasuredHeight()
@@ -1472,9 +1451,7 @@ public final class XposedInit extends XposedModule {
                 }
             }
         }, int.class, int.class);
-        // Flyme folds grouped notifications into a separate summary card. Its
-        // FrameLayout content root measures padding into getContentHeight(), while
-        // the sibling background continues to cover the full card.
+
         install(loader, "com.flyme.notification.view.NotificationGroupCollapseContainer", "onMeasure", chain -> {
             View group = (View) chain.getThisObject();
             loadSettings(group.getContext());
@@ -1497,8 +1474,7 @@ public final class XposedInit extends XposedModule {
                     || content.getClass().getField("mExpandedChild").get(content) != template) return result;
             View actions = (View) wrapper.getClass().getField("mActionsContainer").get(wrapper);
             if (actions != null) {
-                // Wrapper heights include the outer padding; actions belong to the
-                // inner template and must not consume that padding as extra offset.
+
                 int height = wrapper.getClass().getField("mContentHeight").getInt(wrapper);
                 int hint = wrapper.getClass().getField("mMinHeightHint").getInt(wrapper);
                 int header = (Integer) wrapper.getClass().getMethod("getHeaderTranslation", boolean.class).invoke(wrapper, false);
@@ -1656,8 +1632,7 @@ public final class XposedInit extends XposedModule {
                 : (max > 0 && (long) value * 100 > (long) max * 15
                     ? activeTileIconColor("brightness") : Color.WHITE);
         if (!force && Integer.valueOf(color).equals(sliderIconColors.get(icon))) return;
-        // The brightness circle has overlapping fill and stroke. Tint each path
-        // opaquely, then apply alpha once to the composited icon to avoid a darker rim.
+
         applyIconColor(icon, color | 0xFF000000);
         icon.setLayerType(Color.alpha(color) < 255 ? View.LAYER_TYPE_HARDWARE : View.LAYER_TYPE_NONE, null);
         icon.setAlpha(Color.alpha(color) / 255f);
@@ -1747,8 +1722,7 @@ public final class XposedInit extends XposedModule {
                 View target = (View) chain.getArg(0);
                 return isColorOsCircleIcon(target) ? false : chain.proceed();
             }, View.class);
-            // Helpers already created before a style change retain their hardware flag.
-            // Suppress only the per-press layer promotion, preserving the native spring.
+
             install(loader, helperName, "doScale", chain -> {
                 View target = (View) chain.getArg(0);
                 if (!isColorOsCircleIcon(target)) return chain.proceed();
@@ -1851,8 +1825,7 @@ public final class XposedInit extends XposedModule {
                 loadSettings(owner.getContext());
                 boolean active = whiteActiveEnabled
                         && chain.getArg(0).getClass().getField("state").getInt(chain.getArg(0)) == 2;
-                // The ROM skips tintLottie for *_on compositions. Remove our callback
-                // first so disabling white activation restores their original colors.
+
                 if (!active && whiteActiveTintedIcons.remove(glyph)) clearLottieTint(glyph);
                 Object result = chain.proceed();
                 if (active) {
@@ -1903,8 +1876,7 @@ public final class XposedInit extends XposedModule {
     }
 
     private void installBlurRadius(ClassLoader loader) {
-        // Both panel modes reach this final surface-blur entry point. Keep the
-        // original progress/zoom, and change only the radius sent to the surface.
+
         try {
             Class<?> viewRoot = Class.forName("android.view.ViewRootImpl", false, loader);
             install(loader, "com.android.systemui.statusbar.BlurUtils", "applyBlurMZ", chain -> {
@@ -1942,8 +1914,7 @@ public final class XposedInit extends XposedModule {
     }
 
     private void installBackgroundScale(ClassLoader loader) {
-        // Flyme sends its animated background shrink as a pixel inset, independent
-        // of the blur radius. Scope the framework builder hook to this shade call.
+
         ThreadLocal<Float> shrinkRatio = new ThreadLocal<>();
         try {
             Class<?> viewRoot = Class.forName("android.view.ViewRootImpl", false, loader);
@@ -1966,8 +1937,7 @@ public final class XposedInit extends XposedModule {
                 Float previous = shrinkRatio.get();
                 shrinkRatio.set(backgroundScale / 100f);
                 try {
-                    // Scaling the final inset also handles 0%: passing a zero
-                    // progress to applyBlurMZ would fall back to the blur radius.
+
                     return chain.proceed();
                 } finally {
                     if (previous == null) shrinkRatio.remove();
@@ -1987,8 +1957,7 @@ public final class XposedInit extends XposedModule {
             Class<?> custom = loader.loadClass("com.flyme.systemui.qs.tileimpl.FlymeCustomQSTileView");
             activeControlCenterForegroundHooks = new ControlCenterForegroundHooks(this::shouldDarken,
                     this::isControlCenterView, view -> {
-                // Tile label getters choose their palette from the actual system theme.
-                // Backdrop dimming must not convert day-mode labels to night colors.
+
                 for (View current = view; current != null;
                         current = current.getParent() instanceof View parent ? parent : null) {
                     if (tile.isInstance(current) || custom.isInstance(current)) return true;
@@ -2007,8 +1976,7 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR,"FlymeMod","Cannot resolve dark shade notification foreground",error);
         }
         Map<Object, ShadeDimFrame> dimFrames = new WeakHashMap<>();
-        // Extend only the native dim-layer call to apart mode. The normal blur
-        // eligibility checks (including height/spring and lockscreen paths) stay intact.
+
         install(loader, "com.android.systemui.shade.NotificationPanelViewController", "allowSetShadeBlur", chain ->
                 blurDimOwner.get() == chain.getThisObject() ? true : chain.proceed());
         install(loader, "com.android.systemui.shade.NotificationPanelViewController", "showBackgroundBlurDimLayer", chain -> {
@@ -2028,8 +1996,7 @@ public final class XposedInit extends XposedModule {
             Object previous = blurDimOwner.get();
             if (active) blurDimOwner.set(controller); else blurDimOwner.remove();
             try {
-                // The flow also emits for blur-scale spring frames. An unchanged
-                // radius/color on the same surface needs no new Surface transaction.
+
                 Field surfaceField = controller.getClass().getField("mBackgroundSurface");
                 Object surface = surfaceField.get(controller);
                 float fraction = locked ? 0f : (Float) chain.getArg(0);
@@ -2049,9 +2016,7 @@ public final class XposedInit extends XposedModule {
                 Object result = null;
                 if (!active || !frame.matches(surface, fraction, color)) {
                     if (fraction <= 0f && (active || locked || surfaceDarkBackground)) {
-                        // Native removal uses applyTransactionOnDraw. The window can
-                        // stop drawing when ACTION_UP hides it, leaving a color layer
-                        // over the app. Removal must not depend on another shade frame.
+
                         ShadeDimFrame.removeImmediately(controller, surfaceField);
                     } else {
                         result = chain.proceed(new Object[]{fraction});
@@ -2078,18 +2043,13 @@ public final class XposedInit extends XposedModule {
         install(loader, "com.android.systemui.scrim.ScrimView", "onDraw", chain -> {
             View scrim = (View) chain.getThisObject();
             int id = scrim.getResources().getIdentifier("center_behind", "id", "com.android.systemui");
-            // Keep native alpha values/animators intact, but draw the dark backdrop once.
-            // Keep ownership after the surface fades to zero: center_behind has its
-            // own animator and can still be nontransparent at that moment. Restoring
-            // its draw here would flash the old dim layer on the final closing frame.
-            // Theme/lockscreen changes release ownership in the dim-layer hook.
+
             if (surfaceDarkBackground && id != 0 && scrim.getId() == id
                     && shouldDarken(scrim.getContext())
                     && (activeSeparateShadeSwipeHooks == null || !activeSeparateShadeSwipeHooks.drawsCenterBackdrop(scrim))) return null;
             return chain.proceed();
         }, Canvas.class);
-        // The reference ROM uses a separate vector scrim over its blurred surface.
-        // Replace that drawable, leaving blur radius, scaling and fade animation intact.
+
         install(loader, PHONE + "CenterController", "setBehindViewColor", chain -> {
             Object result = chain.proceed();
             Object controller = chain.getThisObject();
@@ -2135,8 +2095,6 @@ public final class XposedInit extends XposedModule {
                     ? chain.proceed(new Object[]{Color.WHITE}) : chain.proceed();
         }, int.class);
 
-        // Limit the native night-mode override to foreground getters. Never change
-        // the shared Context/Resources configuration or tile/background theme.
         ThreadLocal<Boolean> nightForeground = new ThreadLocal<>();
         install(loader,"com.flyme.systemui.utils.SystemUICommonUtils","isNightModel",chain ->
                 Boolean.TRUE.equals(nightForeground.get()) ? true : chain.proceed(),Context.class);
@@ -2336,8 +2294,7 @@ public final class XposedInit extends XposedModule {
     private void installLauncherIconHiding(ClassLoader loader) {
         install(loader, "com.meizu.flyme.launcher.LauncherApplication", "onCreate", chain -> {
             launcherContext = ((Context) chain.getThisObject()).getApplicationContext();
-            // Read before the original method starts LauncherPreLoading; the
-            // first model load must already have the hidden-component setting.
+
             loadSettings(launcherContext);
             if (launcherSettingsObserver == null) {
                 appliedLauncherHiddenPackages = hiddenLauncherPackages;
@@ -2390,8 +2347,7 @@ public final class XposedInit extends XposedModule {
                 Object cursor = cursorField.get(chain.getThisObject());
                 if (cursor.getClass().getField("itemType").getInt(cursor) == 0) {
                     Intent intent = (Intent) cursor.getClass().getMethod("parseIntent").invoke(cursor);
-                    // Skip binding desktop/folder icons, leaving the saved row
-                    // intact so disabling the switch restores their positions.
+
                     if (intent != null && intent.getComponent() != null
                             && hiddenLauncherPackages.contains(intent.getComponent().getPackageName())) return null;
                 }
@@ -2407,9 +2363,7 @@ public final class XposedInit extends XposedModule {
             Context context = (Context) monitor.getClass().getField("mContext").get(monitor);
             loadSettings(context);
             if (!wallpaperStartupFixEnabled) return chain.proceed();
-            // ImageWallpaper snapshots this getter before the monitor may have
-            // run initSetings(). Read the persisted preference instead of its
-            // initial true value; preserve the ROM's default and later callbacks.
+
             boolean actual = Settings.Global.getInt(context.getContentResolver(),
                     "flyme_dark_mode_adjust_wallpaper", 1) == 1;
             if (!wallpaperStartupReadLogged) {
@@ -2452,8 +2406,7 @@ public final class XposedInit extends XposedModule {
         if (extra == 0) return nativeHeight;
         Object wrapper = content.getClass().getMethod("getNotificationViewWrapper").invoke(content);
         if (wrapper == null) return nativeHeight;
-        // Match only the two direct getHeight() branches of Flyme getMinHeight().
-        // Other publicVersion templates already include padding via getViewHeight().
+
         boolean live = (Boolean) notification.getClass().getMethod("isLiveNotification").invoke(notification);
         View publicView = live ? (View) wrapper.getClass().getMethod("getLivePublicView").invoke(wrapper) : null;
         if (publicView == null) publicView = (View) wrapper.getClass().getMethod("getBasePublicView").invoke(wrapper);
@@ -2609,8 +2562,7 @@ public final class XposedInit extends XposedModule {
                         if (drawable == null) return chain.proceed();
                         int sizeId = context.getResources().getIdentifier("status_bar_icon_size", "dimen", "com.android.systemui");
                         int size = context.getResources().getDimensionPixelSize(sizeId);
-                        // Normalize intrinsic dimensions before CENTER_INSIDE measures the
-                        // switcher; application artwork must not decide the ticker's size.
+
                         return chain.proceed(new Object[]{chain.getArg(0), sbn,
                                 new TickerNotificationIcon(drawable, size, scale), chain.getArg(3)});
                     });
@@ -2637,8 +2589,7 @@ public final class XposedInit extends XposedModule {
                 if (!originalNotificationIconsEnabled) return chain.proceed();
                 StatusBarNotification sbn = (StatusBarNotification) view.getClass().getField("mNotification").get(view);
                 if (sbn == null || !originalNotificationIcons.containsKey(sbn.getNotification())) return chain.proceed();
-                // Flyme scales only the icon around the view center; the overflow
-                // dot and layout spacing stay unchanged. Restore after each draw.
+
                 java.lang.reflect.Field scale = view.getClass().getField("mIconScale");
                 float originalScale = scale.getFloat(view);
                 scale.setFloat(view, originalScale * 0.65f);
@@ -2877,8 +2828,7 @@ public final class XposedInit extends XposedModule {
                         : RecentsCornerGeometry.clamp(cursor.getInt(recentsCornerDpColumn));
                 int stackedRecentsColumn = cursor.getColumnIndex(ModuleSettings.STACKED_RECENTS);
                 stackedRecentsEnabled = stackedRecentsColumn >= 0 && cursor.getInt(stackedRecentsColumn) != 0;
-                // LauncherApplication.onCreate loads this snapshot before preloading
-                // tasks. Recents hooks must never query the provider on gesture frames.
+
                 int recentsHideColumn = cursor.getColumnIndex(ModuleSettings.RECENTS_HIDE_NOT_RUNNING);
                 recentsHideNotRunningEnabled = recentsHideColumn >= 0 && cursor.getInt(recentsHideColumn) != 0;
                 int recentsKillColumn = cursor.getColumnIndex(ModuleSettings.RECENTS_SWIPE_UP_KILL);

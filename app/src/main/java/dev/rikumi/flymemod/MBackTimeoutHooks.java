@@ -11,7 +11,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Use View's system long-press timer as the only timer for non-pressure mBack. */
 final class MBackTimeoutHooks {
     private static final String CONTROLLER = "com.flyme.systemui.navigationbar.MBackButtonController";
     private static final String BUTTON = "com.flyme.systemui.navigationbar.MBackButtonView";
@@ -56,8 +55,7 @@ final class MBackTimeoutHooks {
             }
             Object result = chain.proceed();
             if (controlled) {
-                // handleTouch(DOWN) has just posted message 7. View.onTouchEvent
-                // will post its system-timeout callback after this method returns.
+
                 ((Handler) handler.get(owner)).removeMessages(LONG_CLICK);
             }
             if (down && enabled.getAsBoolean()) log.accept("MBack system timeout down: controlled="
@@ -70,8 +68,7 @@ final class MBackTimeoutHooks {
             if (!active(owner)) return chain.proceed();
             Handler target = (Handler) handler.get(owner);
             target.removeMessages(LONG_CLICK);
-            // Dispatch the original action synchronously. View records the returned
-            // true as a completed long click and suppresses its own short click.
+
             target.dispatchMessage(target.obtainMessage(LONG_CLICK));
             log.accept("MBack system timeout long click: longHome=" + longTouchHome.getBoolean(owner), null);
             return true;

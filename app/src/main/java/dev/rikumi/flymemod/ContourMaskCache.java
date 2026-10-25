@@ -4,7 +4,6 @@ import android.graphics.Path;
 import android.graphics.PathIterator;
 import android.os.Build;
 
-/** Exact geometry key for the expensive software-rasterized contour mask. */
 final class ContourMaskCache {
     private Path renderedPath;
     private Path checkedPath;

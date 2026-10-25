@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Predicate;
 
-/** White foreground only on notifications displayed over the dark expanded shade. */
 final class NotificationForegroundHooks {
     private final Class<?> row, stack, landscape, media;
     private final Field expanded, status;
@@ -68,8 +67,7 @@ final class NotificationForegroundHooks {
                 ColorStateList original=textColors.remove(text);
                 if(original!=null && (text.getTextColors()==WHITE || text.getTextColors()==BLACK))text.setTextColor(original);
             }
-            // TextView allocates a four-element array for this accessor. Most
-            // SystemUI text is outside notifications and never needs this work.
+
             if(target!=null) {
                 for(Drawable drawable:text.getCompoundDrawablesRelative())tintDrawable(drawable,target);
                 compoundStyled.put(text,Boolean.TRUE);

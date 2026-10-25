@@ -14,7 +14,6 @@ import java.util.*;
 import java.util.concurrent.Executors;
 import org.xmlpull.v1.XmlPullParser;
 
-/** One module-owned, visibility-independent, per-user background cache. All misses are materialized too. */
 final class SystemIconPackStore {
     static final Uri URI=Uri.parse("content://dev.rikumi.flymemod.icons");
     private static SystemIconPackStore instance;

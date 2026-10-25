@@ -19,7 +19,6 @@ import java.util.WeakHashMap;
 import java.util.function.Predicate;
 import java.lang.reflect.Method;
 
-/** Apply the ROM's night foreground palette without changing surface colors or content artwork. */
 final class ControlCenterForegroundHooks {
     private final Predicate<Context> enabled;
     private final Predicate<View> inCenter;
@@ -44,8 +43,7 @@ final class ControlCenterForegroundHooks {
             TextView view = (TextView) chain.getThisObject();
             boolean center = inCenter.test(view);
             if (center) views.add(view);
-            // Tile labels already choose a foreground for their surface and system theme.
-            // In particular 0x99000000 on white must not match the media night palette.
+
             boolean active = center && enabled.test(view.getContext()) && !preserveText.test(view);
             Tint saved = texts.get(view);
             if (active) {

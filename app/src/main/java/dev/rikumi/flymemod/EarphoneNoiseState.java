@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** A queued command must not be replaced by an unchanged asynchronous SDK cache. */
 final class EarphoneNoiseState {
     private String device;
     private int reported, requested;

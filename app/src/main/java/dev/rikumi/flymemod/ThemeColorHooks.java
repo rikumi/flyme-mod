@@ -37,7 +37,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Locale;
 import io.github.libxposed.api.XposedInterface;
 
-/** Resource names, not arbitrary Paint RGB values, determine which theme colors are replaced. */
 final class ThemeColorHooks {
     interface Installer { void hook(Executable target, XposedInterface.Hooker hooker); }
     private static final int COLOR = 1, PRIMARY = 2, ICON = 4, BACKGROUND = 8, CUTOUT_ICON = 16, STORE_BACKGROUND = 32, RED_PROTECTED_ICON = 64, LEGACY_BACKGROUND = 128, INACTIVE_TAB_ICON = 256;
@@ -92,7 +91,7 @@ final class ThemeColorHooks {
     private synchronized void read() {
         try {
             // Custom system theme-color replacement was removed. This hook host remains
-            // for independent pure-black backgrounds and wireless-debugging fixes.
+
             boolean nextEnabled = false;
             int nextColor = 0;
             boolean nextBlack = preferences.getBoolean(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, false);
@@ -248,8 +247,7 @@ final class ThemeColorHooks {
             return result;
         }, int.class, TypedValue.class, boolean.class);
         if ("com.meizu.mstore".equals(packageName)) {
-            // Store 12.5.1: sg.c.a paints the inverse corners in rows adjoining
-            // the selected category. Keep the selected row's native drawing intact.
+
             method(loader,installer,"sg.c","a",chain -> {
                 View sidebar=(View)chain.getThisObject();
                 if(blackBackground && night(sidebar.getResources()) && storeSidebar(sidebar)
@@ -310,7 +308,7 @@ final class ThemeColorHooks {
             try { return colorList((ColorStateList) chain.proceed(), kind, array.getResources()); }
             finally { replacing.set(false); }
         }, int.class);
-        // Public Resources and TypedArray both reach this verified framework entry.
+
         method(loader, installer, "android.content.res.ResourcesImpl", "loadColorStateList", chain -> {
             Resources resources = (Resources) chain.getArg(0);
             int kind = target(resources, (int) chain.getArg(2));
@@ -331,7 +329,7 @@ final class ThemeColorHooks {
                 value(((TypedArray) chain.getThisObject()).getResources(), value.resourceId, value);
             return result;
         }, int.class, TypedValue.class);
-        // Keep icon artwork native, but allow verified slider tracks (including their nested
+
         // drawables) to resolve their theme colors just like the rest of the control.
         method(loader, installer, "android.content.res.ResourcesImpl", "loadDrawable", chain -> {
             boolean previous=preservingIconColors.get(),previousTrack=loadingControlTrack.get();
@@ -373,13 +371,12 @@ final class ThemeColorHooks {
             view.setTextColor(mapped);
             try {return chain.proceed();}finally{view.setTextColor(original);}
         }, Canvas.class);
-        // Verified on the device framework: this entry draws only mBackground, including RenderNodes.
+
         method(loader, installer, "android.view.View", "drawBackground", chain -> {
             View view = (View) chain.getThisObject();
             // MzBreakerSeekbar paints a five-color temperature spectrum as its View background.
             if (ThemeControlResources.spectralSlider(packageName, view.getClass())) return chain.proceed();
-            // Track caps, input underlines and icon-style borders are independent
-            // control backgrounds. Their later text and image drawing stays native.
+
             ThemeIconFilter sliderColors=iconFilters;
             boolean input=sliderColors!=null && ThemeControlResources.inputView(view.getClass());
             boolean border=sliderColors!=null && "com.meizu.flyme.launcher".equals(packageName)
@@ -404,8 +401,7 @@ final class ThemeColorHooks {
                     && (sidebar || storePageBackgrounds.containsKey(view)
                     || ThemeTabPolicy.storeGlobalBackground(packageName, viewId(view))
                     || view.getClass().getName().equals("com.ashokvarma.bottomnavigation.BottomNavigationBar"));
-            // The decor only draws the window surface. Its old and new dark shades can all
-            // become black without changing similarly colored list and group backgrounds.
+
             boolean blackAllowed=normalActivityBackground(view);
             if(!blackAllowed && dialogColors==null)return chain.proceed();
             boolean windowSurface = "com.android.internal.policy.DecorView".equals(view.getClass().getName());
@@ -428,8 +424,7 @@ final class ThemeColorHooks {
             finally { canvas.restoreToCount(saved); }
         }, Canvas.class);
         if(!settingsProcess()) {
-            // Background replacement now happens at drawing time in every scoped app.
-            // Compiled framework callers must not inline past the drawBackground hook.
+
             deopt(loader,deoptimizer,"android.view.View","draw",Canvas.class);
             deopt(loader,deoptimizer,"android.view.View","draw",Canvas.class,ViewGroup.class,long.class);
             deopt(loader,deoptimizer,"android.view.View","updateDisplayListIfDirty");
@@ -671,8 +666,7 @@ final class ThemeColorHooks {
                         ||name.contains("Dialog") ||name.contains("BottomSheet") ||name.contains("Floating"))return false;
             }
         }
-        // DecorContext wraps the application rather than its Activity. Resolve the owning
-        // PhoneWindow for decor and descendants instead of rejecting ordinary app surfaces.
+
         android.content.Context context=view.getContext();
         View root=view.getRootView();
         if(decorWindow!=null && decorWindow.getDeclaringClass().isInstance(root)) {

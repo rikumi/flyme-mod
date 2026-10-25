@@ -2,7 +2,6 @@ package dev.rikumi.flymemod;
 
 import java.util.Set;
 
-/** Exclude these native-dark apps from the enabled special-app extension. */
 final class NightModeSpecialPackagePolicy {
     private static final Set<String> NATIVE_DARK = Set.of(
             "com.android.dialer", "com.meizu.mznfcpay", "com.android.vending",

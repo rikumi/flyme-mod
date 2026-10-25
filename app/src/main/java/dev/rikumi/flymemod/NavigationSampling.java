@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Independent CPU implementation of ColorOS-style side-region / line fallback sampling. */
 final class NavigationSampling {
     // Raw-buffer pixels, not dp. Keep a gap above the backing's 1px seam.
     private static final int SAMPLE_HEIGHT = 10;
@@ -27,8 +26,7 @@ final class NavigationSampling {
     }
 
     Integer sample(PixelReader pixels) {
-        // Accumulate both sides together: individually uniform but differently colored
-        // sides must not arbitrarily select one side or produce their blended color.
+
         int inset = Math.min(SIDE_INSET, (width - 1) / 2);
         int sideWidth = Math.min(SIDE_WIDTH, (width - 2 * inset) / 2);
         if (sideWidth > 0) {

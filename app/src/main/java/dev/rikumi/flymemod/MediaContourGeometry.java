@@ -11,7 +11,6 @@ import android.view.ViewGroup;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-/** The intersection of native media/ancestor clips in the media view's coordinates. */
 final class MediaContourGeometry {
     final Rect visible = new Rect(), local = new Rect();
     final Path path = new Path();
@@ -90,8 +89,7 @@ final class MediaContourGeometry {
         visible.set((int) Math.ceil(bounds.left), (int) Math.ceil(bounds.top),
                 (int) Math.floor(bounds.right), (int) Math.floor(bounds.bottom));
         if (visible.isEmpty()) return empty();
-        // Rebase shader width/fade and the exact inward mask to the visible card,
-        // rather than clipping a light still configured for the old full width.
+
         inverse.reset(); intersectRect(visible);
         path.offset(-visible.left, -visible.top);
         local.set(0, 0, visible.width(), visible.height());

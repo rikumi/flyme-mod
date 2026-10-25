@@ -17,7 +17,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Display-only compaction: never rewrite TilePositionManager's saved grid. */
 final class FoldIdleMediaHooks {
     private static final String LAYOUT = "com.flyme.systemui.controlcenter.qs.UnifiedTileLayout";
     private static final String CONTROLLER = "com.flyme.systemui.qs.media.QsMediaController";
@@ -87,8 +86,7 @@ final class FoldIdleMediaHooks {
                 restore(layout); plans.remove(layout);
             }
             Object result = chain.proceed();
-            // Apply geometry after the entire native measure pass. Do not depend
-            // on intercepting the final internal measureChild call, which ART can inline.
+
             try {
                 for (int i = 0; i < layout.getChildCount(); i++) {
                     View child = layout.getChildAt(i);
@@ -99,8 +97,7 @@ final class FoldIdleMediaHooks {
             }
             return result;
         }, int.class, int.class);
-        // Native layoutChild consumes display geometry, while all grid coordinates
-        // remain unchanged for editing, pagination and persistence.
+
     }
 
     void refresh() {

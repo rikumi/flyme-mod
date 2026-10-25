@@ -22,7 +22,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** View-local QS shapes; radius is a percentage of the 1x1 grid cell width. */
 final class TileCornerHooks {
     private final Consumer<Context> settings;
     private final BooleanSupplier enabled, circleSmallTiles;
@@ -75,8 +74,7 @@ final class TileCornerHooks {
             catch (ReflectiveOperationException error) { log.accept("Cannot read QS grid cell size", error); }
         }
         if (side <= 0) {
-            // RemoteViews headers can carry the posting app's Resources, even while
-            // hosted in SystemUI. Resolve the native dimension in its owning package.
+
             if (systemUiResources == null) {
                 try {
                     systemUiResources = view.getContext().getPackageManager()

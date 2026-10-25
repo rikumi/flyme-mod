@@ -20,7 +20,6 @@ import java.util.IdentityHashMap;
 import java.util.function.BooleanSupplier;
 import io.github.libxposed.api.XposedInterface;
 
-/** Folder paths verified against Flyme Launcher 13000000. */
 final class FolderHooks {
     interface Installer {
         void hook(String name, String method, XposedInterface.Hooker hooker, Class<?>... parameters);
@@ -77,8 +76,6 @@ final class FolderHooks {
             return new Point(rank % COLUMNS, rank / COLUMNS);
         }, int.class);
 
-        // FolderPagedView deliberately skips PagedView's paging implementation.
-        // Clear those gates in the base entry points, after the folder overrides set them.
         for (String method : new String[]{"onTouchEvent", "onInterceptTouchEvent"}) {
             String gate = method.equals("onTouchEvent") ? "needOverOnTouchEvent" : "needOverOnInterceptTouchEvent";
             installer.hook("com.android.launcher3.PagedView", method, chain -> {
@@ -301,8 +298,7 @@ final class FolderHooks {
         });
         installer.hook(FOLDER + "PreviewItemManager", "onFolderClose", chain -> {
             if (!paging.getAsBoolean()) return chain.proceed();
-            // The preview organizer still uses Flyme's original page capacity.
-            // Reset directly to page zero rather than sliding an empty page preview.
+
             Object result = chain.proceed(new Object[]{0});
             Object manager = chain.getThisObject();
             ((List<?>) field(manager, "mCurrentPageParams")).clear();

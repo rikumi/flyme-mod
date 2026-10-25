@@ -5,7 +5,6 @@ import android.view.View;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-/** Merged-shade foregrounds inherit the stack fade exactly once. */
 final class NotificationBackgroundFadeHooks {
     private final Class<?> stackClass, liveBlurClass;
     private final Field shade, expanded, drawableAlpha, background;
@@ -38,9 +37,7 @@ final class NotificationBackgroundFadeHooks {
             Object result=chain.proceed();
             View view=(View)chain.getThisObject();
             if (updating.get()==view) {
-                // BackgroundBlurDrawable's alpha drives the compositor region;
-                // its fill Paint retains the configured color alpha. Preserve that
-                // region alpha, but stop multiplying it into contours/color effects.
+
                 drawableAlpha.setInt(view,255);
                 Object drawable=background.get(view);
                 if (drawable instanceof Drawable fill && !liveBlurClass.isInstance(fill)) fill.setAlpha(255);

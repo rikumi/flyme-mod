@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-/** One-time, transactional snapshot. No live database file/WAL copying and no writes to the seed. */
 final class LauncherExtraRowStorage {
     private LauncherExtraRowStorage() {}
 
@@ -63,9 +62,7 @@ final class LauncherExtraRowStorage {
 
     private static void snapshot(File source, File target, Context context, AppWidgetHost host,
             Map<Integer, WidgetCopy> widgets, ArrayList<Integer> allocated) {
-        // VACUUM INTO is available in this Android 16 launcher target. It takes a
-        // consistent SQLite snapshot (including WAL, triggers, FTS and sequences)
-        // without changing the attached source, unlike VACUUM without INTO.
+
         try (SQLiteDatabase connection = SQLiteDatabase.create(null)) {
             connection.execSQL("ATTACH DATABASE ? AS seed", new Object[]{source.getAbsolutePath()});
             connection.execSQL("VACUUM seed INTO ?", new Object[]{target.getAbsolutePath()});
@@ -114,7 +111,6 @@ final class LauncherExtraRowStorage {
         }
     }
 
-    /** Upgrade only unresolved widget configuration; never reseed or change layout coordinates. */
     private static void repairPendingWidgets(Context context, File data, File root) {
         File[] files = new File(root, "databases").listFiles();
         if (files == null) return;

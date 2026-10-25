@@ -12,7 +12,6 @@ import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 import android.widget.Toast;
 
-/** Optional tiles backed by SystemUI's native network controls. */
 public abstract class NetworkTileService extends TileService {
     static final String ACTION = "dev.rikumi.flymemod.action.NETWORK_TILE";
     static final String PERMISSION = "dev.rikumi.flymemod.permission.CONTROL_NETWORK_TILES";
@@ -76,8 +75,7 @@ public abstract class NetworkTileService extends TileService {
             tile.setContentDescription(tileLabel + "，" + subtitle); tile.updateTile();
         }
         if (toggle && error != null) Toast.makeText(this, error, Toast.LENGTH_SHORT).show();
-        // Query only while the panel is listening, including external state changes
-        // and asynchronous radio / default-subscription transitions.
+
         if (listening) main.postDelayed(refresh, 1500);
     }
     public static final class Wifi extends NetworkTileService {
@@ -105,8 +103,7 @@ public abstract class NetworkTileService extends TileService {
             if (state.containsKey("data_sim_slot")) {
                 lastDataSimSlot = state.getInt("data_sim_slot", -1);
             } else {
-                // An already-running SystemUI may still use the bridge from before
-                // data_sim_slot was added. Its subtitle carries the same SIM slot.
+
                 String subtitle = state.getString("subtitle", "");
                 if (subtitle.startsWith("SIM 1 · ")) lastDataSimSlot = 0;
                 else if (subtitle.startsWith("SIM 2 · ")) lastDataSimSlot = 1;

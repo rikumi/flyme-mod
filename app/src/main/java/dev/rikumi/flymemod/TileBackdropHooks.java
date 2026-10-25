@@ -29,7 +29,6 @@ import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.DoubleSupplier;
 
-/** Compose saturated, brightened live SurfaceFlinger background under the tile foreground. */
 final class TileBackdropHooks {
     private static final String NETWORK = "com.flyme.systemui.qs.tileimpl.ConnectivityQSTileViewImpl";
     private static final String SLIDER_OWNER = "com.android.systemui.settings.brightness.BrightnessSliderView";
@@ -370,8 +369,7 @@ final class TileBackdropHooks {
                 Rect rect = (Rect) rectangle.get(target);
                 int left=(Integer)chain.getArg(1), top=(Integer)chain.getArg(2);
                 int right=(Integer)chain.getArg(3), bottom=(Integer)chain.getArg(4);
-                // Native FlymeEffectRegion retains this same Rect. Position-only changes need
-                // the RT frame transaction, but neither a UI redraw nor uniform reserialization.
+
                 queue.invoke(aggregator.get(target), (Long)chain.getArg(0), (Runnable)()->rect.set(left,top,right,bottom));
                 return null;
             }, long.class, int.class, int.class, int.class, int.class);
@@ -488,16 +486,14 @@ final class TileBackdropHooks {
             radiusId = slider ? view.getResources().getIdentifier("qs_corner_radius", "dimen", "com.android.systemui") : 0;
         }
         @Override public void onViewAttachedToWindow(View view) {
-            // Background setters may register us inside the native attach callback,
-            // before View dispatches its attach listeners. Do not register twice.
+
             if (observer==view.getViewTreeObserver() && observer.isAlive()) return;
             observer = view.getViewTreeObserver(); observer.addOnPreDrawListener(this);
             update();
         }
         @Override public void onLayoutChange(View view,int left,int top,int right,int bottom,
                 int oldLeft,int oldTop,int oldRight,int oldBottom) {
-            // Register effect regions while layout is still running, ahead of the
-            // aggregator's first pre-draw snapshot and RenderThread frame callback.
+
             update();
         }
         @Override public void onViewDetachedFromWindow(View view) {
@@ -540,8 +536,7 @@ final class TileBackdropHooks {
                     alpha *= ancestor.getAlpha();
                     visible &= ancestor.getVisibility() == View.VISIBLE;
                 }
-                // Hidden panels still receive the window's pre-draw callback. Keep
-                // their effect for reuse, but defer geometry and uniforms until visible.
+
                 if (!visible || alpha <= 0f) {
                     if (effect != null) setEffectVisibility(false, 0);
                     return;
@@ -560,10 +555,7 @@ final class TileBackdropHooks {
                 float radius = 0, smoothing = 0;
                 if (notification) {
                     if (background == null) { remove(view); return; }
-                    // calculateBackgroundBounds() asserts the new hover-dismiss mode
-                    // and reports a synchronous WTF to AMS on this ROM's legacy path.
-                    // Match NotificationBackgroundView.draw() without that assertion
-                    // or its per-frame Rect allocation.
+
                     NotificationBackdropGeometry.setBounds(bounds, view.getWidth(),
                             ((Number)notificationActualWidth.invoke(view)).intValue(),
                             ((Number)notificationActualHeight.invoke(view)).intValue(),
@@ -632,8 +624,7 @@ final class TileBackdropHooks {
                 if(media)updateMediaUniforms();
                 if (notification) {
                     float[] radii=(float[])notificationRadii.get(view);
-                    // Blur backgrounds have uniform corners; layered group backgrounds
-                    // retain native top/bottom roundness while expanding.
+
                     boolean uniform=!(notificationDrawable.get(view) instanceof LayerDrawable);
                     float a=uniform?radius:radii[0], b=uniform?radius:radii[2];
                     float c=uniform?radius:radii[4], d=uniform?radius:radii[6];
@@ -647,8 +638,7 @@ final class TileBackdropHooks {
                 if (!appliedBounds.equals(bounds)) {
                     effect.setBounds(bounds);
                     setFloat2.invoke(effect,"shapeSize",(float)bounds.width(),(float)bounds.height());
-                    // The framework tracker has no display list on creation. Give RenderThread a
-                    // valid empty display list so its position listener can submit nonempty regions.
+
                     RenderNode tracker = (RenderNode) trackerNode.get(effect);
                     tracker.beginRecording(bounds.width(),bounds.height()); tracker.endRecording();
                     appliedBounds.set(bounds);
@@ -657,8 +647,7 @@ final class TileBackdropHooks {
                     java.util.Arrays.fill(appliedHoleRadii,Float.NaN);
                 }
                 if (!appliedClip.equals(visibleBounds)) {
-                    // Keep the original shape and corner coordinates; clipping a tile
-                    // must not shrink its mask or introduce a new rounded edge.
+
                     setFloat4.invoke(effect,"shapeClip",visibleBounds.left-bounds.left,
                             visibleBounds.top-bounds.top,visibleBounds.right-bounds.left,
                             visibleBounds.bottom-bounds.top);
@@ -712,10 +701,7 @@ final class TileBackdropHooks {
             effect.setVisible(visible,false);
             boolean renderable=visible && alpha>0;
             if (renderable && !drawableRenderable) {
-                // FlymeEffectDrawable.updatePath() clears its path when bounds
-                // arrive while hidden/transparent. Neither setAlpha nor setVisible
-                // rebuilds it. Reapply bounds after visibility is restored, even
-                // when geometry is unchanged, then record the tracker again.
+
                 effect.setBounds(bounds.left,bounds.top,bounds.right,bounds.bottom);
                 effect.invalidateSelf();
             }
@@ -737,10 +723,7 @@ final class TileBackdropHooks {
                 if (!toAncestor.invert(fromAncestor)) { visibleBounds.setEmpty(); return; }
                 if ((notification || media) && notificationOutline.isInstance(ancestor)
                         && (Boolean)rowNeedsClip.invoke(ancestor,child)) {
-                    // Canvas.clipPath in ExpandableOutlineView.drawChild does not
-                    // clip SurfaceFlinger's effect regions. Match the native swipe
-                    // boundary in background-local coordinates and give the remaining
-                    // visible width its own rounded mask.
+
                     Path path=(Path)rowCustomClip.invoke(ancestor,child);
                     if (path==null) path=(Path)rowClip.invoke(ancestor,false);
                     if (path.isEmpty()) {visibleBounds.setEmpty();return;}
@@ -772,15 +755,13 @@ final class TileBackdropHooks {
                         if(outline.getRect(clipRect))addMediaClip(clipRect.left,clipRect.top,clipRect.right,clipRect.bottom,Math.max(0,outline.getRadius()));
                     }
                 }
-                // The QS reveal hook can disable normal child clipping. This
-                // container's changing bottom still defines the controls area.
+
                 if (mzQsContainer.isInstance(ancestor)) mapClip(0,0,ancestor.getWidth(),ancestor.getHeight());
                 if (qsContainer.isInstance(ancestor)) {
                     Path path = (Path)fancyClipPath.get(ancestor);
                     if (!path.isEmpty()) {
                         path.computeBounds(clipHole,true);
-                        // Native dispatchDraw translates by -getTranslationY()
-                        // before clipOutPath, then restores it for its children.
+
                         clipHole.offset(0,-ancestor.getTranslationY());
                         fromAncestor.mapRect(clipHole);
                         float radius = ((float[])fancyClipRadii.get(ancestor))[0];

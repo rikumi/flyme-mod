@@ -9,7 +9,6 @@ import java.lang.reflect.*;
 import java.util.*;
 import java.util.function.*;
 
-/** Application icon APIs only, installed for every process LSPosed actually injects. */
 final class SystemIconPackHooks {
     private final SharedPreferences settings;
     private final BiConsumer<String,Throwable> log;

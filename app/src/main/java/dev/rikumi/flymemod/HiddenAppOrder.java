@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
-/** Membership remains a set; this separate sequence controls the hidden-app grid only. */
 final class HiddenAppOrder {
     static List<String> reconcile(Set<String> packages,String saved) {
         LinkedHashSet<String> result=new LinkedHashSet<>();

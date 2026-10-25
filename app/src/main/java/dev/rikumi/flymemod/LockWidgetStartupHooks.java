@@ -5,7 +5,6 @@ import android.view.ViewGroup;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** SystemUI 16260625: XML candidates must not draw before the selected-plugin flow arrives. */
 final class LockWidgetStartupHooks {
     private static final String LAYOUT = "com.flyme.keyguard.plugin.PluginLayout";
     private final Consumer<Context> settings;
@@ -26,9 +25,7 @@ final class LockWidgetStartupHooks {
             Object result = chain.proceed();
             ViewGroup layout = (ViewGroup) chain.getThisObject();
             settings.accept(layout.getContext());
-            // Native inflation has cached the candidate views and blur backgrounds.
-            // Removing their initial attachment leaves those references intact:
-            // updatePluginLayout(List) subsequently reattaches only selected items.
+
             if (enabled.getAsBoolean()) layout.removeAllViews();
             return result;
         });

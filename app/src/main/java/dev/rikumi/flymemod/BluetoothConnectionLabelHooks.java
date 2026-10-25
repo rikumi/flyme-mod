@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Repair stale Flyme Bluetooth subtitles under the 2x1 text optimization switch. */
 final class BluetoothConnectionLabelHooks {
     static void install(ClassLoader loader, SignalHooks.Installer installer,
             Consumer<Method> deoptimize, Consumer<Context> settings, BooleanSupplier enabled)

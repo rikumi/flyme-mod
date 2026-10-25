@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** IDs verified in gallery tab bindings and the store's fixed/shifting navigation items. */
 final class ThemeTabPolicy {
     static boolean hasIconViewRules(String pkg) {
         return "com.meizu.media.gallery".equals(pkg) || "com.meizu.mstore".equals(pkg)

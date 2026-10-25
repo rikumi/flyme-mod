@@ -22,7 +22,6 @@ import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.ObjIntConsumer;
 
-/** Samples raw application tasks in SystemUI; the backing belongs to the same task surface tree. */
 final class AppNavigationHooks {
     private static final String NAV = "com.android.systemui.navigationbar.views.NavigationBarView";
     private static final String TRANSITIONS = "com.android.systemui.navigationbar.views.NavigationBarTransitions";
@@ -120,8 +119,7 @@ final class AppNavigationHooks {
             if (shadeVisible != visible) {
                 shadeVisible = visible;
                 for (State navigation : states.values()) {
-                    // Only button tint follows the shade. Raw task capture excludes
-                    // the shade, so app colors can keep updating without dim feedback.
+
                     try { reapplyIntensity.invoke(navigation.transitions()); }
                     catch (ReflectiveOperationException error) { navigation.report(error); }
                 }
@@ -147,8 +145,7 @@ final class AppNavigationHooks {
     private void recentsAnimationChanged(boolean running) {
         recentsRunning = running;
         if (running) {
-            // Publish before posting to main: already queued task/capture results
-            // must not remove or repaint the app child once the gesture starts.
+
             recentsCached = true;
             main.post(this::cacheForRecents);
         } else main.postDelayed(() -> {
@@ -326,8 +323,7 @@ final class AppNavigationHooks {
                                 if (hardware != null) {
                                     software = hardware.copy(Bitmap.Config.ARGB_8888, false);
                                     if (software.getWidth() == points.width && software.getHeight() == points.captureHeight) {
-                                        // Read only the 20 exterior and 12 interior points;
-                                        // both groups come from the same raw task frame.
+
                                         sampled = points.sample(software::getPixel);
                                         captured = true;
                                     }

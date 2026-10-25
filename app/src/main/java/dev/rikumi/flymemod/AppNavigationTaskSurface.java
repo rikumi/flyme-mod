@@ -13,7 +13,6 @@ import java.lang.reflect.Method;
 import java.util.function.IntConsumer;
 import java.util.function.Consumer;
 
-/** Uses Shell's existing task surfaces; never releases the organizer's own leash. */
 final class AppNavigationTaskSurface {
     private static final String SHELL = "com.android.wm.shell.ShellTaskOrganizer";
     private final Field lock, tasks, configuration, windowConfiguration, visible, displayId, topActivityInfo,
@@ -118,8 +117,7 @@ final class AppNavigationTaskSurface {
         SurfaceControl.Builder builder = new SurfaceControl.Builder()
                 .setName("FlymeMod application navigation backing").setParent(target.surface);
         colorLayer.invoke(builder);
-        // Flyme SurfaceControl metadata: this child belongs to the app/task,
-        // rather than being a SystemUI overlay in the system-window hierarchy.
+
         metadata.invoke(builder, 1, target.uid); // METADATA_OWNER_UID
         metadata.invoke(builder, 2, 1);          // METADATA_WINDOW_TYPE / TYPE_BASE_APPLICATION
         metadata.invoke(builder, 3, target.id);  // METADATA_TASK_ID

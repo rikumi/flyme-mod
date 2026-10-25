@@ -2,7 +2,6 @@ package dev.rikumi.flymemod;
 
 import java.util.Arrays;
 
-/** Build an immutable palette from the extracted device application and framework theme colors. */
 final class ThemeColorPalette {
     private static final int[] SOURCE = {
             0x206cff, 0x1564ed, 0x1368fb, 0x198ded,
@@ -79,7 +78,7 @@ final class ThemeColorPalette {
         if (primary) return (color & 0xff000000) | selectedRgb;
         int mapped = replace(color);
         if (mapped != color || Arrays.binarySearch(output, rgb) >= 0) return mapped;
-        // A verified resource name may contain a literal absent from the exported scalar table.
+
         return (color & 0xff000000) | selectedRgb;
     }
 

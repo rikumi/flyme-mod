@@ -8,7 +8,6 @@ import android.os.Bundle;
 import android.provider.Settings;
 import java.util.function.BiConsumer;
 
-/** Gallery 12.7.3: retain the native CAMERA_VIEW route and its album/security policy. */
 final class GalleryPreviewHooks {
     private final SharedPreferences preferences;
     private final BiConsumer<String, Throwable> log;
@@ -42,8 +41,7 @@ final class GalleryPreviewHooks {
                 reported = true;
                 log.accept("Camera gallery preview follows system rotation lock", null);
             }
-            // Covers initial landscape selection and PhotoPagerFragment.K9's
-            // delayed SENSOR request. USER respects the actual system rotation lock.
+
             return chain.proceed(new Object[]{ActivityInfo.SCREEN_ORIENTATION_USER});
         }, int.class);
     }

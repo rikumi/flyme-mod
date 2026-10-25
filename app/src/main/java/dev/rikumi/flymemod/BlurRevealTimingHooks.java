@@ -13,7 +13,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Keep wallpaper blur ahead of visible shade content, including release-animation frames. */
 final class BlurRevealTimingHooks {
     private static final float BLUR_TRANSITION_RANGE = .30f;
     private static final float CONTENT_HOLD_RANGE = .24f;
@@ -105,16 +104,14 @@ final class BlurRevealTimingHooks {
             }, float.class);
             installer.hook(name, "setBlurRadius", chain -> {
                 Object owner = chain.getThisObject();
-                // Both controllers write the same repository. In merged mode an
-                // idle separate controller must not clear/recreate its backdrop.
+
                 if (!panel && ownsMergedBackdrop()) {
                     radius.setFloat(owner, (Float) chain.getArg(0));
                     return null;
                 }
                 State state = states.get(owner);
                 if (state == null) return chain.proceed();
-                // Keyguard uses the notification panel's expanded height for its own
-                // layout. That height/content must never keep the QS blur alive.
+
                 boolean lockscreenReset = panel ? (Integer) barState.invoke(owner) != 0
                         : (Boolean) showing.invoke(keyguard.get(owner)) && !(Boolean) visible.invoke(owner);
                 if (lockscreenReset) {
@@ -135,8 +132,7 @@ final class BlurRevealTimingHooks {
                 float maximum = ((Number) max.get(null)).floatValue();
                 if (maximum <= 0f) return chain.proceed();
                 if (state.rowDriven) {
-                    // Native springs keep their own state, but only row frames
-                    // publish the backdrop. No second easing/exit animator.
+
                     if (!Boolean.TRUE.equals(writing.get())) {
                         radius.setFloat(owner, nativeRadius);
                         return null;
@@ -161,14 +157,11 @@ final class BlurRevealTimingHooks {
                 }
                 // Keep the backdrop fading after the content/height has already reached zero.
                 target = Math.max(target, state.exitFloor);
-                // Clamp spring overshoot without feeding the displayed radius back
-                // into the native spring's next starting value.
+
                 target = state.closing ? Math.min(target, state.lastApplied)
                         : Math.max(target, state.lastApplied);
                 float previousTarget = state.lastApplied;
-                // mCurrentBlurRadius belongs to the native spring. Both release and
-                // tracking springs read it when restarting; storing our eased output
-                // there applies the reveal curve again after every handoff.
+
                 try {
                     if (Math.abs(previousTarget - target) < .01f
                             && (target != 0f || previousTarget == 0f)) return null;
@@ -198,13 +191,10 @@ final class BlurRevealTimingHooks {
                     Object owner = chain.getThisObject();
                     State state = states.get(owner);
                     if (state != null && state.rowDriven && ownsMergedBackdrop()) {
-                        // Height completion is not content completion. The final
-                        // row frame publishes zero and removes the dim surface.
+
                         return state.content > 0f ? null : chain.proceed();
                     }
-                    // notifyExpandingFinished also calls this when content reaches
-                    // zero, before our blur-only tail finishes. Keep that tail, but
-                    // allow lockscreen and disabled-mode resets immediately.
+
                     if (state != null && state.active && state.exitAnimator != null
                             && enabled.getAsBoolean() && (Integer) barState.invoke(owner) == 0
                             && Boolean.TRUE.equals(value.invoke(combined.invoke(shade.get(owner))))) return null;
@@ -212,8 +202,7 @@ final class BlurRevealTimingHooks {
                     return chain.proceed();
                 });
             }
-            // Lifecycle resets bypass the minimum exit duration and monotonic-radius
-            // guard; otherwise a delayed animator can recreate a dismissed backdrop.
+
             String[] resets = panel ? new String[]{"instantCollapse"}
                     : new String[]{"resetViews", "instantCollapse"};
             for (String resetMethod : resets) {
@@ -229,12 +218,9 @@ final class BlurRevealTimingHooks {
                     owned |= state != null && state.active;
                     rowOwned |= state != null && state.active && state.rowDriven;
                     if (state != null) reset(state);
-                    // Both controllers publish to the same blur interactor. An idle
-                    // notification panel must not clear the separate control center.
+
                     if (rowOwned) {
-                        // instantCollapse aborts height animation, but does not
-                        // stop the native radius spring. Retain the zero row owner
-                        // so its remaining positive frames cannot recreate blur/dim.
+
                         state.active = state.rowDriven = state.visibilityKnown = true;
                         state.contentVisible = false;
                         state.closing = true;

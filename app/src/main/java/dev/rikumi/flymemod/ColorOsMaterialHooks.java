@@ -16,10 +16,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.*;
 
-/** ColorOS AGSL algorithms, with Flyme 16260625 view-local contour overlays. */
 final class ColorOsMaterialHooks {
-    // View-owned identity survives repeated hook installation, including different
-    // module class loaders. Each tile may expose exactly one contour drawable.
+
     private static final int TILE_CONTOUR_TAG = 0x7e464d01;
     private static final Map<Class<?>, Map<String, Optional<Field>>> FIELD_CACHE =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -99,8 +97,7 @@ final class ColorOsMaterialHooks {
             }
             return result;
         });
-        // Render on the background view itself, below notification content, using
-        // the bounds produced by native drawing (including expand/clip geometry).
+
         installer.hook("com.android.systemui.statusbar.notification.row.NotificationBackgroundView", "onDraw", chain -> {
             Object result = chain.proceed();
             View view = (View) chain.getThisObject();
@@ -283,8 +280,7 @@ final class ColorOsMaterialHooks {
 
     private void invalidateNotificationContours(View row) throws ReflectiveOperationException {
         invalidateMediaWithin(row);
-        // Flyme's content-only swipe changes child RenderNodes without rebuilding
-        // their display lists. Redraw the affected backgrounds, not the whole stack.
+
         for (String name : new String[]{"mBackgroundNormal", "mBackgroundFlyme"})
             if (field(row,name) instanceof View background) background.invalidate();
         Object collapsed = field(row,"mGroupCollapse");
@@ -338,7 +334,6 @@ final class ColorOsMaterialHooks {
         }
     }
 
-    /** Keep the native 24-unit delete hit area, 18-unit disk and white minus. */
     private final class DeleteBadgeDrawable extends Drawable {
         final WeakReference<View> owner;
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -386,7 +381,6 @@ final class ColorOsMaterialHooks {
         @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
-    /** Same 48-unit circle and cross geometry as native ic_btn_dismiss_all. */
     private final class NotificationButtonDrawable extends Drawable {
         final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), cross = new Paint(Paint.ANTI_ALIAS_FLAG);
         final Contour contour;
@@ -405,8 +399,7 @@ final class ColorOsMaterialHooks {
             int layer = alpha < 255 ? canvas.saveLayerAlpha(bounds.left,bounds.top,bounds.right,bounds.bottom,alpha) : -1;
             canvas.translate(bounds.left,bounds.top); canvas.scale(bounds.width()/48f,bounds.height()/48f);
             fill.setColor(Color.argb(backgroundAlpha,255,255,255)); canvas.drawCircle(24f,24f,23f,fill);
-            // Draw in view pixels before the icon's local scaling, keeping the
-            // contour's physical stroke width consistent with notification rows.
+
             int strokeSave = canvas.save();
             canvas.translate(1f,1f);
             canvas.scale(48f/bounds.width(),48f/bounds.height());
@@ -469,8 +462,7 @@ final class ColorOsMaterialHooks {
         if(host.networkRole==2)return split;
         if(host.networkRole!=1)return true;
         if(split)return false;
-        // The panel wrapper, card and row parent can share the same outer bounds.
-        // Only the outermost registered network host owns the unsplit outline.
+
         for(android.view.ViewParent parent=view.getParent();parent instanceof View ancestor;parent=ancestor.getParent()) {
             Host owner=hosts.get(ancestor);
             if(owner!=null&&owner.networkRole==1)return false;
@@ -493,11 +485,9 @@ final class ColorOsMaterialHooks {
                     if (previous instanceof Drawable drawable) view.getOverlay().remove(drawable);
                     view.setTag(TILE_CONTOUR_TAG, host.outline);
                 }
-                // Native transitions may clear the overlay. An attached drawable
-                // already has a callback and must not be detached on every refresh.
+
                 if (host.outline.getCallback() == null) view.getOverlay().add(host.outline);
-                // Ordinary layout reuses the mask when its size, radius, provider and
-                // path generation match. Settings refresh still forces regeneration.
+
                 if (invalidateMask) host.outline.maskWidth = 0;
                 host.outline.setBounds(0, 0, view.getWidth(), view.getHeight());
                 host.outline.invalidateSelf();
@@ -555,8 +545,7 @@ final class ColorOsMaterialHooks {
     }
     private static boolean night(View view) { return (view.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES; }
     private static Drawable nativeFill(View view, Drawable fallback) {
-        // NotificationBackgroundView draws mBackground itself; it does not
-        // assign that drawable to View.getBackground().
+
         if (view.getClass().getName().endsWith(".NotificationBackgroundView")) {
             try { if (field(view, "mBackground") instanceof Drawable drawable) return drawable; }
             catch (ReflectiveOperationException ignored) { }
@@ -652,7 +641,7 @@ final class ColorOsMaterialHooks {
                 Class<?> generator = loader.loadClass("com.meizu.common.util.SmoothCornerPathGenerator");
                 generatePath = generator.getMethod("genSmoothCornerPath", float.class, float.class,
                         float.class, float.class, float.class, float.class, boolean.class);
-                // Verified against the target Flyme framework Outline: public Path mPath.
+
                 outlinePath = Outline.class.getField("mPath");
             }
             if (view.getClass().getName().endsWith(".NotificationBackgroundView"))
@@ -665,8 +654,7 @@ final class ColorOsMaterialHooks {
             if (view == null || bounds.isEmpty()) return;
             Host host=hosts.get(view);
             if(!circularButton&&host!=null&&!networkContourVisible(view,host))return;
-            // A stale display list can still reference a displaced drawable. Only
-            // the current tile owner may draw; notification contours are direct draws.
+
             if (!circularButton && !view.getClass().getName().endsWith(".NotificationBackgroundView")
                     && view.getTag(TILE_CONTOUR_TAG) != this) return;
             int mediaSave = mediaGeometry == null ? -1 : canvas.save();
@@ -688,8 +676,7 @@ final class ColorOsMaterialHooks {
                 if (notification) {
                     Drawable notificationBackground = (Drawable) field(view, "mBackground");
                     float[] radii = (float[]) field(view, "mCornerRadii");
-                    // Flyme blur drawables keep their own uniform radius; only
-                    // layered notification backgrounds use per-corner roundness.
+
                     boolean uniform = !(notificationBackground instanceof LayerDrawable);
                     if (uniform) radius = ((Number) field(view, "mClipCornerRadius")).floatValue();
                     else {
@@ -699,8 +686,7 @@ final class ColorOsMaterialHooks {
                     }
                     if (uniform) shader = round;
                     else {
-                        // Different group corner radii remain dynamic when swipe clipping changes width.
-                        // Rebuilding the old bitmap mask here would allocate and rasterize every frame.
+
                         shader = notificationRound;
                         if (configuredCorners[0] != radii[0] || configuredCorners[1] != radii[2]
                                 || configuredCorners[2] != radii[4] || configuredCorners[3] != radii[6]) {
@@ -710,19 +696,16 @@ final class ColorOsMaterialHooks {
                         }
                     }
                 } else if (mediaGeometry != null) {
-                    // The inward edge distance follows the exact native clip
-                    // intersection, so neither an old full-width glow nor a
-                    // guessed round-rect is cut by the carousel's round corners.
+
                     setNativeMask(mediaGeometry.path, bounds, 2f * view.getResources().getDisplayMetrics().density);
                     shader = nativeCurve;
                 } else if (slider || naturalCard) {
                     shader = updateNativeMask(view, bounds, radius, surface, slider) ? nativeCurve : round;
-                } else shader = round; // Native GradientDrawable/round-rect backgrounds retain their actual circular arcs.
-                // GradientStrokeLineAdapter QS light/night templates, scaled from ColorOS's 6px stroke.
+                } else shader = round;
+
                 float width = 2f * view.getResources().getDisplayMetrics().density;
                 boolean dark = night(view);
-                // RuntimeShader uniform writes discard its cached native shader even
-                // when values match. Keep stable contour draws on the cached shader.
+
                 if (configuredShader != shader || configuredWidth != bounds.width()
                         || configuredHeight != bounds.height() || configuredRadius != radius
                         || configuredStroke != width || configuredNight != dark) {
@@ -742,9 +725,7 @@ final class ColorOsMaterialHooks {
                     shaderGeneration++;
                 }
                 paint.setShader(shader);
-                // Scrolling only moves the notification's composition layer. Keep
-                // its expensive glow shader cached just like the control-center tiles.
-                // Width, height, theme and per-corner roundness still rebuild it.
+
                 if (mediaGeometry == null && canvas.isHardwareAccelerated()) {
                     renderCache.draw(canvas, bounds, paint, shaderGeneration, alpha);
                 } else {
@@ -768,9 +749,7 @@ final class ColorOsMaterialHooks {
                 toAncestor.postConcat(child.getMatrix());
                 toAncestor.postTranslate(child.getLeft()-ancestor.getScrollX(),child.getTop()-ancestor.getScrollY());
                 if (!toAncestor.invert(fromAncestor)) { visibleBounds.setEmpty(); break; }
-                // Native drawChild clips its child display list, independently of
-                // clipToOutline/clipBounds. The child's RecordingCanvas therefore
-                // cannot report this moving boundary through getClipBounds().
+
                 if (notificationOutline.isInstance(ancestor)
                         && Boolean.TRUE.equals(childNeedsClipping.invoke(ancestor,child))) {
                     Path childPath = (Path)customChildClipPath.invoke(ancestor,child);
@@ -829,8 +808,7 @@ final class ColorOsMaterialHooks {
                     && maskSmoothness == smoothness && maskProvider == provider) return true;
             Path path;
             if (slider) {
-                // The slider's rectangular track is clipped by this exact provider, not by a
-                // separately generated rounded rectangle. Copy its current path and coordinates.
+
                 if (provider == null) return false;
                 Outline outline = new Outline();
                 provider.getOutline(view, outline);
@@ -855,9 +833,7 @@ final class ColorOsMaterialHooks {
             return true;
         }
         private void setNativeMask(Path path, Rect bounds, float stroke) {
-            // invalidateOutline and native Path rebuilds can change generation IDs
-            // without changing geometry. Keep the existing bitmap and GPU input in
-            // that case; compare exact verbs/points, not an approximate bounding box.
+
             if (renderedMask.matches(path, bounds.width(), bounds.height(), stroke)) return;
             shaderGeneration++;
             Bitmap bitmap = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888);
@@ -867,8 +843,7 @@ final class ColorOsMaterialHooks {
             maskPaint.setColor(Color.RED);
             mask.drawPath(path, maskPaint);
             maskPaint.setStyle(Paint.Style.STROKE);
-            // Red stores inward edge distance; alpha stores curve coverage. Keep ColorOS's original
-            // fade-toward-center math instead of substituting a uniform-brightness stroke.
+
             for (float distance = stroke; distance > 0f; distance -= .5f) {
                 int red = Math.round(255f * Math.min(1f, distance / stroke));
                 maskPaint.setColor(Color.argb(255, red, 0, 0));

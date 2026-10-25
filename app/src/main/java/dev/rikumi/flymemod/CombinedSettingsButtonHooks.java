@@ -14,7 +14,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Reuse the native Settings action in the classic shade's notification inbox slot. */
 final class CombinedSettingsButtonHooks {
     private static final String HEADER = "com.flyme.systemui.statusbar.phone.StatusBarHeaderView";
     private static final String QS = "com.flyme.systemui.qs.MzQSImpl";

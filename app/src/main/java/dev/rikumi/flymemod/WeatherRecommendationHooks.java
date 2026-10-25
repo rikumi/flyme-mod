@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 
-/** Weather 54.3.60 / 52.0.13: independent news and advertisement controls. */
 final class WeatherRecommendationHooks {
     private volatile boolean enabled;
     private volatile boolean blockAdvertisements;

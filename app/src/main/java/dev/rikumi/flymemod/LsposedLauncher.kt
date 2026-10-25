@@ -6,7 +6,6 @@ import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Both home entries send the same secret-code broadcast to LSPosed. */
 internal suspend fun launchLsposed(context: Context) {
     val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
         "android.telephony.action.SECRET_CODE" else "android.provider.Telephony.SECRET_CODE"

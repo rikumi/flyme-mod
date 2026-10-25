@@ -9,7 +9,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Reads the packaged declaration, so newly added scopes are checked without another UI list. */
 internal fun readScopeStatus(context: Context, bridge: CameraSettingsBridge): String? {
     val services = bridge.xposedServices()
     if (services.isEmpty()) return "未连接到 LSPosed，无法检测作用域"

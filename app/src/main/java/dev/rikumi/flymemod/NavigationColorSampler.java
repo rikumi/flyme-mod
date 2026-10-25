@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Mean RGB color accepted only when the mean of the three channel variances is low. */
 final class NavigationColorSampler {
     private long count, red, green, blue, squares;
     private boolean transparent;

@@ -10,7 +10,6 @@ import java.lang.reflect.*;
 import java.util.*;
 import java.util.function.*;
 
-/** Launcher publishes the actual selection and substitutes only the returned recent-task icon. */
 final class SystemIconPackLauncherHooks {
     private final SharedPreferences settings;
     private final BiConsumer<String,Throwable> log;
@@ -32,10 +31,7 @@ final class SystemIconPackLauncherHooks {
                 int.class,int.class,boolean.class);
         installer.hook(utilities.getName(),fullDrawable.getName(),chain->{
             if(!settings.getBoolean(ModuleSettings.SYSTEM_ICON_PACK,false))return chain.proceed();
-            // DragView extracts and enlarges adaptive foreground/background layers.
-            // API replacement icons contain a complete icon in the foreground, so
-            // they cannot be used here. Let Flyme load its selected theme/pack and
-            // preserve its native layer padding, mask, badges and dynamic icons.
+
             try(SystemIconPackClient.NativeScope ignored=SystemIconPackClient.nativeScope()){
                 return chain.proceed();
             }

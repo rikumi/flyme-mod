@@ -8,7 +8,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Field;
 import java.util.function.BiConsumer;
 
-/** Extra native preference rows for the verified Flyme Settings device-info pages. */
 final class DeviceInfoExtrasHooks {
     private final SharedPreferences preferences;
     private final BiConsumer<String, Throwable> log;

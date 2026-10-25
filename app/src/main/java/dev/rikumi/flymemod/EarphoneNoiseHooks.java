@@ -29,7 +29,6 @@ import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.BiConsumer;
 
-/** Protocol and icon paths traced from com.meizu.earphone 100.12.23. */
 final class EarphoneNoiseHooks {
     private static final String OWNER="com.flyme.systemui.volume.QSVolumeControllerImpl";
     private static final String SDK="com.meizu.bluetooth.sdk.IMzBluetooth";
@@ -90,8 +89,7 @@ final class EarphoneNoiseHooks {
     private void connectSystemService(IBinder service){
         Parcel data=Parcel.obtain(),reply=Parcel.obtain();
         try{
-            // MzBluetoothManager performs this after binding on Meizu devices.
-            // Binding the SDK alone leaves its recognized-device map empty.
+
             data.writeInterfaceToken(SDK);data.writeStrongBinder(sdkCallback);
             if(!service.transact(67,data,reply,0))throw new IllegalStateException("connectMzfpService unavailable");
             reply.readException();status("System earphone service binding: "+(reply.readInt()!=0));
@@ -148,8 +146,7 @@ final class EarphoneNoiseHooks {
                         }
                         if(binder==null)return;
                         int target=noiseState.target(id,mode);
-                        // The app wrapper skips requests matching its stale SDK cache.
-                        // Use the same SDK setter directly, after read() has validated the device.
+
                         if(integer(20,id,target)==0){status("Noise mode request rejected");return;}
                         noiseState.requested(id,target);
                         mode=target;
@@ -194,8 +191,7 @@ final class EarphoneNoiseHooks {
             }
             return true;
         },MotionEvent.class);
-        // The animation path can inline changeIconResource/setUpIconFrame; keep
-        // their actual owner calls observable on precompiled SystemUI builds.
+
         for(Method method:loader.loadClass(OWNER).getDeclaredMethods())
             if(!java.lang.reflect.Modifier.isAbstract(method.getModifiers())
                     &&!java.lang.reflect.Modifier.isNative(method.getModifiers()))deoptimizer.accept(method);
@@ -319,9 +315,7 @@ final class EarphoneNoiseHooks {
                 }finally{appDevice.recycle();}
                 if(!recognized){
                     status("Earphone app has not accepted the device");
-                    // initBtSdk posts prepare() + directConnectDevice() to the app's main thread.
-                    // Its own SDK binding is asynchronous, so the first request may create no
-                    // cached device. A successful Binder transaction is not device acceptance.
+
                     if(android.os.SystemClock.uptimeMillis()-initializationRequestedAt>=5000)
                         initializeDevice(candidate);
                     continue;

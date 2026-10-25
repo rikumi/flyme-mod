@@ -6,7 +6,6 @@ import android.provider.Settings;
 import java.lang.reflect.Method;
 import java.util.List;
 
-/** Keep all original SDKStage blacklist writes, and separately persist explicit opt-ins. */
 final class NightModeWhitelistHooks {
     static void install(ClassLoader loader, SharedPreferences preferences, SignalHooks.Installer installer)
             throws ReflectiveOperationException {

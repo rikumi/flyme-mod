@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 import io.github.libxposed.api.XposedInterface;
 
-/** One framework interception for the module's ImageView draw decorators. */
 final class ImageDrawHookChain implements XposedInterface.Hooker {
     private volatile XposedInterface.Hooker[] hooks = new XposedInterface.Hooker[0];
 

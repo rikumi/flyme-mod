@@ -2,7 +2,6 @@ package dev.rikumi.flymemod;
 
 import android.graphics.RuntimeShader;
 
-/** UX Design 17.0.18 RoundFrameLayout's ShadowStyle 2, adapted to a bottom-only overlay. */
 final class ContourInnerLight {
     static void configure(RuntimeShader shader, float density, boolean night) {
         float unit = Math.max(1f, density) * .34f;

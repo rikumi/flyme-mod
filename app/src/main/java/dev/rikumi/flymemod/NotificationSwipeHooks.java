@@ -15,7 +15,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Transform only a dismissible notification's active drag; native release owns deletion. */
 final class NotificationSwipeHooks {
     private static final String BASE = "com.android.systemui.SwipeHelper";
     private static final String HELPER = "com.android.systemui.statusbar.notification.stack.NotificationSwipeHelper";

@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 
-/** System-server ANR windows only; retain native backgrounds and button actions/states. */
 final class AnrDialogHooks {
     private static final String ANR = "com.android.server.am.AppNotRespondingDialog";
     private static final Map<View, Boolean> NATIVE_SURFACES = Collections.synchronizedMap(new WeakHashMap<>());

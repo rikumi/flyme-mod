@@ -23,7 +23,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.BiConsumer;
 
-/** Independent merged-shade notification width and a ColorOS-style separator. */
 final class CombinedNotificationWidthHooks {
     private static final String STACK="com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout";
     private final BooleanSupplier enabled;
@@ -140,8 +139,7 @@ final class CombinedNotificationWidthHooks {
             View view=stack.get();Object qs=controller.get();
             if(view==null||qs==null||!active(view)||barState.getInt(qs)!=0||!content(view)
                     ||view.getResources().getConfiguration().orientation!=Configuration.ORIENTATION_PORTRAIT) return 0;
-            // The native QS expansion height already includes the upper spacing.
-            // Add only the separator height and the spacing below it.
+
             return (16f+4f)*view.getResources().getDisplayMetrics().density;
         }
         @Override public void onViewAttachedToWindow(View host) {
@@ -177,8 +175,7 @@ final class CombinedNotificationWidthHooks {
                     if(child.getParent() instanceof View parent) {x-=parent.getScrollX();y-=parent.getScrollY();}
                     animatedPoint[0]+=x;animatedPoint[1]+=y;restPoint[0]+=x;restPoint[1]+=y;
                 }
-                // Follow the actual controls/ancestor transforms; notification translation
-                // and alpha have different native animation factors and must not drive the bar.
+
                 float left=(panel.getWidth()-width)/2f+animatedPoint[0]-restPoint[0];
                 float top=base+animatedPoint[1]-restPoint[1];
                 int alpha=Math.round(51f*Math.max(0f,Math.min(1f,opacity)));

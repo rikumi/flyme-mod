@@ -21,7 +21,6 @@ import java.util.function.BooleanSupplier;
 import android.view.WindowInsets;
 import android.graphics.Rect;
 
-/** Ticker presentation policy, leaving native alert/privacy decisions intact. */
 final class TickerLyricHooks {
     private final Consumer<Context> settings;
     private final BiConsumer<Notification, Notification> copyOriginalIcon;
@@ -32,8 +31,7 @@ final class TickerLyricHooks {
     private Method cutoutMethod;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Map<Object, View> tickers = new WeakHashMap<>();
-    // Keep hidden text suppressed through the complete native exit animation, even
-    // after tickerDone sets the root GONE. Re-evaluate before the next entrance.
+
     private final Map<View, Boolean> exitingHidden = new WeakHashMap<>();
     private final Map<View, Float> textAlpha = new WeakHashMap<>();
     private final ThreadLocal<Object> promoted = new ThreadLocal<>();
@@ -79,8 +77,7 @@ final class TickerLyricHooks {
         }
         Class<?> entry=loader.loadClass("com.android.systemui.statusbar.notification.collection.NotificationEntry");
         Method sbn=entry.getMethod("getSbn");
-        // Use the collection's add/update distinction instead of retaining keys:
-        // removal followed by posting the same ID is a new notification again.
+
         String filter="com.flyme.systemui.statusbar.ticker.FlymeTickerEx";
         installer.hook(filter,"tickFilter",chain->{
             StatusBarNotification value=(StatusBarNotification)sbn.invoke(chain.getArg(0));
@@ -107,8 +104,7 @@ final class TickerLyricHooks {
             if(hasTicker&&popup)promoted.set(notification);
             try{return chain.proceed();}finally{if(previous==null)promoted.remove();else promoted.set(previous);}
         },entry,boolean.class);
-        // Flyme chooses Ticker for packages whose native popup preference is off.
-        // Override only this notification's presentation query; never persist a permission change.
+
         Method originalPackage=StatusBarNotification.class.getDeclaredMethod("getOrigPackageName");
         Method originalUid=StatusBarNotification.class.getDeclaredMethod("getOrigPkgUid");
         Class<?> notificationManager=loader.loadClass("android.app.INotificationManager$Stub$Proxy");
@@ -214,7 +210,7 @@ final class TickerLyricHooks {
         }
         return sbn.getPackageName();
     }
-    /** Preserve Flyme's list except within this thread's explicit Ticker-to-popup decision. */
+
     private final class PopupExclusions extends java.util.AbstractList<Object> {
         private final List<?> nativeList;
         PopupExclusions(List<?> nativeList){this.nativeList=nativeList;}

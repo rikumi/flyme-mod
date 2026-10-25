@@ -2,15 +2,13 @@ package dev.rikumi.flymemod;
 
 import java.lang.reflect.Field;
 
-/** Last submitted dim surface state; surface identity invalidates cached transactions. */
 final class ShadeDimFrame {
     private Object surface;
     private float fraction;
     private int color;
 
     static float effectiveFraction(float requested, float contentProgress) {
-        // Unknown content retains native behavior. A completed fade owns zero
-        // even when a queued repository/blur-scale callback still carries radius.
+
         return contentProgress <= 0f ? 0f : requested;
     }
 

@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** One state source shared with Flyme's GoogleBasicServicePreferenceController. */
 final class GoogleServiceTile {
     static final String SETTING = "cn_gms_core";
     static final String ACTION = "dev.rikumi.flymemod.action.GOOGLE_SERVICE_TILE";

@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Flyme WindowState lifecycle, not animation frames or periodic window scans. */
 final class StatusBarOverlayServiceHooks {
     private final SharedPreferences preferences;
     private final BiConsumer<String, Throwable> log;

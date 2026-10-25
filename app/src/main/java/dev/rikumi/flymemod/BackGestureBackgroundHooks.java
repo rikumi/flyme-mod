@@ -16,7 +16,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Flyme SystemUI 16260625: mPaint fills the curve, mPaint1 draws its edge. */
 final class BackGestureBackgroundHooks {
     private static final String OWNER = "com.flyme.systemui.navigationbar.gestural.EdgeBackView";
     private final Field fill, curve;
@@ -68,8 +67,7 @@ final class BackGestureBackgroundHooks {
         if (background.isEmpty()) return;
         background.computeBounds(curveBounds, true);
         float density = view.getResources().getDisplayMetrics().density;
-        // Google Material Icons chevron_left (24px): visible bounds x=8..15.41, y=6..18.
-        // Scale its visible height to 10dp, then center the actual glyph rather than the viewport.
+
         float scale = density * 10f / 12f;
         float x = curveBounds.centerX(), y = curveBounds.centerY();
         float originX = x - 11.705f * scale, originY = y - 12f * scale;

@@ -7,7 +7,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Native fonts are redirected only inside processes to which LSPosed has injected this module. */
 public final class NativeFontHooks {
     private static boolean active;
     private static native boolean configure(String[] paths, int[] descriptors);

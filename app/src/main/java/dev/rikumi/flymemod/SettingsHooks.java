@@ -9,7 +9,6 @@ import android.os.Handler;
 import android.os.Looper;
 import java.util.function.BiConsumer;
 
-/** Flyme Settings: filter only the all-apps filter, keeping the disabled-apps filter intact. */
 final class SettingsHooks {
     private volatile boolean hideDisabled;
     private ContentObserver observer;

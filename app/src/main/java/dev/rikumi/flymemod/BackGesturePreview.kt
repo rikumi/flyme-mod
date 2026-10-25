@@ -17,7 +17,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import kotlin.math.min
 
-/** A decor overlay paints above the settings without becoming a touch target. */
 @Composable
 internal fun BackGesturePreview(visible: Boolean, amount: Int) {
     val root = LocalView.current.rootView

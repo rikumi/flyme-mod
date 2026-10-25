@@ -7,7 +7,6 @@ import android.os.Parcel;
 import android.os.SystemClock;
 import java.util.function.BiConsumer;
 
-/** SystemUI client; no HeyMelody code or Bluetooth transport is loaded here. */
 final class HeyMelodyNoiseController {
     private final BiConsumer<String, Throwable> log;
     private IBinder activity;

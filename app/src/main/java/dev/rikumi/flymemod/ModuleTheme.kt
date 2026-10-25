@@ -10,7 +10,6 @@ import androidx.compose.runtime.setValue
 
 internal data class ModuleThemeSettings(val blackBackground: Boolean)
 
-/** Local UI observes the same setting without requiring an injected module process. */
 @Composable
 internal fun rememberModuleThemeSettings(): ModuleThemeSettings {
     val preferences = LocalModulePreferences.current

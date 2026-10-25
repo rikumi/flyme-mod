@@ -6,7 +6,6 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.provider.Settings;
 
-/** SystemUI supplies the originating TileService component for a long press. */
 public final class NetworkTileSettingsActivity extends Activity {
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

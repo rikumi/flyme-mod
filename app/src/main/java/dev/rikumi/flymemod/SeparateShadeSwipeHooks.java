@@ -24,7 +24,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Flyme 16260625: two live foregrounds, stationary native backdrops, one input owner. */
 final class SeparateShadeSwipeHooks {
     private static final String PANEL = "com.android.systemui.shade.NotificationPanelViewController";
     private static final String CENTER = "com.flyme.systemui.controlcenter.phone.CenterController";
@@ -113,8 +112,7 @@ final class SeparateShadeSwipeHooks {
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
         backdrop.install(installer);
         backdrop.deoptimizeCallers(loader, deoptimize);
-        // Disable only notification-to-center vertical routing. Root-level horizontal
-        // switching and direct opening of the control center use separate entrypoints.
+
         for (String name : new String[]{"canExpandCenterControlPanel", "dispatchEventToControlCenter"}) {
             installer.hook(PANEL, name, chain -> blockVerticalSwitch(chain.getThisObject())
                     ? false : chain.proceed(), MotionEvent.class);
@@ -122,8 +120,7 @@ final class SeparateShadeSwipeHooks {
         Class<?> touchHandler = loader.loadClass(PANEL + "$TouchHandler");
         deoptimize.accept(method(touchHandler, "onInterceptTouchEvent", MotionEvent.class));
         deoptimize.accept(method(touchHandler, "onTouch", View.class, MotionEvent.class));
-        // Native code reduces notification drawable alpha to 1/255 when both panels
-        // are expanded. Horizontal switching keeps both visible until release.
+
         installer.hook(CENTER, "shouldHideBlurForControlCenter", chain ->
                 state != null && state.center == chain.getThisObject() ? false : chain.proceed());
         for (String name : new String[]{"updateLiveBlurAlpha", "setBlurBgForLive"})
@@ -259,8 +256,7 @@ final class SeparateShadeSwipeHooks {
                 if (Math.abs(dy) > configuration.getScaledTouchSlop() && Math.abs(dy) >= Math.abs(dx)) candidate = null;
                 else if (SeparateShadeSwipeMotion.horizontal(dx, dy, configuration.getScaledTouchSlop())) {
                     candidate = null;
-                    // The pager keeps every left swipe and all swipes on later pages.
-                    // A right swipe at the first page extends directly into notifications.
+
                     if (!SeparateShadeSwipeMotion.canStart(pending.center, pending.pages == null ? 0 : currentPage.getInt(pending.pages),
                             !pending.center || firstPageBoundary(pending.pages), dx)) return false;
                     State current = new State(pending, panelCenter.get(pending.panel), configuration);
@@ -292,8 +288,7 @@ final class SeparateShadeSwipeHooks {
         current.notificationViews.add(new Foreground((View) panelView.get(current.panel)));
         View shared = (View) sharedContainer.get(current.panel);
         if (!descendant(shared, (View) panelView.get(current.panel))) current.notificationViews.add(new Foreground(shared));
-        // The Flyme clock/date host is outside NotificationPanelView and the shared
-        // notification container. Move the host, including its Surface-based clock.
+
         for (String id : new String[]{"clock_container_surface", "keyguard_root_view"}) {
             int resource = current.root.getResources().getIdentifier(id, "id", "com.android.systemui");
             View clock = resource == 0 ? null : current.root.findViewById(resource);
@@ -307,8 +302,7 @@ final class SeparateShadeSwipeHooks {
         for (int i = 0; i < center.getChildCount(); i++) {
             View child = center.getChildAt(i);
             if (descendant(bar,child) && child instanceof ViewGroup group) {
-                // center_content owns the QS status bar, header and container. Keep
-                // the common status-bar host stationary and slide its siblings.
+
                 for (int j=0;j<group.getChildCount();j++)
                     if (group.getChildAt(j)!=bar) current.centerViews.add(new Foreground(group.getChildAt(j)));
             } else if (child != current.behind) current.centerViews.add(new Foreground(child));
@@ -449,8 +443,7 @@ final class SeparateShadeSwipeHooks {
     }
 
     private boolean firstPageBoundary(View pages) throws IllegalAccessException {
-        // DOWN was idle. On MOVE, ViewPager2 may already be dragging this same touch
-        // at its first-page edge; that must still be handed off to notifications.
+
         return pages != null && currentPage.getInt(pages) == 0 && !pagesDragging.getBoolean(pages)
                 && !pagesSwitching.getBoolean(pages);
     }

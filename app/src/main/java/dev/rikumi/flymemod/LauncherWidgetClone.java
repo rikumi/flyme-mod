@@ -3,7 +3,6 @@ package dev.rikumi.flymemod;
 import android.os.Bundle;
 import android.content.SharedPreferences;
 
-/** A copy request, deliberately NOT Flyme's destructive change-widget-id request. */
 final class LauncherWidgetClone {
     static final String SOURCE = "flymemod_clone_widget_from";
     static final String COMPLETE = "flymemod_clone_widget_complete";

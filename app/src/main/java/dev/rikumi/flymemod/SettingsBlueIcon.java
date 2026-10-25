@@ -10,7 +10,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** Static, named settings glyphs: replace actual blue pixels without depending on a runtime shader. */
 final class SettingsBlueIcon {
     private final Map<Drawable.ConstantState, Map<Integer, Bitmap>> cache = new WeakHashMap<>();
 

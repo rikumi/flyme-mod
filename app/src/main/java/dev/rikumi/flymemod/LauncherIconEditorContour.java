@@ -14,7 +14,6 @@ import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.function.*;
 
-/** Extra drawing layers owned only by our editor, never a filter on original artwork. */
 final class LauncherIconEditorContour {
     private final Consumer<Context> settings;
     private final BooleanSupplier icons, menus;

@@ -2,7 +2,6 @@ package dev.rikumi.flymemod;
 
 import android.view.View;
 
-/** One visible status bar moves vertically between the actual two shade endpoints. */
 final class SeparateShadeStatusBar {
     private final View bar, notificationBar;
     private final float x, y, deltaY, notificationAlpha;
@@ -31,8 +30,7 @@ final class SeparateShadeStatusBar {
 
     void apply(float centerFraction) {
         float notificationFraction = 1f - Math.max(0f, Math.min(1f, centerFraction));
-        // This is the notification panel's actual KeyguardStatusBarView, not the
-        // separate phone status-bar window. Keep its icons out of the horizontal slide.
+
         notificationBar.setAlpha(0f); notificationBar.setVisibility(View.INVISIBLE);
         appliedY = y + deltaY * notificationFraction;
         bar.setTranslationX(x); bar.setTranslationY(appliedY);

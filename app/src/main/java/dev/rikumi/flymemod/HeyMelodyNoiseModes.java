@@ -2,7 +2,6 @@ package dev.rikumi.flymemod;
 
 import java.util.List;
 
-/** Canonical UI modes: 1 off, 2 ANC, 3 transparency. Indices come from HeyMelody. */
 final class HeyMelodyNoiseModes {
     record Entry(int index, int type, boolean available, List<Entry> children) {}
     private final int[] modes = new int[32];

@@ -13,7 +13,6 @@ import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** SDKStage 5.0.01: extend its actual app manager, retaining native preference writes. */
 final class NightModeAppHooks {
     private static final String MANAGER = "com.meizu.flyme.sdkstage.common.d";
     private final SharedPreferences preferences;
@@ -57,8 +56,7 @@ final class NightModeAppHooks {
             boolean system = (info.flags & (ApplicationInfo.FLAG_SYSTEM
                     | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0;
             boolean firstParty = pkg.startsWith("com.meizu.") || pkg.startsWith("com.flyme.");
-            // Keep background-only services out of the user-facing list, while
-            // allowing Wear and other system/first-party apps with a launcher entry.
+
             if ((system || firstParty) && ((Context) context.get(chain.getThisObject()))
                     .getPackageManager().getLaunchIntentForPackage(pkg) != null) return false;
             return chain.proceed();
@@ -76,8 +74,7 @@ final class NightModeAppHooks {
             synchronized (instance) {
                 boolean current = enabled;
                 Boolean previous = listModes.put(instance, current);
-                // Clear only the manager's display cache. Do not reset the native
-                // blacklist or any per-app dark-mode choice when the option changes.
+
                 if (previous == null || previous != current) ((List<?>) apps.get(instance)).clear();
                 Object result = chain.proceed();
                 if (current && result instanceof List<?> loaded) {
@@ -110,8 +107,7 @@ final class NightModeAppHooks {
             log.accept("Extended dark app manager: enabled=" + enabled, null);
             return chain.proceed();
         }, Bundle.class);
-        // Both native list loading and package-added loading inline the private
-        // filter and AppInfo title setter on this version.
+
         deoptimize.accept(manager.getDeclaredMethod("e"));
         deoptimize.accept(manager.getDeclaredMethod("b", String.class));
         log.accept("SDKStage dark app manager hooks registered: enabled=" + enabled, null);

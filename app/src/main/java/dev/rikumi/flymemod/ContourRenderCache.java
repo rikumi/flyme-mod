@@ -5,7 +5,6 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RenderNode;
 
-/** Keep expensive static contour pixels in a hardware layer during shade transforms. */
 final class ContourRenderCache {
     private final RenderNode node = new RenderNode("FlymeMod contour cache");
     private final Rect recordedBounds = new Rect();

@@ -7,7 +7,6 @@ import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.WindowMetrics;
 
-/** Public maximum-window insets expose this display's hardware corners without app-frame insets. */
 final class RecentsCornerSettings {
     static int readHardwareDp(Context context) {
         try {
@@ -20,8 +19,7 @@ final class RecentsCornerSettings {
                 RoundedCorner corner = insets.getRoundedCorner(position);
                 if (corner != null && corner.getRadius() > 0) radius = Math.min(radius, corner.getRadius());
             }
-            // With asymmetric hardware, use the smallest reported nonzero corner.
-            // WindowMetrics density belongs to the same logical coordinate space as these radii.
+
             return radius == Integer.MAX_VALUE ? 0
                     : RecentsCornerGeometry.hardwareDefault(radius, metrics.getDensity());
         } catch (RuntimeException error) { return 0; }

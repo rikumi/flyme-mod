@@ -11,7 +11,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.function.Consumer;
 
-/** Shell splash builders cover regular, legacy-overlay and simple system-app starts. */
 final class SplashScreenBlackHooks {
     private static final String DRAWER="com.android.wm.shell.startingsurface.SplashscreenContentDrawer";
     private final SharedPreferences preferences;

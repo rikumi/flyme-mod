@@ -12,7 +12,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Preserve Flyme's handle thickness, colors and pulse animation; change its visible length. */
 final class GestureBarWidthHooks {
     private static final String MBACK = "com.flyme.systemui.navigationbar.MBackButtonView";
     private static final String HANDLE = "com.android.systemui.navigationbar.gestural.NavigationHandle";

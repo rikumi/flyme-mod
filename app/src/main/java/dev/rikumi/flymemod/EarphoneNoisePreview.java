@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Last confirmed display state; visibility and service binding do not invalidate it. */
 final class EarphoneNoisePreview {
     record State(String address, String deviceId, int mode) {}
     private State state;

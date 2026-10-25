@@ -6,7 +6,6 @@ import android.net.Uri;
 import android.os.*;
 import java.io.FileNotFoundException;
 
-/** Read-only declared icons for scoped callers; only Launcher can publish the selected pack. */
 public final class SystemIconPackProvider extends ContentProvider {
     @Override public boolean onCreate() { SystemIconPackStore.get(getContext()); return true; }
     @Override public Bundle call(String method,String argument,Bundle extras) {

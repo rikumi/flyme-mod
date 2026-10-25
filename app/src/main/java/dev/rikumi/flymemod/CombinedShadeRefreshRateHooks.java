@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 
-/** Request the display's highest same-resolution rate only while the merged shade is visible. */
 final class CombinedShadeRefreshRateHooks {
     private static final String CONTROLLER = "com.android.systemui.shade.NotificationShadeWindowControllerImpl";
     private final Class<?> stateType;
@@ -81,8 +80,7 @@ final class CombinedShadeRefreshRateHooks {
                 lp.preferredRefreshRate = target;
                 minRate.setFloat(lp, target);
                 maxRate.setFloat(lp, target);
-                // Window policy selects a display rate; Android's ViewRoot independently
-                // votes a Surface frame rate. Supply both while this shade owns the window.
+
                 if (Build.VERSION.SDK_INT >= 35) {
                     FrameVote vote = frameVotes.get(controller);
                     if (vote == null || vote.view != view) {

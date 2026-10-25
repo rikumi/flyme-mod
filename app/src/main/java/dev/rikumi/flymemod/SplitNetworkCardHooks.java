@@ -20,7 +20,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Retain ConnectivityTile's behavior while presenting Wi-Fi and Bluetooth as 2x1 rows. */
 final class SplitNetworkCardHooks {
     private static final String NETWORK = "com.flyme.systemui.qs.tileimpl.ConnectivityQSTileViewImpl";
     private final Consumer<Context> settings;
@@ -47,7 +46,6 @@ final class SplitNetworkCardHooks {
         if (horizontal) horizontalCards.put(card, true); else horizontalCards.remove(card);
         if (previous != horizontal) apply(card);
     }
-
 
     SplitNetworkCardHooks(ClassLoader loader, Consumer<Context> settings, IntSupplier style,
                          BooleanSupplier optimizeText, IconTint iconTint, BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
@@ -110,8 +108,7 @@ final class SplitNetworkCardHooks {
             tintRow(card, prefix);
             return result;
         }, String.class, int.class, int.class);
-        // Keep listeners intact, but select the individual row as the expandable
-        // source at click time, including changes to this setting after inflation.
+
         for (String method : new String[]{"getTileClickListener", "getTileIconClickListener", "getTileLongClickListener"}) {
             installer.hook(NETWORK, method, chain -> {
                 View card = (View) chain.getThisObject();

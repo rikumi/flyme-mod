@@ -7,7 +7,6 @@ import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 
-/** A pixel color filter preserves neutral glyph details inside multicolored UI resources. */
 final class ThemeIconFilter {
     private static final String BLUE_AGSL = "layout(color) uniform half4 themeColor;\n"
             + "half4 main(half4 c) {\n"
@@ -43,7 +42,7 @@ final class ThemeIconFilter {
 
     ThemeIconFilter(int color) throws ReflectiveOperationException {
         selectedColor=color;
-        // Verified against the MEIZU 22 framework; avoid linking this new API on older systems.
+
         Class<?> type = Class.forName("android.graphics.RuntimeColorFilter");
         Method setColor = type.getMethod("setColorUniform", String.class, int.class);
         colorParts = create(type, setColor, color, 0f, 0f);
@@ -55,8 +54,7 @@ final class ThemeIconFilter {
     }
 
     synchronized ColorFilter forControlAccent(int source) throws ReflectiveOperationException {
-        // Native input selectors may use a green/red/yellow app accent rather than Flyme blue.
-        // Match that exact accent, keeping neutral and unrelated error-state colors intact.
+
         int family=ThemeColorPalette.family(source);
         if(family==0)return blueParts;
         int rgb=source&0xffffff;

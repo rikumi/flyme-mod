@@ -7,7 +7,6 @@ import java.util.Collections;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Filters assistant ranking suggestions before native smart-reply state selection. */
 final class NotificationSuggestionHooks {
     private static final String ENTRY =
             "com.android.systemui.statusbar.notification.collection.NotificationEntry";
@@ -30,8 +29,7 @@ final class NotificationSuggestionHooks {
             installer.hook(ENTRY, method, chain -> {
                 View row = (View) getRow.invoke(chain.getThisObject());
                 if (row != null) settings.accept(row.getContext());
-                // Leave Notification.actions and RemoteInput choices provided by the app intact.
-                // Native selection also computes phishing-action suppression from these lists.
+
                 return enabled.getAsBoolean() ? Collections.emptyList() : chain.proceed();
             });
         }

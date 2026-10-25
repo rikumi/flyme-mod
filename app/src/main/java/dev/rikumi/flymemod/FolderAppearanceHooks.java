@@ -10,7 +10,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
-/** Folder icon paint and blur paths verified against Flyme Launcher 13000000. */
 final class FolderAppearanceHooks {
     private static final String PREVIEW = "com.android.launcher3.folder.PreviewBackground";
     // 15% white, including when night mode is active.
@@ -44,8 +43,7 @@ final class FolderAppearanceHooks {
     }
 
     void install(SignalHooks.Installer installer) {
-        // Both Canvas and the native blur drawable consume these same fields. Temporary
-        // overrides preserve native state, theme changes and open/close animation alpha.
+
         installer.hook(PREVIEW, "drawBackground", chain -> {
             if (failed || (!restoreColor.getAsBoolean() && !customRadius.getAsBoolean())) return chain.proceed();
             Object preview = chain.getThisObject();

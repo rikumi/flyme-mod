@@ -17,7 +17,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.Consumer;
 
-/** Expand clipping for the native 1.35x ripple without changing layout or touch bounds. */
 final class MBackRippleHooks {
     private static final String BUTTON = "com.flyme.systemui.navigationbar.MBackButtonView";
     private static final float PRESSED_SCALE = GestureBarGeometry.PRESSED_SCALE;
@@ -57,8 +56,7 @@ final class MBackRippleHooks {
             return button.isInstance(view)?rippleSize((View)view,nativeSize):nativeSize;
         });
         deoptimize.accept(enterHardware); deoptimize.accept(drawSoftware);
-        // Flyme View.drawBackground records the drawable into a separate node.
-        // Its recording viewport must also include the native overshooting capsule.
+
         installer.hook("android.view.View","getDrawableRenderNode",chain -> {
             RenderNode node=(RenderNode)chain.proceed();
             View view=(View)chain.getThisObject();
@@ -163,9 +161,7 @@ final class MBackRippleHooks {
                         clip.left = originalClip.left; clip.right = originalClip.right;
                     }
                 }
-                // clipChildren also clips a child's RenderNode to its layout width.
-                // Restore the reference navigation layout's overflow policy along
-                // the mBack ancestry, including rebuilt Aicy layouts.
+
                 for (var parent = view.getParent(); parent instanceof ViewGroup group; parent = group.getParent()) {
                     if (group.getClipChildren()) group.setClipChildren(false);
                     if (group.getClipToPadding()) group.setClipToPadding(false);

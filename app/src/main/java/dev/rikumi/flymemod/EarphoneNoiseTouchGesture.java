@@ -8,7 +8,6 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 
-/** Shares a tap with the icon and a drag with Flyme's native ToggleSeekBar. */
 final class EarphoneNoiseTouchGesture {
     private final ViewGroup parent;
     private final View slider;

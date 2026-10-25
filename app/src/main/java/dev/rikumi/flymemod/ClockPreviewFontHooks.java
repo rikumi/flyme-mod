@@ -18,7 +18,6 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** The editor also renders the lockscreen/AOD cards on the personalization homepage. */
 final class ClockPreviewFontHooks {
     private static final String CLOCK="com.flyme.systemuieditor.widget.view.clockview.EditorClockTextView";
     private static final String PERSPECTIVE="com.flyme.systemui.plugins.clocks.core.ui.view.PerspectiveDigitClockView";

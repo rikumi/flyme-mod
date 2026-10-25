@@ -70,8 +70,6 @@ private const val DISABLED_APPS_HINT =
     "1. 取决于停用应用的途径，导出的脚本仍然可能需要 adb root；\n" +
     "2. 模块获取的信息可能并不准确，因此脚本可能会导致系统崩溃或不稳定。请始终在无数据的全新系统上执行脚本。"
 
-// 停用应用条目: label 取不到时为 null(列表退回只显示包名);
-// uninstalled=true 表示用户级卸载(pm uninstall -k --user 0), false 表示停用(pm disable-user)。
 private data class DisabledAppEntry(
     val pkg: String,
     val label: String?,
@@ -98,9 +96,6 @@ private fun showAppError(ctx: Context, operation: String, error: Exception) {
         android.widget.Toast.LENGTH_LONG).show()
 }
 
-// 读取已停用与用户级卸载的应用列表(只读 pm 命令, IO 线程调用)。
-// -d: 已停用; -u: 含已卸载但保留数据的包; 无参: 当前用户已安装。用户级卸载 = -u 与已安装的差集;
-// 同一包只归入一个类别, 卸载优先(停用列表剔除已卸载项)。
 private fun listDisabledApps(ctx: Context): List<DisabledAppEntry> {
     val marker = "---FLYMEMOD-SECTION---"
     val out = runAppCommand(
@@ -145,7 +140,6 @@ private fun listDisabledApps(ctx: Context): List<DisabledAppEntry> {
     }
 }
 
-/** Root enumeration excludes user-installed apps while retaining system apps without launcher activities. */
 private fun listSystemApps(ctx: Context): List<DisabledAppEntry> {
     val output = runAppCommand("pm list packages -f -s --user 0")
     val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*")
@@ -227,7 +221,6 @@ private fun buildExportScript(apps: List<DisabledAppEntry>): String {
     return sb.toString()
 }
 
-/** List/export disabled apps; five taps on the warning unlock the root app picker. */
 @Composable
 internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
     val listState = rememberScrollState()
@@ -494,9 +487,6 @@ private fun DisabledAppsDropdown(items: List<String>, warningFirst: Boolean = fa
     }
 }
 
-// 跳转到设置的应用详情页。标准 Intent 由 com.android.settings.applications
-// .InstalledAppDetails 响应(实测停用与用户级卸载的包都能解析到它)。用户级卸载的包已不在当前
-// 用户下, 设置可能打不开, 因此兜住 ActivityNotFoundException 并提示。
 private fun openAppDetails(ctx: Context, pkg: String) {
     try {
         ctx.startActivity(
@@ -508,7 +498,6 @@ private fun openAppDetails(ctx: Context, pkg: String) {
     }
 }
 
-/** 带图标的应用列表行，点击显示操作菜单。 */
 @Composable
 private fun DisabledAppRow(entry: DisabledAppEntry, showState: Boolean = true, onClick: () -> Unit) {
     val onSurface = MiuixTheme.colorScheme.onSurface

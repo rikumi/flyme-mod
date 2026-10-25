@@ -1,6 +1,5 @@
 package dev.rikumi.flymemod;
 
-/** Prevent injected contours from being baked into native icon recordings or masks. */
 final class IconContourDrawScope implements AutoCloseable {
     private static final ThreadLocal<Boolean> raw = ThreadLocal.withInitial(() -> false);
     private final boolean previous;

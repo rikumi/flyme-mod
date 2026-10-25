@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Flyme Launcher 13.0.0 repeats each visible-card data request in the same callback. */
 final class RecentsGestureJankHooks {
     private static final String RECENTS = "com.android.quickstep.views.RecentsView";
     private static final String TASK = "com.android.quickstep.views.TaskView";
@@ -45,8 +44,7 @@ final class RecentsGestureJankHooks {
                 request.task = null;
                 request.completed = false;
                 request.running = false;
-                // Reuse the scope without retaining a card or allocating on each
-                // scroll frame. Nested callbacks have a separate reusable slot.
+
                 current.set(previous == null ? request : previous);
             }
         }, int.class, int.class, int.class, int.class, List.class, int.class, Integer.class, taskType);
@@ -56,9 +54,7 @@ final class RecentsGestureJankHooks {
                 return chain.proceed();
             boolean visible = (Boolean) chain.getArg(0);
             int changes = (Integer) chain.getArg(1);
-            // Only remove the second identical successful visible request in this
-            // native callback. Never cache across frames, binds or gestures.
-            // Unload/reload and a changed data mask must still run.
+
             if (visible && request.completed && request.changes == changes) return null;
             request.completed = false;
             request.running = true;

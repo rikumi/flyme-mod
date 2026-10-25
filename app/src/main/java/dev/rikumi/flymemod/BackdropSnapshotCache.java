@@ -11,7 +11,6 @@ import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Reuse immutable uniform snapshots only for unchanged module-owned effects. */
 final class BackdropSnapshotCache {
     private final Map<Object, Object> snapshots = new WeakHashMap<>();
 
@@ -59,8 +58,7 @@ final class BackdropSnapshotCache {
                         Array.set(result, index++, copy);
                     }
                 }
-                // Never mutate a region/Parcel already handed to RenderThread. The native
-                // region deliberately shares only its position Rect with the drawable.
+
                 current.set(owner, result);
                 changed.setBoolean(owner, false);
                 return result;

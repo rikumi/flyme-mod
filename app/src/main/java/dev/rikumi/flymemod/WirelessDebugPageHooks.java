@@ -12,7 +12,6 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.lang.reflect.Executable;
 
-/** Explicit wireless pairing preference icons and paired-device gear spacing only. */
 final class WirelessDebugPageHooks {
     private final SharedPreferences preferences;
     private final BiConsumer<String, Throwable> log;
@@ -65,7 +64,7 @@ final class WirelessDebugPageHooks {
                 updateSpacing(row);
                 return result;
             });
-            // Both verified callers can inline the base binding method used to clear recycled rows.
+
             deoptimizer.accept(paired.getDeclaredMethod("onBindViewHolder", holder));
             deoptimizer.accept(Class.forName("androidx.preference.PreferenceGroupAdapter", false, loader)
                     .getDeclaredMethod("onBindViewHolder", holder, int.class));

@@ -8,7 +8,6 @@ import java.lang.reflect.Method;
 import java.util.*;
 import java.util.function.*;
 
-/** Draw into Flyme's foreground Surface so the native container controls fade and trajectory. */
 final class LauncherIconSurfaceContourHooks {
     private static final String OWNER="com.meizu.flyme.launcher.floatingsurface.drawable.IconDrawable";
     private final Class<?> type;

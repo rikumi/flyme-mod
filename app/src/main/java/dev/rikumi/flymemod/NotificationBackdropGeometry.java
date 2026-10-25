@@ -2,7 +2,6 @@ package dev.rikumi.flymemod;
 
 import android.graphics.Rect;
 
-/** Bounds used by the device ROM's NotificationBackgroundView.draw() legacy branch. */
 final class NotificationBackdropGeometry {
     private NotificationBackdropGeometry() {}
 

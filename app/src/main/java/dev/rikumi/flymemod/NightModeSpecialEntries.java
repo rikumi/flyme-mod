@@ -10,7 +10,6 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.List;
 
-/** Reconcile the explicitly requested package with SDKStage's cached native AppInfo list. */
 final class NightModeSpecialEntries {
     private static final String GOOGLE = "com.google.android.gms";
     private final Constructor<?> create, order;

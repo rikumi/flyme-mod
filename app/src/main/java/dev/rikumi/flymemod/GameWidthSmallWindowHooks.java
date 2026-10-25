@@ -12,7 +12,6 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Feed the chosen ratio into Flyme's native small-window geometry before measurement. */
 final class GameWidthSmallWindowHooks {
     private static final String WM = "com.android.server.wm.";
     private final Supplier<Map<String, Integer>> modes;
@@ -76,8 +75,7 @@ final class GameWidthSmallWindowHooks {
                     Object result = chain.proceed();
                     if (target != null && name.equals("FlymeFreeFormWindowControllerImpl") && result != null) {
                         try {
-                            // Freeform may copy the previous app's dimensions without calculating a ratio.
-                            // Reconstruct only mismatches through the native constructor; retain scale and centre.
+
                             if (Math.abs(aspect.getFloat(result) - target) > .0001f) {
                                 Rect bound = (Rect) visible.invoke(result);
                                 result = rebuild.newInstance(infoDisplay.get(result), chain.getArg(1), chain.getArg(2),

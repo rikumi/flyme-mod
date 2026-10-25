@@ -25,7 +25,6 @@ import java.util.function.IntSupplier;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-/** Style Flyme's plugin detail dialog without changing the plugin content or actions. */
 final class TileDialogHooks {
     private final BooleanSupplier light;
     private final IntSupplier color;

@@ -16,7 +16,6 @@ import java.lang.reflect.Method;
 import java.util.*;
 import java.util.function.*;
 
-/** Background-only contours for Flyme Launcher 13000000. */
 final class LauncherContourHooks {
     private static final String PREVIEW = "com.android.launcher3.folder.PreviewBackground";
     private static final String WIDGET = "com.meizu.flyme.launcher.widget.BaseFlymeAppWidgetHostView";
@@ -198,16 +197,12 @@ final class LauncherContourHooks {
             track(host);
             if (!icon.getAsBoolean()) return result;
             try {
-                // DragView replaces its original preview with independently drawn
-                // adaptive layers on drag start. Those bypass FastBitmapDrawable.
-                // Until that replacement, the preview already carries its contour.
+
                 Path path = (Path) dragMask.get(host);
                 if (path == null || path.isEmpty() || host.getWidth() <= 0 || host.getHeight() <= 0) return result;
                 LauncherContourRenderer renderer = renderer(host);
                 Bitmap mask = renderer.pathMask(host, path, host.getWidth(), host.getHeight());
-                // Native draw has restored the foreground's spring translation.
-                // The contour follows the stationary clip, while View applies
-                // the complete drag scale, position and alpha to both together.
+
                 renderer.draw(host, canvas, new RectF(0, 0, host.getWidth(), host.getHeight()), 0f, 1f, mask);
             } catch (Exception | LinkageError error) { report(host, error); }
             return result;
@@ -218,8 +213,7 @@ final class LauncherContourHooks {
                 Object result = chain.proceed();
                 if (folder.getAsBoolean() && blurView.get(chain.getThisObject()) instanceof View view
                         && folderIcon.isInstance(view)) {
-                    // App-close animation writes the compositor blur directly, bypassing
-                    // PreviewBackground.setAlpha/setVisible and its Canvas invalidation.
+
                     view.postInvalidateOnAnimation();
                 }
                 return result;
@@ -268,8 +262,7 @@ final class LauncherContourHooks {
 
     private void styleClearButton(View host) throws Exception {
         if (!clearButtons.containsKey(host)) {
-            // The carousel also owns a textual ClearAllButton. Only style the
-            // separate Flyme circular button, preserving filtered-list actions.
+
             boolean circular = host.getId() != View.NO_ID && "flyme_clear_all".equals(
                     host.getResources().getResourceEntryName(host.getId()));
             clearButtons.put(host, circular ? new ClearButtonStyle() : null);
@@ -520,8 +513,7 @@ final class LauncherContourHooks {
         return distanceMask(pixels, w, h, 2f*density(view)*scale);
     }
     static Bitmap distanceMask(int[] pixels, int w, int h, float stroke) {
-        // Encoding subtracts half a sample pixel at the boundary. Keep that offset in
-        // the cap too, so interior pixels reach red=255 and the shader fully fades out.
+
         float saturatedDistance = stroke + .5f;
         float[] distance = new float[pixels.length];
         for (int y=0; y<h; y++) for (int x=0; x<w; x++) {

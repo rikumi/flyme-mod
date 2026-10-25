@@ -15,7 +15,6 @@ import java.lang.reflect.*;
 import java.util.*;
 import java.util.function.*;
 
-/** Replace third-party pack thumbnails with the pack's actual Settings icon. */
 final class LauncherIconPackPreviewHooks {
     private static final String OWNER="com.meizu.flyme.launcher.view.MzIconPacksContainer";
     private final Class<?> container,pack;
