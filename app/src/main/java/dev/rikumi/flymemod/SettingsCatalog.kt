@@ -176,6 +176,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             ),
         )),
         SettingsGroup("通知中心设置", listOf(
+            CustomItem("disable_notification_bubbles") { NotificationBubblesPreference() },
             SwitchItem(ModuleSettings.NOTIFICATION_SWIPE_SEGMENTS, "通知侧滑删除分段动画"),
             SwitchItem(ModuleSettings.HEADS_UP_WIDTH, "增加浮动通知宽度"),
             SwitchItem(ModuleSettings.NOTIFICATION_READ_LAYER_FIX, "修复已读通知动画层级"),

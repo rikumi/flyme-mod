@@ -9,7 +9,7 @@ sources.update({
 'android/content/SharedPreferences.java':'package android.content; public interface SharedPreferences { boolean getBoolean(String k,boolean d); }',
 'android/content/Context.java':'package android.content; public class Context { public android.os.Vibrator vibrator=new android.os.Vibrator(); public <T> T getSystemService(Class<T> t){return t.cast(vibrator);} }',
 'android/os/VibrationAttributes.java':'package android.os; public class VibrationAttributes { public static int USAGE_HARDWARE_FEEDBACK=50; public int usage; public static class Builder { int usage; public Builder setUsage(int u){usage=u;return this;} public VibrationAttributes build(){VibrationAttributes a=new VibrationAttributes();a.usage=usage;return a;} } }',
-'android/os/VibrationEffect.java':'package android.os; public class VibrationEffect { public long duration; public int amplitude,id; public static VibrationEffect get(int id){VibrationEffect e=new VibrationEffect();e.id=id;return e;} public static VibrationEffect createOneShot(long d,int a){VibrationEffect e=new VibrationEffect();e.duration=d;e.amplitude=a;return e;} }',
+'android/os/VibrationEffect.java':'package android.os; public class VibrationEffect { public long duration; public int amplitude,id; public boolean fallback; public static VibrationEffect get(int id,boolean fallback){VibrationEffect e=new VibrationEffect();e.id=id;e.fallback=fallback;return e;} public static VibrationEffect createOneShot(long d,int a){VibrationEffect e=new VibrationEffect();e.duration=d;e.amplitude=a;return e;} }',
 'android/os/Vibrator.java':'package android.os; public class Vibrator { public int count; public boolean fail,available=true; public VibrationEffect effect; public VibrationAttributes attributes; public boolean hasVibrator(){return available;} public void vibrate(VibrationEffect e,VibrationAttributes a){if(fail)throw new IllegalStateException();count++;effect=e;attributes=a;} }',
 'android/hardware/biometrics/BiometricAuthenticator.java':'package android.hardware.biometrics; public class BiometricAuthenticator { public static class Identifier {} }',
 'dev/rikumi/flymemod/ModuleSettings.java':'package dev.rikumi.flymemod; class ModuleSettings { static String FINGERPRINT_SUCCESS_HAPTIC="feedback"; }',
@@ -28,7 +28,7 @@ FingerprintAuthenticationClient c=new FingerprintAuthenticationClient();c.onAuth
 enabled=true;c.onAuthenticated(null,false,new ArrayList<>());check(c.context.vibrator.count==0);
 c.accepted=false;c.onAuthenticated(null,true,new ArrayList<>());check(c.context.vibrator.count==0);
 c.accepted=true;c.onAuthenticated(null,true,new ArrayList<>());check(c.context.vibrator.count==1&&c.success);
-check(c.context.vibrator.effect.id==31025&&c.context.vibrator.effect.duration==0);check(c.context.vibrator.attributes.usage==50);
+check(c.context.vibrator.effect.id==31025&&!c.context.vibrator.effect.fallback&&c.context.vibrator.effect.duration==0);check(c.context.vibrator.attributes.usage==50);
 c.context.vibrator.fail=true;c.onAuthenticated(null,true,new ArrayList<>());check(c.success&&c.delivered==5);
 c.context.vibrator.fail=false;c.context.vibrator.available=false;c.onAuthenticated(null,true,new ArrayList<>());check(c.context.vibrator.count==1);
 enabled=false;c.context.vibrator.available=true;c.onAuthenticated(null,true,new ArrayList<>());check(c.context.vibrator.count==1);
