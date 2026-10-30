@@ -606,6 +606,7 @@ public final class XposedInit extends XposedModule {
             }
         }
         if (!"com.android.systemui".equals(packageName)) return;
+        initializeAsyncSystemUiSettings();
         try {
             new MediaStartupHooks(this).install(loader);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
@@ -2657,78 +2658,123 @@ public final class XposedInit extends XposedModule {
         }
     }
 
-    private synchronized void loadSettings(Context context) {
+    private boolean asyncSystemUiSettings;
+    private volatile Context settingsContext;
+    private AsyncSettingsSnapshot<android.database.MatrixCursor> systemUiSettings;
+
+    private void initializeAsyncSystemUiSettings() {
+        Handler settingsMain = new Handler(Looper.getMainLooper());
+        systemUiSettings = new AsyncSettingsSnapshot<>(java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, "FlymeMod-settings");
+                thread.setDaemon(true);
+                return thread;
+            }), task -> settingsMain.post(task), this::readSettingsSnapshot,
+                    snapshot -> refreshSettings(settingsContext, snapshot),
+                    error -> log(Log.ERROR, "FlymeMod", "Cannot load control center settings asynchronously", error),
+                    android.os.SystemClock::uptimeMillis);
+        asyncSystemUiSettings = true;
+    }
+
+    private android.database.MatrixCursor readSettingsSnapshot() {
+        Context context = settingsContext;
+        try (Cursor source = context.getContentResolver().query(ModuleSettings.URI, null, null, null, null)) {
+            if (source == null || !source.moveToFirst()) return null;
+            // Fully detach from the remote cursor before publishing it to the UI thread.
+            android.database.MatrixCursor result = new android.database.MatrixCursor(source.getColumnNames(), 1);
+            Object[] row = new Object[source.getColumnCount()];
+            for (int i = 0; i < row.length; i++) row[i] = source.getString(i);
+            result.addRow(row);
+            return result;
+        }
+    }
+
+    private void loadSettings(Context context) {
+        if (asyncSystemUiSettings) {
+            Context app = context.getApplicationContext();
+            settingsContext = app == null ? context : app;
+            systemUiSettings.request();
+            return;
+        }
+        loadSettingsNow(context, null);
+    }
+
+    private void refreshSettings(Context context, Cursor snapshot) {
+        boolean previousBackSmart = backGestureRemoveSmart;
+        boolean previousWhiteActive = whiteActiveEnabled;
+        boolean previousDarken = darkenEnabled;
+        int previousOpacity = whiteActiveOpacity;
+        int previousStyle = controlCenterStyle;
+        int previousActiveColor = customActiveColor;
+        int previousLightOpacity = lightBackgroundOpacity;
+        boolean previousLight = lightEnabled;
+        settingsLoaded = false;
+        loadSettingsNow(context, snapshot);
+        if (activeBackGestureSmartHooks != null && previousBackSmart != backGestureRemoveSmart)
+            activeBackGestureSmartHooks.refresh();
+        if(activeMBackRippleHooks!=null)activeMBackRippleHooks.refresh();
+        if(activeGestureBarWidthHooks!=null)activeGestureBarWidthHooks.refresh();
+        if (activeBackGestureWidthHooks != null) activeBackGestureWidthHooks.refresh();
+        if (activeBackGestureBackgroundHooks != null) activeBackGestureBackgroundHooks.refresh();
+        reapplyStatusIconVisibility();
+        if (activeHeadsUpWidthHooks != null) activeHeadsUpWidthHooks.refresh();
+        if (activeHeaderDateHooks != null) activeHeaderDateHooks.refresh();
+        if (activeClockFontHooks != null) activeClockFontHooks.refresh();
+        if (activeChargingInfoHooks != null) activeChargingInfoHooks.refresh();
+        if (activeStatusBarLyricHooks != null) activeStatusBarLyricHooks.refresh();
+        if (activeTickerLyricHooks != null) activeTickerLyricHooks.refresh();
+        if (activeRecentsCornerHooks != null) activeRecentsCornerHooks.refresh();
+        if (activeCarrierVisibilityHooks != null) activeCarrierVisibilityHooks.refresh();
+        if (activeSimpleQsTextHooks != null) activeSimpleQsTextHooks.refresh();
+        if (activeCombinedSettingsButtonHooks != null) activeCombinedSettingsButtonHooks.refresh();
+        if (activeCombinedNotificationWidthHooks != null) activeCombinedNotificationWidthHooks.refresh();
+        for (View stack : new ArrayList<>(notificationWidthStacks)) if (stack != null) stack.requestLayout();
+        if (activeEarphoneNoiseHooks != null) activeEarphoneNoiseHooks.refresh();
+        if (activeSplitNetworkCardHooks != null) activeSplitNetworkCardHooks.refresh();
+        if (activeCardIconLayoutHooks != null) activeCardIconLayoutHooks.refresh();
+        if (activeMuteSlashHooks != null) activeMuteSlashHooks.refresh();
+        if (activeFoldIdleMediaHooks != null) activeFoldIdleMediaHooks.refresh();
+        if (activeMediaSwipeHooks != null) activeMediaSwipeHooks.refresh();
+        if (activeNotificationSwipeHooks != null) activeNotificationSwipeHooks.refresh();
+        // Restore custom square corners before forcing circles; restore circles before applying custom corners.
+        if (activeTileCornerHooks != null && circleSmallTilesEnabled) activeTileCornerHooks.refresh();
+        if (activeCircleTileHooks != null) activeCircleTileHooks.refresh();
+        if (activeTileCornerHooks != null && !circleSmallTilesEnabled) activeTileCornerHooks.refresh();
+        if (activeNotificationAppearanceHooks != null) activeNotificationAppearanceHooks.refresh();
+        if (activeNotificationActionBackgroundHooks != null) activeNotificationActionBackgroundHooks.refresh();
+        if (activeNotificationRemovalLayerHooks != null) activeNotificationRemovalLayerHooks.refresh();
+        for (View content : new ArrayList<>(notificationContentInsets.keySet()))
+            if (content != null) content.requestLayout();
+        if (activeColorOsMaterialHooks != null) activeColorOsMaterialHooks.refresh();
+        boolean activeThemeChanged = previousWhiteActive != whiteActiveEnabled
+                || previousStyle != controlCenterStyle || previousActiveColor != customActiveColor
+                || previousDarken != darkenEnabled;
+        if (activeThemeChanged) refreshActiveIconTheme();
+        if (activeThemeChanged || (whiteActiveEnabled && previousOpacity != whiteActiveOpacity))
+            refreshWhiteActiveOpacity();
+        if (previousLight != lightEnabled || (lightEnabled && previousLightOpacity != lightBackgroundOpacity)) refreshLightBackgroundOpacity();
+        if (activeTileBackdropHooks != null) activeTileBackdropHooks.refresh();
+        if (activeControlCenterForegroundHooks != null) activeControlCenterForegroundHooks.refresh();
+        if (previousDarken != darkenEnabled) {
+            for (Map.Entry<Object,Integer> entry : new ArrayList<>(nativeHeaderColors.entrySet())) {
+                try {
+                    Method update = entry.getKey().getClass().getDeclaredMethod("updateViewColor",int.class);
+                    update.setAccessible(true);
+                    update.invoke(entry.getKey(),entry.getValue());
+                } catch (ReflectiveOperationException error) {
+                    log(Log.ERROR,"FlymeMod","Cannot refresh control center header foreground",error);
+                }
+            }
+        }
+    }
+
+    private synchronized void loadSettingsNow(Context context, Cursor snapshot) {
         backgroundThemeContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
         if (moduleSettingsObserver == null) {
             Context appContext = context.getApplicationContext();
             moduleSettingsObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
                 @Override public void onChange(boolean selfChange) {
-                    boolean previousBackSmart = backGestureRemoveSmart;
-                    boolean previousWhiteActive = whiteActiveEnabled;
-                    boolean previousDarken = darkenEnabled;
-                    int previousOpacity = whiteActiveOpacity;
-                    int previousStyle = controlCenterStyle;
-                    int previousActiveColor = customActiveColor;
-                    int previousLightOpacity = lightBackgroundOpacity;
-                    boolean previousLight = lightEnabled;
-                    synchronized (XposedInit.this) { settingsLoaded = false; }
-                    loadSettings(appContext);
-                    if (activeBackGestureSmartHooks != null && previousBackSmart != backGestureRemoveSmart)
-                        activeBackGestureSmartHooks.refresh();
-                    if(activeMBackRippleHooks!=null)activeMBackRippleHooks.refresh();
-                    if(activeGestureBarWidthHooks!=null)activeGestureBarWidthHooks.refresh();
-                    if (activeBackGestureWidthHooks != null) activeBackGestureWidthHooks.refresh();
-                    if (activeBackGestureBackgroundHooks != null) activeBackGestureBackgroundHooks.refresh();
-                    reapplyStatusIconVisibility();
-                    if (activeHeadsUpWidthHooks != null) activeHeadsUpWidthHooks.refresh();
-                    if (activeHeaderDateHooks != null) activeHeaderDateHooks.refresh();
-                    if (activeClockFontHooks != null) activeClockFontHooks.refresh();
-                    if (activeChargingInfoHooks != null) activeChargingInfoHooks.refresh();
-                    if (activeStatusBarLyricHooks != null) activeStatusBarLyricHooks.refresh();
-                    if (activeTickerLyricHooks != null) activeTickerLyricHooks.refresh();
-                    if (activeRecentsCornerHooks != null) activeRecentsCornerHooks.refresh();
-                    if (activeCarrierVisibilityHooks != null) activeCarrierVisibilityHooks.refresh();
-                    if (activeSimpleQsTextHooks != null) activeSimpleQsTextHooks.refresh();
-                    if (activeCombinedSettingsButtonHooks != null) activeCombinedSettingsButtonHooks.refresh();
-                    if (activeCombinedNotificationWidthHooks != null) activeCombinedNotificationWidthHooks.refresh();
-                    for (View stack : new ArrayList<>(notificationWidthStacks)) if (stack != null) stack.requestLayout();
-                    if (activeEarphoneNoiseHooks != null) activeEarphoneNoiseHooks.refresh();
-                    if (activeSplitNetworkCardHooks != null) activeSplitNetworkCardHooks.refresh();
-                    if (activeCardIconLayoutHooks != null) activeCardIconLayoutHooks.refresh();
-                    if (activeMuteSlashHooks != null) activeMuteSlashHooks.refresh();
-                    if (activeFoldIdleMediaHooks != null) activeFoldIdleMediaHooks.refresh();
-                    if (activeMediaSwipeHooks != null) activeMediaSwipeHooks.refresh();
-                    if (activeNotificationSwipeHooks != null) activeNotificationSwipeHooks.refresh();
-                    // Restore custom square corners before forcing circles; restore circles before applying custom corners.
-                    if (activeTileCornerHooks != null && circleSmallTilesEnabled) activeTileCornerHooks.refresh();
-                    if (activeCircleTileHooks != null) activeCircleTileHooks.refresh();
-                    if (activeTileCornerHooks != null && !circleSmallTilesEnabled) activeTileCornerHooks.refresh();
-                    if (activeNotificationAppearanceHooks != null) activeNotificationAppearanceHooks.refresh();
-                    if (activeNotificationActionBackgroundHooks != null) activeNotificationActionBackgroundHooks.refresh();
-                    if (activeNotificationRemovalLayerHooks != null) activeNotificationRemovalLayerHooks.refresh();
-                    for (View content : new ArrayList<>(notificationContentInsets.keySet()))
-                        if (content != null) content.requestLayout();
-                    if (activeColorOsMaterialHooks != null) activeColorOsMaterialHooks.refresh();
-                    boolean activeThemeChanged = previousWhiteActive != whiteActiveEnabled
-                            || previousStyle != controlCenterStyle || previousActiveColor != customActiveColor
-                            || previousDarken != darkenEnabled;
-                    if (activeThemeChanged) refreshActiveIconTheme();
-                    if (activeThemeChanged || (whiteActiveEnabled && previousOpacity != whiteActiveOpacity))
-                        refreshWhiteActiveOpacity();
-                    if (previousLight != lightEnabled || (lightEnabled && previousLightOpacity != lightBackgroundOpacity)) refreshLightBackgroundOpacity();
-                    if (activeTileBackdropHooks != null) activeTileBackdropHooks.refresh();
-                    if (activeControlCenterForegroundHooks != null) activeControlCenterForegroundHooks.refresh();
-                    if (previousDarken != darkenEnabled) {
-                        for (Map.Entry<Object,Integer> entry : new ArrayList<>(nativeHeaderColors.entrySet())) {
-                            try {
-                                Method update = entry.getKey().getClass().getDeclaredMethod("updateViewColor",int.class);
-                                update.setAccessible(true);
-                                update.invoke(entry.getKey(),entry.getValue());
-                            } catch (ReflectiveOperationException error) {
-                                log(Log.ERROR,"FlymeMod","Cannot refresh control center header foreground",error);
-                            }
-                        }
-                    }
+                    if (asyncSystemUiSettings) systemUiSettings.invalidate();
+                    else refreshSettings(appContext, null);
                 }
             };
             appContext.getContentResolver().registerContentObserver(
@@ -2749,7 +2795,8 @@ public final class XposedInit extends XposedModule {
             });
         }
         if (settingsLoaded) return;
-        try (Cursor cursor = context.getContentResolver().query(ModuleSettings.URI, null, null, null, null)) {
+        try (Cursor cursor = snapshot != null ? snapshot
+                : context.getContentResolver().query(ModuleSettings.URI, null, null, null, null)) {
             if (cursor != null && cursor.moveToFirst()) {
                 hiddenStatusIcons.clear();
                 for (String key : ModuleSettings.HIDE_STATUS_ICON_KEYS) {
