@@ -2,6 +2,10 @@ package dev.rikumi.flymemod
 
 import android.widget.Toast
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,30 +27,53 @@ internal object RestartUiState {
     var showLoading by mutableStateOf(false)
         private set
 
-    fun execute(context: Context, command: String, blackout: Boolean = false, scopeRestart: Boolean = false) {
+    fun execute(context: Context, command: String, blackout: Boolean = false, scopeRestart: Boolean = false, waitForFonts: Boolean = false) {
         if (running) return
         running = true
         showLoading = blackout
         val applicationContext = context.applicationContext
+        val main = Handler(Looper.getMainLooper())
+        val preparing = AtomicBoolean(waitForFonts)
+        val hint = Runnable {
+            if (preparing.get()) Toast.makeText(applicationContext, R.string.ui_font_restart_preparing, Toast.LENGTH_SHORT).show()
+        }
+        if (waitForFonts) main.postDelayed(hint, 500)
         scope.launch {
             try {
-                val success = withContext(Dispatchers.IO) {
-                    runCatching {
+                val success: Boolean? = withContext(Dispatchers.IO) {
+                    fun restart(): Boolean = runCatching {
                         val resolvedCommand = if (scopeRestart) ScopeRestartPlan.command(applicationContext) else command
                         val process = ProcessBuilder("su", "-c", resolvedCommand)
                             .redirectErrorStream(true)
                             .start()
-                        // 持续读取输出，防止子进程的输出缓冲区阻塞。
                         process.inputStream.bufferedReader().use { reader ->
-                            while (reader.readLine() != null) { /* 丢弃命令输出 */ }
+                            while (reader.readLine() != null) { /* Drain command output. */ }
                         }
                         process.waitFor() == 0
                     }.getOrDefault(false)
+                    if (waitForFonts) {
+                        val completion = CompletableFuture<Boolean?>()
+                        SystemFontStore.whenReady(applicationContext, action = {
+                            preparing.set(false)
+                            main.removeCallbacks(hint)
+                            completion.complete(restart())
+                        }, onFailure = { error ->
+                            preparing.set(false)
+                            main.removeCallbacks(hint)
+                            android.util.Log.e("FlymeMod", "Zygote restart cancelled: fonts not ready", error)
+                            completion.complete(null)
+                        })
+                        completion.get()
+                    } else restart()
                 }
-                if (!success) {
+                if (success == null) {
+                    Toast.makeText(applicationContext, R.string.ui_font_restart_failed, Toast.LENGTH_LONG).show()
+                } else if (!success) {
                     Toast.makeText(applicationContext, "重启失败，请检查 root 授权", Toast.LENGTH_SHORT).show()
                 }
             } finally {
+                preparing.set(false)
+                main.removeCallbacks(hint)
                 running = false
                 showLoading = false
             }
@@ -71,7 +98,7 @@ internal fun RestartMenu() {
         },
         items = listOf(
             ActionMenuItem("重启作用域", { restartScope() }),
-            ActionMenuItem("重启 Zygote", { RestartUiState.execute(context,"setprop ctl.restart zygote") }),
+            ActionMenuItem("重启 Zygote", { RestartUiState.execute(context,"setprop ctl.restart zygote", waitForFonts = true) }),
         ),
     )
 }

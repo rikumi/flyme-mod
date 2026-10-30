@@ -87,6 +87,7 @@ internal data class SystemItem(val setting: SystemSetting) : SettingsItem {
 }
 
 internal data class SettingsActions(
+    val onSelectFontApplications: () -> Unit = {},
     val onSelectNavigationApplications: () -> Unit = {},
     val onSelectGameApplications: () -> Unit = {},
 )

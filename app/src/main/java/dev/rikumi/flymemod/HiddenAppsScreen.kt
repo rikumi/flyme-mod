@@ -30,6 +30,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
@@ -66,8 +67,8 @@ private fun appEntry(context: Context, pkg: String): HiddenAppEntry {
     }.getOrElse { HiddenAppEntry(pkg, pkg, null) }
 }
 
-private fun readLauncherApps(context: Context, allApplications: Boolean): List<HiddenAppEntry>? {
-    val output = runRoot(if (allApplications) "cmd package list packages -3 --user current" else
+private fun readLauncherApps(context: Context, allApplications: Boolean, includeSystem: Boolean = false): List<HiddenAppEntry>? {
+    val output = runRoot(if (allApplications) "cmd package list packages ${if (includeSystem) "" else "-3"} --user current" else
         "cmd package query-activities --components --user current -a android.intent.action.MAIN -c android.intent.category.LAUNCHER")
         ?: return null
     val packages = output.lineSequence().mapNotNull {
@@ -83,20 +84,23 @@ private fun readLauncherApps(context: Context, allApplications: Boolean): List<H
 
 @Composable
 internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
-    navigationApplications: Boolean = false, landscapeGames: Boolean = false) {
+    navigationApplications: Boolean = false, landscapeGames: Boolean = false, fontApplications: Boolean = false) {
+    val fontApplicationsTitle = stringResource(R.string.ui_system_font_mount_apps)
     val preferences = LocalModulePreferences.current
-    val packagesKey = if (landscapeGames) ModuleSettings.LANDSCAPE_GAME_PACKAGES else if (navigationApplications) ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES else ModuleSettings.HIDDEN_LAUNCHER_APPS
-    var hidden by remember(packagesKey) { mutableStateOf(preferences.getStringSet(packagesKey, emptySet()).orEmpty().toSet()) }
+    val defaults = if (fontApplications) remember(context) { SystemFontMounts.defaultApplications(context) } else emptySet<String>()
+    val packagesKey = if (fontApplications) SystemFontMounts.PACKAGES else if (landscapeGames) ModuleSettings.LANDSCAPE_GAME_PACKAGES else if (navigationApplications) ModuleSettings.APP_IMMERSIVE_NAVIGATION_PACKAGES else ModuleSettings.HIDDEN_LAUNCHER_APPS
+    var hidden by remember(packagesKey) { mutableStateOf(preferences.getStringSet(packagesKey, defaults).orEmpty().toSet()) }
     var savedOrder by remember { mutableStateOf(preferences.getString(ModuleSettings.HIDDEN_LAUNCHER_APP_ORDER, "").orEmpty()) }
     DisposableEffect(preferences, packagesKey) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
-            if (key == packagesKey) hidden = prefs.getStringSet(packagesKey, emptySet()).orEmpty().toSet()
+            if (key == packagesKey) hidden = prefs.getStringSet(packagesKey, defaults).orEmpty().toSet()
             if (key == ModuleSettings.HIDDEN_LAUNCHER_APP_ORDER) savedOrder = prefs.getString(key, "").orEmpty()
         }
         preferences.registerOnSharedPreferenceChangeListener(listener)
         onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
     var picking by remember { mutableStateOf(false) }
+    var showSystemApplications by remember(picking) { mutableStateOf(false) }
     var choices by remember { mutableStateOf<List<HiddenAppEntry>?>(null) }
     var entries by remember { mutableStateOf<List<HiddenAppEntry>>(emptyList()) }
     val listState = rememberScrollState()
@@ -104,32 +108,33 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
     fun save(packages: Set<String>) {
         val editor = preferences.edit().putStringSet(packagesKey, packages)
         if (landscapeGames) editor.putBoolean(ModuleSettings.LANDSCAPE_GAME_ENABLED, true)
-        if (!navigationApplications && !landscapeGames) editor.putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true)
-        if (!navigationApplications && !landscapeGames) editor.putString(ModuleSettings.HIDDEN_LAUNCHER_APP_ORDER,
+        if (!navigationApplications && !landscapeGames && !fontApplications) editor.putBoolean(ModuleSettings.HIDDEN_LAUNCHER_APPS_ENABLED, true)
+        if (!navigationApplications && !landscapeGames && !fontApplications) editor.putString(ModuleSettings.HIDDEN_LAUNCHER_APP_ORDER,
             HiddenAppOrder.reconcile(packages, savedOrder).joinToString("\n"))
         editor.apply()
+        if (fontApplications) SystemFontMounts.applicationsChanged(context)
         hidden = packages
         context.contentResolver.notifyChange(ModuleSettings.URI, null)
     }
     BackHandler(enabled = picking) { picking = false }
     LaunchedEffect(hidden, savedOrder) {
         val previous = entries.associateBy { it.pkg }
-        val ordered = if (navigationApplications || landscapeGames) hidden.sorted()
+        val ordered = if (navigationApplications || landscapeGames || fontApplications) hidden.sorted()
             else HiddenAppOrder.reconcile(hidden, savedOrder)
         entries = withContext(Dispatchers.IO) { ordered.map { previous[it] ?: appEntry(context, it) } }
     }
-    LaunchedEffect(picking) {
+    LaunchedEffect(picking, showSystemApplications) {
         listState.scrollTo(0)
         if (picking) {
             choices = null
-            val result = withContext(Dispatchers.IO) { readLauncherApps(context, navigationApplications || landscapeGames) }
+            val result = withContext(Dispatchers.IO) { readLauncherApps(context, navigationApplications || landscapeGames || fontApplications, includeSystem = fontApplications && showSystemApplications) }
             choices = result.orEmpty()
             if (result == null) Toast.makeText(context, "读取失败，请检查 root 授权", Toast.LENGTH_SHORT).show()
         }
     }
     Scaffold(topBar = {
         FluixTopAppBar(
-            title = if (picking) "选择应用" else if (landscapeGames) "横屏游戏宽度适配" else if (navigationApplications) "强制沉浸应用列表" else "隐藏应用",
+            title = if (picking) "选择应用" else if (fontApplications) fontApplicationsTitle else if (landscapeGames) "横屏游戏宽度适配" else if (navigationApplications) "强制沉浸应用列表" else "隐藏应用",
             navigationIcon = {
                 IconButton(onClick = { if (picking) picking = false else onBack() }) {
                     Icon(MiuixIcons.Back, "返回", tint = MiuixTheme.colorScheme.onSurface, modifier = Modifier.size(FLUIX_BACK_ICON))
@@ -138,20 +143,25 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
             actions = {
                 if (!picking) BasicText("添加", style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.primary),
                     modifier = Modifier.clickable { picking = true }.padding(horizontal = 12.dp, vertical = 10.dp))
-                if (navigationApplications || landscapeGames) RestartMenu()
+                if (picking && fontApplications) {
+                    BasicText(stringResource(if (showSystemApplications) R.string.ui_font_hide_system else R.string.ui_font_show_system),
+                        style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.primary),
+                        modifier = Modifier.clickable { showSystemApplications = !showSystemApplications }
+                            .padding(horizontal = 12.dp, vertical = 10.dp))
+                } else if (navigationApplications || landscapeGames || fontApplications) RestartMenu()
             },
         )
     }) { padding ->
-        if (!picking && !navigationApplications && !landscapeGames) {
+        if (!picking && !navigationApplications && !landscapeGames && !fontApplications) {
             HiddenAppPages(context, entries, Modifier.fillMaxSize().padding(padding), onRemove = { save(hidden - it) },
                 onOrder = { order ->
-                    val packages = preferences.getStringSet(packagesKey, emptySet()).orEmpty()
+                    val packages = preferences.getStringSet(packagesKey, defaults).orEmpty()
                     savedOrder = HiddenAppOrder.reconcile(packages, order.joinToString("\n")).joinToString("\n")
                     preferences.edit().putString(ModuleSettings.HIDDEN_LAUNCHER_APP_ORDER, savedOrder).apply()
                 })
         } else Column(modifier = Modifier.fillMaxSize().padding(padding).fluixOverscroll(listState, overscroll).verticalScroll(listState)) {
-            FluixSmallTitle(if (navigationApplications || landscapeGames) {
-                if (picking) "非系统应用" else if (landscapeGames) "横屏游戏宽度适配列表" else "强制沉浸应用列表"
+            FluixSmallTitle(if (navigationApplications || landscapeGames || fontApplications) {
+                if (fontApplications) { if (picking) { if (showSystemApplications) "所有应用" else "非系统应用" } else fontApplicationsTitle } else if (picking) "非系统应用" else if (landscapeGames) "横屏游戏宽度适配列表" else "强制沉浸应用列表"
             } else if (picking) "有桌面图标的应用" else "彻底隐藏应用列表")
             val current = if (picking) choices?.filter { it.pkg !in hidden } else entries
             when {
@@ -178,7 +188,7 @@ internal fun HiddenAppsScreen(context: Context, onBack: () -> Unit,
                                         context.contentResolver.notifyChange(ModuleSettings.URI, null)
                                     }
                                 })
-                        } else HiddenAppRow(app, picking, removeLabel = if (navigationApplications) "移除" else "取消隐藏",
+                        } else HiddenAppRow(app, picking, removeLabel = if (navigationApplications || fontApplications) "移除" else "取消隐藏",
                             onAdd = { save(hidden + app.pkg); picking = false },
                             onRemove = { save(hidden - app.pkg) },
                             onOpen = {

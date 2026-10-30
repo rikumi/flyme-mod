@@ -63,16 +63,15 @@ public final class CameraSettingsBridge extends Application {
 
     @Override public void onCreate() {
         super.onCreate();
+        FontFailureLog.initialize(this);
         local = ModuleSettings.preferences(this);
         local.registerOnSharedPreferenceChangeListener(changes);
         SystemIconPackStore.get(this);
+        new Thread(() -> SystemFontMounts.INSTANCE.resume(this), "FlymeMod-font-mount-resume").start();
         XposedServiceHelper.registerListener(new XposedServiceHelper.OnServiceListener() {
             @Override public void onServiceBind(XposedService service) {
                 services.add(service);
-                new Thread(() -> {
-                    try { SystemFontStore.sync(CameraSettingsBridge.this, service); }
-                    catch (Exception error) { Log.e("FlymeMod", "Cannot synchronize system fonts", error); }
-                }, "FlymeMod-font-sync").start();
+                SystemFontStore.enqueueSync(CameraSettingsBridge.this, service);
                 publish();
                 notifyServicesChanged();
             }

@@ -16,12 +16,14 @@ final class FlymeFontProtection {
             Method defaults = helper.getDeclaredMethod("isDefaultTypeface", Typeface.class);
             // A theme font replaces the whole fallback chain. Selected system fonts take priority.
             module.hook(has).intercept(chain -> {
-                if (prefs.getInt(SystemFontHooks.ZH, 0) != 0 || prefs.getInt(SystemFontHooks.LATIN, 0) != 0)
+                if (prefs.getInt(SystemFontHooks.ZH, 0) == 2 || prefs.getInt(SystemFontHooks.LATIN, 0) != 0
+                        || prefs.getInt(SystemFontHooks.EMOJI, 0) != 0)
                     return false;
                 return chain.proceed();
             });
             module.hook(defaults).intercept(chain -> {
-                if (MonospacePolicy.isMonospace((Typeface) chain.getArg(0))) return false;
+                if ((prefs.getInt(SystemFontHooks.MONO, -1) >= 0)
+                        && MonospacePolicy.isMonospace((Typeface) chain.getArg(0))) return false;
                 return chain.proceed();
             });
             module.deoptimize(has);

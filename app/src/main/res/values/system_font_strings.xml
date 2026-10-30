@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ui_category_system_fonts">系统字体</string>
+    <string name="ui_system_font_zh">系统中文字体</string>
+    <string name="ui_system_font_latin">系统西文字体</string>
+    <string name="ui_system_font_mono">系统等宽字体</string>
+    <string name="ui_font_default">默认</string>
+    <string name="ui_font_custom">自定义</string>
+    <string name="ui_font_import_failed">字体导入或保存失败</string>
+    <string name="ui_font_maple">Maple Mono</string>
+    <string name="ui_font_jetbrains">JetBrains Mono</string>
+    <string name="ui_font_fira">Fira Code</string>
+    <string name="ui_font_cascadia">Cascadia Code</string>
+    <string name="ui_system_font_zygote_hint">修改字体需重启 Zygote 生效</string>
+    <string name="ui_font_not_monospace">所选字体不包含等宽字体</string>
+    <string name="ui_font_mount_failed">无法应用 WebView 字体，请检查 root 授权并查看模块日志</string>
+    <string name="ui_system_font_emoji">系统 Emoji 字体</string>
+    <string name="ui_font_emoji_apple">Apple</string>
+    <string name="ui_font_emoji_joypixels">JoyPixels</string>
+    <string name="ui_font_emoji_twitter">Twitter</string>
+    <string name="ui_font_emoji_samsung">Samsung</string>
+    <string name="ui_system_font_mount_enabled">为 WebView 应用挂载字体配置</string>
+    <string name="ui_font_emoji_downloading">正在下载 Emoji 字体…</string>
+    <string name="ui_font_emoji_ready">字体已就绪，可重启 Zygote 应用</string>
+    <string name="ui_font_importing">正在导入自定义字体…</string>
+    <string name="ui_font_restart_preparing">正在等待字体保存和挂载完成…</string>
+    <string name="ui_font_restart_failed">字体尚未就绪，已取消重启。请重新应用字体设置并查看模块日志</string>
+    <string name="ui_system_font_mount_apps">挂载字体的 WebView 应用</string>
+    <string name="ui_font_show_system">显示系统</string>
+    <string name="ui_font_hide_system">隐藏系统</string>
+</resources>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ui_category_system_fonts">System fonts</string>
+    <string name="ui_system_font_zh">System Chinese font</string>
+    <string name="ui_system_font_latin">System Latin font</string>
+    <string name="ui_system_font_mono">System monospace font</string>
+    <string name="ui_font_default">Default</string>
+    <string name="ui_font_custom">Custom</string>
+    <string name="ui_font_import_failed">Failed to import or save font</string>
+    <string name="ui_font_maple">Maple Mono</string>
+    <string name="ui_font_jetbrains">JetBrains Mono</string>
+    <string name="ui_font_fira">Fira Code</string>
+    <string name="ui_font_cascadia">Cascadia Code</string>
+    <string name="ui_system_font_zygote_hint">Restart Zygote for font changes to take effect</string>
+    <string name="ui_font_not_monospace">Selected font contains no monospace face</string>
+    <string name="ui_font_mount_failed">Could not apply WebView fonts. Check root access and module logs</string>
+    <string name="ui_system_font_emoji">System Emoji font</string>
+    <string name="ui_font_emoji_apple">Apple</string>
+    <string name="ui_font_emoji_joypixels">JoyPixels</string>
+    <string name="ui_font_emoji_twitter">Twitter</string>
+    <string name="ui_font_emoji_samsung">Samsung</string>
+    <string name="ui_system_font_mount_enabled">Mount font configuration for WebView apps</string>
+    <string name="ui_font_emoji_downloading">Downloading Emoji font…</string>
+    <string name="ui_font_emoji_ready">Font is ready. Restart Zygote to apply</string>
+    <string name="ui_font_importing">Importing custom font…</string>
+    <string name="ui_font_restart_preparing">Waiting for fonts to finish saving and mounting…</string>
+    <string name="ui_font_restart_failed">Fonts are not ready. Restart cancelled. Reapply font settings and check the module logs</string>
+    <string name="ui_system_font_mount_apps">WebView apps with mounted fonts</string>
+    <string name="ui_font_show_system">Show system</string>
+    <string name="ui_font_hide_system">Hide system</string>
+</resources>

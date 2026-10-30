@@ -1,5 +1,7 @@
 package dev.rikumi.flymemod
 
+import androidx.compose.ui.res.stringResource
+
 // 声明决定分组、顺序和存储键；绘制逻辑统一位于 SettingsItems.kt。
 private val FONT_WEIGHTS = listOf(0, 100, 200, 300, 400, 500, 600, 700, 800, 900)
 private val FONT_WEIGHT_NAMES = listOf("跟随系统", "极细（100）", "纤细（200）", "细体（300）", "常规（400）", "中等（500）", "半粗（600）", "粗体（700）", "特粗（800）", "超粗（900）")
@@ -8,9 +10,16 @@ internal val HIDE_DISABLED_APPS_ITEM = SwitchItem(ModuleSettings.HIDE_DISABLED_A
 
 internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
     "system_fonts" to listOf(SettingsGroup("系统字体", listOf(
-        CustomItem(SystemFontHooks.ZH) { SystemFontPreference(SystemFontHooks.ZH, "中文字体", listOf("默认", "思源黑体", "自定义")) },
-        CustomItem(SystemFontHooks.LATIN) { SystemFontPreference(SystemFontHooks.LATIN, "西文字体", listOf("默认", "Inter", "Manrope", "自定义")) },
-        CustomItem(SystemFontHooks.MONO) { SystemFontPreference(SystemFontHooks.MONO, "等宽字体", listOf("Maple Mono", "JetBrains Mono", "Fira Code", "Cascadia Code", "自定义")) },
+        CustomItem(SystemFontHooks.ZH) { SystemFontPreference(SystemFontHooks.ZH, stringResource(R.string.ui_system_font_zh), listOf(stringResource(R.string.ui_font_default), stringResource(R.string.ui_font_custom)), listOf(0, 2)) },
+        CustomItem(SystemFontHooks.LATIN) { SystemFontPreference(SystemFontHooks.LATIN, stringResource(R.string.ui_system_font_latin), listOf(stringResource(R.string.ui_font_default), "Inter", "Manrope", stringResource(R.string.ui_font_custom))) },
+        CustomItem(SystemFontHooks.MONO) { SystemFontPreference(SystemFontHooks.MONO, stringResource(R.string.ui_system_font_mono), listOf(stringResource(R.string.ui_font_default), "Maple Mono", "JetBrains Mono", "Fira Code", "Cascadia Code", stringResource(R.string.ui_font_custom)), listOf(-1, 0, 1, 2, 3, 4)) },
+        CustomItem(SystemFontHooks.EMOJI) { SystemFontPreference(SystemFontHooks.EMOJI, stringResource(R.string.ui_system_font_emoji), listOf(stringResource(R.string.ui_font_default), "Apple", "JoyPixels", "Twitter", "Samsung")) },
+        CustomItem(SystemFontMounts.ENABLED) { SystemFontOptionPreference(SystemFontMounts.ENABLED, stringResource(R.string.ui_system_font_mount_enabled)) },
+        CustomItem(SystemFontMounts.PACKAGES) { actions ->
+            SettingsItemRow(ActionItem(SystemFontMounts.PACKAGES, stringResource(R.string.ui_system_font_mount_apps)) {
+                it.onSelectFontApplications()
+            }, actions)
+        },
     ))),
     "desktop" to listOf(
         SettingsGroup("轮廓光", listOf(

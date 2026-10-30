@@ -13,6 +13,7 @@ import java.util.zip.ZipFile;
 public final class SystemFontHooks {
     public static final String PREFS = "system_fonts";
     public static final String ZH = "system_font_zh", LATIN = "system_font_latin", MONO = "system_font_mono";
+    public static final String EMOJI = "system_font_emoji";
     private static final String FONT_ROOT = "/data/fonts/files";
     private static final String CACHE_NAME = "flyme-mod";
     private static XposedInit module;
@@ -20,6 +21,8 @@ public final class SystemFontHooks {
     private static final Map<String, FontFamily> families = new HashMap<>();
     private static final Map<String, File> files = new HashMap<>();
     private static final Set<String> errors = new HashSet<>();
+
+    private static final Set<FontFamily> emojiFamilies = Collections.newSetFromMap(new IdentityHashMap<>());
 
     public static void hook(XposedInit instance, ClassLoader loader) {
         module = instance;
@@ -38,13 +41,14 @@ public final class SystemFontHooks {
             module.hook(File.class.getDeclaredMethod("listFiles")).intercept(chain -> {
                 Object result = chain.proceed();
                 if (FONT_ROOT.equals(((File) chain.getThisObject()).getAbsolutePath()) && result instanceof File[] children)
-                    return Arrays.stream(children).filter(file -> !CACHE_NAME.equals(file.getName())).toArray(File[]::new);
+                    return Arrays.stream(children).filter(file -> !CACHE_NAME.equals(file.getName()) && !"flyme-mod-webview".equals(file.getName())).toArray(File[]::new);
                 return result;
             });
             module.hook(create).intercept(chain -> {
                 Object result = chain.proceed();
                 if (!(result instanceof FontFamily original)) return result;
                 String language = (String) chain.getArg(1);
+                boolean emoji = language.contains("Zsye");
                 boolean chinese = Arrays.stream(language.split(",")).anyMatch(tag -> tag.startsWith("zh"));
                 boolean serif = false;
                 for (int i = 0; i < original.getSize(); i++) {
@@ -54,8 +58,9 @@ public final class SystemFontHooks {
                     chinese |= name.contains("hans") || name.contains("hant");
                     serif |= name.contains("serif");
                 }
-                if (!chinese || serif) return result;
-                FontFamily replacement = family(ZH, language, (Integer) chain.getArg(2), (Boolean) chain.getArg(4));
+                if (!emoji && (!chinese || serif)) return result;
+                FontFamily replacement = family(emoji ? EMOJI : ZH, language, (Integer) chain.getArg(2), (Boolean) chain.getArg(4));
+                if (emoji) emojiFamilies.add(replacement == null ? original : replacement);
                 return replacement == null ? result : replacement;
             });
             module.hook(fallback).intercept(chain -> {
@@ -72,6 +77,16 @@ public final class SystemFontHooks {
                     fonts[0] = replacement;
                     result.put(name, fonts);
                 }
+                boolean active = prefs.getInt(ZH, 0) == 2 || prefs.getInt(LATIN, 0) > 0
+                        || prefs.getInt(MONO, -1) >= 0 || prefs.getInt(EMOJI, 0) > 0;
+                if (active) for (Map.Entry<String, FontFamily[]> entry : result.entrySet()) {
+                    FontFamily[] fonts = entry.getValue();
+                    if (fonts.length < 2) continue;
+                    List<FontFamily> ordered = new ArrayList<>(); ordered.add(fonts[0]);
+                    for (int i = 1; i < fonts.length; i++) if (emojiFamilies.contains(fonts[i]) && !ordered.contains(fonts[i])) ordered.add(fonts[i]);
+                    for (int i = 1; i < fonts.length; i++) if (!emojiFamilies.contains(fonts[i])) ordered.add(fonts[i]);
+                    entry.setValue(ordered.toArray(new FontFamily[0]));
+                }
                 return result;
             });
             module.deoptimize(create);
@@ -85,16 +100,15 @@ public final class SystemFontHooks {
 
     private static synchronized FontFamily family(String slot, String language, int variant, boolean defaultFallback) {
         try {
-            int choice = prefs.getInt(slot, 0);
-            if (!slot.equals(MONO) && choice == 0) return null;
+            int choice = prefs.getInt(slot, slot.equals(MONO) ? -1 : 0);
+            if ((slot.equals(MONO) && choice < 0) || (!slot.equals(MONO) && choice == 0)) return null;
+            if (slot.equals(ZH) && choice != 2) return null;
             String[] sources;
             int custom = slot.equals(ZH) ? 2 : slot.equals(LATIN) ? 3 : 4;
-            if (choice == custom) {
+            if (slot.equals(EMOJI) || choice == custom) {
                 String remote = prefs.getString(slot + "_file", "");
                 if (remote.isEmpty()) return null;
                 sources = new String[]{"remote:" + remote};
-            } else if (slot.equals(ZH) && choice == 1) {
-                sources = new String[]{"system_fonts/SourceHanSansSC.ttf"};
             } else if (slot.equals(LATIN) && (choice == 1 || choice == 2)) {
                 sources = new String[]{"clock_fonts/" + (choice == 1 ? "Inter" : "Manrope") + ".ttf"};
             } else if (slot.equals(MONO) && choice >= 0 && choice <= 3) {
@@ -108,7 +122,7 @@ public final class SystemFontHooks {
             List<File> fontFiles = new ArrayList<>();
             List<List<FontFileInfo.Face>> metadata = new ArrayList<>();
             for (String source : sources) {
-                File file = materialize(source);
+                File file = materialize(source, !slot.equals(EMOJI));
                 List<FontFileInfo.Face> faces = FontFileInfo.read(file);
                 if (slot.equals(MONO)) faces.removeIf(face -> !face.monospace);
                 if (faces.isEmpty()) throw new IOException("No monospace face in selected font");
@@ -126,7 +140,7 @@ public final class SystemFontHooks {
                 FontFileInfo.Face best = null; File file = null; int score = Integer.MAX_VALUE;
                 for (int i = 0; i < metadata.size(); i++) {
                     FontFileInfo.Face face = FontFileInfo.match(metadata.get(i), weight, italic, language);
-                    int candidate = Math.abs(face.weightAt(weight) - weight) + (face.italic == italic ? 0 : 2000);
+                    int candidate = FontFileInfo.matchScore(face, weight, italic, language);
                     if (candidate < score) { best = face; file = fontFiles.get(i); score = candidate; }
                 }
                 int actualWeight = best.weightAt(weight), slant = best.italic ? 1 : 0;
@@ -146,8 +160,10 @@ public final class SystemFontHooks {
         }
     }
 
-    private static File materialize(String source) throws Exception {
-        File existing = files.get(source);
+    private static File materialize(String source, boolean emojiPriority) throws Exception {
+        if (source.startsWith("system:")) return new File(source.substring(7));
+        String cacheKey = source + ":" + emojiPriority;
+        File existing = files.get(cacheKey);
         if (existing != null && existing.isFile()) return existing;
 
         if (!new File(FONT_ROOT).isDirectory()) throw new IOException("System font directory unavailable");
@@ -157,14 +173,19 @@ public final class SystemFontHooks {
         File temporary = File.createTempFile("import-", ".font", directory);
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            try (InputStream input = open(source); FileOutputStream output = new FileOutputStream(temporary)) {
+            try (InputStream input = open(source)) {
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
                 byte[] bytes = new byte[65536]; int count; long total = 0;
                 while ((count = input.read(bytes)) != -1) {
                     total += count;
                     if (total > FontFileInfo.MAX_BYTES) throw new IOException("Font too large");
-                    output.write(bytes, 0, count); digest.update(bytes, 0, count);
+                    buffer.write(bytes, 0, count);
                 }
-                output.getFD().sync();
+                byte[] contents = buffer.toByteArray();
+                if (emojiPriority) contents = EmojiFontPriority.apply(contents);
+                try (FileOutputStream output = new FileOutputStream(temporary)) {
+                    output.write(contents); digest.update(contents); output.getFD().sync();
+                }
             }
             FontFileInfo.read(temporary);
             StringBuilder name = new StringBuilder();
@@ -172,7 +193,7 @@ public final class SystemFontHooks {
             File target = new File(directory, name + ".font");
             Os.chmod(temporary.getAbsolutePath(), 0644);
             if (!target.isFile() && !temporary.renameTo(target)) throw new IOException("Cannot publish font cache");
-            files.put(source, target);
+            files.put(cacheKey, target);
             return target;
         } finally { temporary.delete(); }
     }

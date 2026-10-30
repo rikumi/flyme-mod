@@ -257,6 +257,12 @@ private fun HomeScreen(resumeRequest: Int, onOpenCategory: (String) -> Unit) {
 
 @Composable
 private fun CategoryScreen(category: Category, onBack: () -> Unit) {
+    var pickingFontApplications by remember { mutableStateOf(false) }
+    if (pickingFontApplications) {
+        BackHandler { pickingFontApplications = false }
+        HiddenAppsScreen(LocalContext.current, onBack = { pickingFontApplications = false }, fontApplications = true)
+        return
+    }
     var pickingNavigationApplications by remember { mutableStateOf(false) }
     var pickingGameApplications by remember { mutableStateOf(false) }
     if (pickingGameApplications) {
@@ -309,6 +315,7 @@ private fun CategoryScreen(category: Category, onBack: () -> Unit) {
                         if (index > 0) FluixItemDivider()
                         SettingsItemRow(item, SettingsActions(
                             onSelectNavigationApplications = { pickingNavigationApplications = true },
+                            onSelectFontApplications = { pickingFontApplications = true },
                             onSelectGameApplications = { pickingGameApplications = true },
                         ))
                     }
