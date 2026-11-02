@@ -161,6 +161,9 @@ public final class XposedInit extends XposedModule {
     private int backgroundScale = ModuleSettings.BACKGROUND_SCALE_DEFAULT;
     private boolean wallpaperStartupFixEnabled;
     private boolean wallpaperStartupReadLogged;
+    private Object wallpaperStartupMonitor;
+    private boolean wallpaperStartupApplied;
+    private boolean wallpaperStartupRetryPending;
     private volatile Set<String> hiddenLauncherPackages = Collections.emptySet();
     private Set<String> appliedLauncherHiddenPackages = Collections.emptySet();
     private volatile boolean stackedRecentsEnabled;
@@ -2358,11 +2361,20 @@ public final class XposedInit extends XposedModule {
     }
 
     private void installWallpaperStartupFix(ClassLoader loader) {
+        install(loader, "com.flyme.keyguard.settings.SettingsUpdateMonitor", "init", chain -> {
+            Object result = chain.proceed();
+            wallpaperStartupMonitor = chain.getThisObject();
+            wallpaperStartupApplied = false;
+            requestWallpaperStartupSettings();
+            return result;
+        });
         install(loader, "com.flyme.keyguard.settings.SettingsUpdateMonitor",
                 "isAdjustWallpaperDarkEnabled", chain -> {
             Object monitor = chain.getThisObject();
+            wallpaperStartupMonitor = monitor;
             Context context = (Context) monitor.getClass().getField("mContext").get(monitor);
             loadSettings(context);
+            requestWallpaperStartupSettings();
             if (!wallpaperStartupFixEnabled) return chain.proceed();
 
             boolean actual = Settings.Global.getInt(context.getContentResolver(),
@@ -2375,6 +2387,47 @@ public final class XposedInit extends XposedModule {
             }
             return actual;
         });
+    }
+
+    private void requestWallpaperStartupSettings() {
+        if (wallpaperStartupRetryPending) return;
+        wallpaperStartupRetryPending = true;
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override public void run() {
+                try {
+                    Context context = (Context) wallpaperStartupMonitor.getClass()
+                            .getField("mContext").get(wallpaperStartupMonitor);
+                    loadSettings(context);
+                    if (!settingsLoaded) {
+                        // The module provider can be unavailable during a warm Zygote restart.
+                        new Handler(Looper.getMainLooper()).postDelayed(this, 1000);
+                        return;
+                    }
+                    refreshWallpaperStartupFix();
+                } catch (ReflectiveOperationException | RuntimeException error) {
+                    log(Log.ERROR, "FlymeMod", "Cannot refresh startup wallpaper settings", error);
+                }
+                wallpaperStartupRetryPending = false;
+            }
+        });
+    }
+
+    private void refreshWallpaperStartupFix() {
+        if (!wallpaperStartupFixEnabled || wallpaperStartupMonitor == null || wallpaperStartupApplied) return;
+        try {
+            Object monitor = wallpaperStartupMonitor;
+            Context context = (Context) monitor.getClass().getField("mContext").get(monitor);
+            boolean actual = Settings.Global.getInt(context.getContentResolver(),
+                    "flyme_dark_mode_adjust_wallpaper", 1) == 1;
+            monitor.getClass().getField("mAdjustWallpaperEnable").setBoolean(monitor, actual);
+            Handler handler = (Handler) monitor.getClass().getField("mHandler").get(monitor);
+            // CanvasEngine caches the getter result; correcting the getter alone cannot redraw it.
+            handler.removeMessages(2);
+            wallpaperStartupApplied = handler.sendEmptyMessage(2);
+            log(Log.INFO, "FlymeMod", "Wallpaper startup refresh: persisted=" + actual);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            log(Log.ERROR, "FlymeMod", "Cannot apply startup wallpaper preference", error);
+        }
     }
 
     private void applyNotificationContentPadding(View content, int requestedPadding) {
@@ -2709,6 +2762,7 @@ public final class XposedInit extends XposedModule {
         boolean previousLight = lightEnabled;
         settingsLoaded = false;
         loadSettingsNow(context, snapshot);
+        refreshWallpaperStartupFix();
         if (activeBackGestureSmartHooks != null && previousBackSmart != backGestureRemoveSmart)
             activeBackGestureSmartHooks.refresh();
         if(activeMBackRippleHooks!=null)activeMBackRippleHooks.refresh();
