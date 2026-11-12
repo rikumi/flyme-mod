@@ -23,7 +23,51 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Compute next version
+        id: version
+        shell: python
+        run: |
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          path = Path('app/build.gradle')
+          source = path.read_text()
+          base = re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'", source)
+          if base is None:
+              raise RuntimeError('Missing semantic versionName in app/build.gradle')
+          base_version = tuple(map(int, base[1].split('.')))
+          tags = subprocess.check_output(['git', 'tag', '--list', 'v*'], text=True).splitlines()
+          versions = [(tuple(map(int, tag[1:].split('.'))), tag) for tag in tags
+                      if re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag)]
+          previous = max(versions) if versions else None
+          version = base_version if previous is None else max(
+              base_version, (previous[0][0], previous[0][1], previous[0][2] + 1))
+          major, minor, patch = version
+          name = '.'.join(map(str, version))
+          code = major * 10000 + minor * 100 + patch
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={name}\nprevious_tag={previous[1] if previous else ""}\n')
+          print(f'Next version: {name} ({code})')
+
+      - name: Check release notes
+        id: release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          NOTES="docs/releases/$VERSION.md"
+          if [ -s "$NOTES" ]; then
+            cp "$NOTES" release-notes.md
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Release notes found: $NOTES"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "No release notes for $VERSION; building Actions artifacts only."
+          fi
+
       - name: Check publishing token
+        if: ${{ steps.release.outputs.enabled == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.XPOSED_REPO_TOKEN }}
         run: |
@@ -51,48 +95,24 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Compute next version and update app/build.gradle
-        id: version
+      - name: Bump version in app/build.gradle
+        if: ${{ steps.release.outputs.enabled == 'true' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         shell: python
         run: |
           import os
           import re
-          import subprocess
           from pathlib import Path
 
+          name = os.environ['VERSION']
+          major, minor, patch = map(int, name.split('.'))
+          code = major * 10000 + minor * 100 + patch
           path = Path('app/build.gradle')
           source = path.read_text()
-          base = re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'", source)
-          if base is None:
-              raise RuntimeError('Missing semantic versionName in app/build.gradle')
-          base_version = tuple(map(int, base[1].split('.')))
-          tags = subprocess.check_output(['git', 'tag', '--list', 'v*'], text=True).splitlines()
-          versions = [(tuple(map(int, tag[1:].split('.'))), tag) for tag in tags
-                      if re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag)]
-          previous = max(versions) if versions else None
-          version = base_version if previous is None else max(
-              base_version, (previous[0][0], previous[0][1], previous[0][2] + 1))
-          major, minor, patch = version
-          name = '.'.join(map(str, version))
-          code = major * 10000 + minor * 100 + patch
           source = re.sub(r'versionCode \d+', f'versionCode {code}', source, count=1)
           source = re.sub(r"versionName '[0-9.]+'", f"versionName '{name}'", source, count=1)
           path.write_text(source)
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write(f'version={name}\nprevious_tag={previous[1] if previous else ""}\n')
-          print(f'Next version: {name} ({code})')
-
-      - name: Generate release changelog
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          NOTES="docs/releases/$VERSION.md"
-          if [ -f "$NOTES" ]; then
-            cp "$NOTES" release-notes.md
-            exit 0
-          fi
-          echo "Missing release notes: $NOTES" >&2
-          exit 1
 
       - name: Restore persistent signing key
         env:
@@ -129,7 +149,17 @@ jobs:
       - name: Verify APK signing identity
         run: python3 scripts/verify-apk-signature.py app/build/outputs/apk/debug/*.apk app/build/outputs/apk/release/*.apk
 
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flyme-mod-apks
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
       - name: Commit version bump and create tag
+        if: ${{ steps.release.outputs.enabled == 'true' }}
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -143,16 +173,8 @@ jobs:
           git tag "v$VERSION"
           git push origin "v$VERSION"
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: flyme-mod-apks
-          path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
-
       - name: Create GitHub Release
+        if: ${{ steps.release.outputs.enabled == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
@@ -164,6 +186,7 @@ jobs:
           fail_on_unmatched_files: true
 
       - name: Sync README to Xposed-Modules-Repo
+        if: ${{ steps.release.outputs.enabled == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.XPOSED_REPO_TOKEN }}
           TARGET: Xposed-Modules-Repo/dev.rikumi.flymemod
@@ -188,6 +211,7 @@ jobs:
           fi
 
       - name: Upload release to Xposed-Modules-Repo
+        if: ${{ steps.release.outputs.enabled == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           repository: Xposed-Modules-Repo/dev.rikumi.flymemod
