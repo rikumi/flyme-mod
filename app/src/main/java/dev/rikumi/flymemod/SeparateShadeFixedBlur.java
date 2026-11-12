@@ -10,6 +10,7 @@ final class SeparateShadeFixedBlur {
     final int radius;
     private final View view;
     private final Drawable drawable;
+    private int alpha = 0;
 
     SeparateShadeFixedBlur(View root, int radius) throws ReflectiveOperationException {
         this.root = (ViewGroup) root;
@@ -31,7 +32,10 @@ final class SeparateShadeFixedBlur {
         view.layout(0, 0, root.getWidth(), root.getHeight());
     }
 
-    void alpha(float fraction) { drawable.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, fraction)))); }
+    void alpha(float fraction) {
+        int next = Math.round(255f * Math.max(0f, Math.min(1f, fraction)));
+        if (alpha != next) { alpha = next; drawable.setAlpha(next); }
+    }
 
     void close() {
         drawable.setAlpha(0); drawable.setVisible(false, false);

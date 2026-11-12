@@ -11,6 +11,9 @@ import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
 final class SeparateShadeSwipeBackdrop {
+    private Runnable requestFrame = () -> {};
+
+    void setFrameRequester(Runnable requester) { requestFrame = requester; }
     private static final String WALLPAPER = "com.flyme.systemui.wallpaper.LockscreenWallpaperManager";
     private static final String BINDER = "com.flyme.systemui.controlcenter.ui.binder.MzRootContainerBlurBinder";
     private final Class<?> wallpaperType;
@@ -81,7 +84,7 @@ final class SeparateShadeSwipeBackdrop {
         }, boolean.class);
         installer.hook(WALLPAPER, "setWallpaperAlpha", chain -> {
             if (ownsWallpaper(chain.getThisObject()) && !session.ending) {
-                applyWallpaperSurface(session);
+                requestFrame.run();
                 return null; // Do not enqueue a background coroutine with a stale full-open alpha.
             }
             return chain.proceed();
@@ -153,9 +156,9 @@ final class SeparateShadeSwipeBackdrop {
         if (current.rootContainer != null) current.rootContainer.setRenderEffect(null);
     }
 
-    void apply(float centerFraction) throws ReflectiveOperationException {
+    boolean apply(float centerFraction, SurfaceControl.Transaction transaction) throws ReflectiveOperationException {
         Session current = session;
-        if (current == null) return;
+        if (current == null) return false;
         current.fraction = Math.max(0f, Math.min(1f, centerFraction));
 
         publish(current, 0f);
@@ -163,7 +166,7 @@ final class SeparateShadeSwipeBackdrop {
         current.frame.setVisibility(View.VISIBLE);
         current.frame.setAlpha(current.frameAlpha);
         for (Layer layer : current.layers) layer.fade(1f - current.fraction);
-        applyWallpaperSurface(current);
+        return appendWallpaperSurface(current, transaction);
     }
 
     private void publish(Session current, float fraction) throws ReflectiveOperationException {
@@ -183,6 +186,13 @@ final class SeparateShadeSwipeBackdrop {
         try (SurfaceControl.Transaction transaction = new SurfaceControl.Transaction()) {
             transaction.setAlpha(surface, 1f - current.fraction).apply();
         }
+    }
+
+    private boolean appendWallpaperSurface(Session current, SurfaceControl.Transaction transaction) throws IllegalAccessException {
+        SurfaceControl surface = (SurfaceControl) wallpaperSurface.get(current.wallpaper);
+        if (surface == null || !surface.isValid()) return false;
+        transaction.setAlpha(surface, 1f - current.fraction);
+        return true;
     }
 
     void finish(boolean center, boolean keepOpen) throws ReflectiveOperationException {
