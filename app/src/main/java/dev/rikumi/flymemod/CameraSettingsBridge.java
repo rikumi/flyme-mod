@@ -18,7 +18,9 @@ public final class CameraSettingsBridge extends Application {
     private void notifyServicesChanged() { serviceObservers.forEach(Runnable::run); }
     private SharedPreferences local;
     private final SharedPreferences.OnSharedPreferenceChangeListener changes = (prefs, key) -> {
+        if (key == null || HomeControlsTileSettings.KEY.equals(key)) HomeControlsTileSettings.sync(this);
         if (key == null
+                || HomeControlsTileSettings.KEY.equals(key)
                 || ModuleSettings.FIX_MEDIA_STARTUP.equals(key)
                 || ModuleSettings.ANDROID_VERSION_KERNEL.equals(key)
                 || ModuleSettings.STATUS_BATTERY_CAPACITY.equals(key)
@@ -67,6 +69,7 @@ public final class CameraSettingsBridge extends Application {
         SystemFontStore.INSTANCE.migrateChoices(this);
         local = ModuleSettings.preferences(this);
         local.registerOnSharedPreferenceChangeListener(changes);
+        HomeControlsTileSettings.sync(this);
         SystemIconPackStore.get(this);
         new Thread(() -> SystemFontMounts.INSTANCE.resume(this), "FlymeMod-font-mount-resume").start();
         XposedServiceHelper.registerListener(new XposedServiceHelper.OnServiceListener() {
@@ -97,6 +100,7 @@ public final class CameraSettingsBridge extends Application {
         for (XposedService service : services) {
             try {
                 service.getRemotePreferences(REMOTE_FILE).edit()
+                        .putBoolean(HomeControlsTileSettings.KEY, local.getBoolean(HomeControlsTileSettings.KEY, false))
                         .putBoolean(ModuleSettings.FIX_MEDIA_STARTUP, local.getBoolean(ModuleSettings.FIX_MEDIA_STARTUP, false))
                         .putBoolean(ModuleSettings.LAUNCHER_EXTRA_ROW,
                                 local.getBoolean(ModuleSettings.LAUNCHER_EXTRA_ROW, false))

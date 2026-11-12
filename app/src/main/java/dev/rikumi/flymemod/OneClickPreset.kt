@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 internal object OneClickPreset {
     // Only these switches are disabled by the developer preset.
     private val disabledSwitches = setOf(
+        HomeControlsTileSettings.KEY,
         ModuleSettings.LAUNCHER_EXTRA_ROW,
         // Font monospace and spacing are left disabled by default except lockscreen clock.
         ModuleSettings.CONTROL_CENTER_CLOCK_MONOSPACE,

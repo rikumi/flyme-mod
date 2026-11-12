@@ -159,6 +159,13 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.ADD_PANEL_OPTIMIZE, "优化添加面板加载"),
             SwitchItem(ModuleSettings.ADD_PANEL_NAMES, "添加面板始终显示磁贴名称"),
         )),
+        SettingsGroup("磁贴行为", listOf(
+            CustomItem(HomeControlsTileSettings.KEY) { actions ->
+                SettingsItemRow(SwitchItem(HomeControlsTileSettings.KEY,
+                    stringResource(R.string.ui_module_home_controls_tile),
+                    subtitle = stringResource(R.string.ui_module_home_controls_tile_hint)), actions)
+            },
+        )),
     ),
     "notification" to listOf(
         SettingsGroup("轮廓光", listOf(

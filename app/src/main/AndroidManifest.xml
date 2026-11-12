@@ -16,6 +16,8 @@
     <uses-permission android:name="dev.rikumi.flymemod.permission.CONTROL_NETWORK_TILES" />
 
     <queries>
+        <package android:name="com.google.android.apps.chromecast.app" />
+        <package android:name="com.xiaomi.smarthome" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
@@ -72,6 +74,14 @@
         android:description="@string/xposed_description"
         android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
         tools:ignore="MissingApplicationIcon">
+        <service android:name=".HomeControlsTileService"
+            android:label="@string/ui_home_controls_tile"
+            android:icon="@drawable/ic_home_controls_tile"
+            android:enabled="false"
+            android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
         <service android:name=".HiddenNotificationsService" android:label="@string/ui_category_hidden_notifications"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true">
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
