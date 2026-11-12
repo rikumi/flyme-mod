@@ -13,7 +13,7 @@ if not re.fullmatch(r'[0-9a-f]{64}', expected):
 sdk = os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT')
 if not sdk:
     raise SystemExit('Set ANDROID_HOME or ANDROID_SDK_ROOT')
-apksigner = Path(sdk) / 'build-tools/36.0.0/apksigner'
+apksigner = Path(sdk) / 'build-tools/36.0.0' / ('apksigner.bat' if os.name == 'nt' else 'apksigner')
 if not apksigner.is_file():
     raise SystemExit('Install Android build-tools 36.0.0 before verifying APKs')
 print(f'Verifying with {apksigner}', flush=True)
