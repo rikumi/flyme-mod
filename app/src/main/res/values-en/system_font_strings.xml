@@ -11,7 +11,6 @@
     <string name="ui_font_jetbrains">JetBrains Mono</string>
     <string name="ui_font_fira">Fira Code</string>
     <string name="ui_font_cascadia">Cascadia Code</string>
-    <string name="ui_system_font_zygote_hint">Restart Zygote for font changes to take effect</string>
     <string name="ui_font_not_monospace">Selected font contains no monospace face</string>
     <string name="ui_font_mount_failed">Could not apply WebView fonts. Check root access and module logs</string>
     <string name="ui_system_font_emoji">System Emoji font</string>

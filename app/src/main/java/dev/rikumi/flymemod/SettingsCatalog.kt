@@ -6,14 +6,14 @@ import androidx.compose.ui.res.stringResource
 private val FONT_WEIGHTS = listOf(0, 100, 200, 300, 400, 500, 600, 700, 800, 900)
 private val FONT_WEIGHT_NAMES = listOf("跟随系统", "极细（100）", "纤细（200）", "细体（300）", "常规（400）", "中等（500）", "半粗（600）", "粗体（700）", "特粗（800）", "超粗（900）")
 
-internal val HIDE_DISABLED_APPS_ITEM = SwitchItem(ModuleSettings.HIDE_DISABLED_APPS, "在应用管理中隐藏已停用应用")
+internal val HIDE_DISABLED_APPS_ITEM = SwitchItem(ModuleSettings.HIDE_DISABLED_APPS, "在应用管理中隐藏已停用的应用")
 
 internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
     "system_fonts" to listOf(SettingsGroup("系统字体", listOf(
         CustomItem(SystemFontHooks.ZH) { SystemFontPreference(SystemFontHooks.ZH, stringResource(R.string.ui_system_font_zh), listOf(stringResource(R.string.ui_font_default), stringResource(R.string.ui_font_custom)), listOf(0, 2)) },
         CustomItem(SystemFontHooks.LATIN) { SystemFontPreference(SystemFontHooks.LATIN, stringResource(R.string.ui_system_font_latin), listOf(stringResource(R.string.ui_font_default), "Inter", "Manrope", stringResource(R.string.ui_font_custom))) },
         CustomItem(SystemFontHooks.MONO) { SystemFontPreference(SystemFontHooks.MONO, stringResource(R.string.ui_system_font_mono), listOf(stringResource(R.string.ui_font_default), "Maple Mono", "JetBrains Mono", "Fira Code", "Cascadia Code", stringResource(R.string.ui_font_custom)), listOf(-1, 0, 1, 2, 3, 4)) },
-        CustomItem(SystemFontHooks.EMOJI) { SystemFontPreference(SystemFontHooks.EMOJI, stringResource(R.string.ui_system_font_emoji), listOf(stringResource(R.string.ui_font_default), "Apple", "JoyPixels", "Twitter", "Samsung")) },
+        CustomItem(SystemFontHooks.EMOJI) { SystemFontPreference(SystemFontHooks.EMOJI, stringResource(R.string.ui_system_font_emoji), listOf(stringResource(R.string.ui_font_default), "Apple", "JoyPixels", "Twitter", "Samsung", "Noto 3D", stringResource(R.string.ui_font_custom)), listOf(0, 1, 2, 3, 4, 7, 8)) },
         CustomItem(SystemFontMounts.ENABLED) { SystemFontOptionPreference(SystemFontMounts.ENABLED, stringResource(R.string.ui_system_font_mount_enabled)) },
         CustomItem(SystemFontMounts.PACKAGES) { actions ->
             SettingsItemRow(ActionItem(SystemFontMounts.PACKAGES, stringResource(R.string.ui_system_font_mount_apps)) {
@@ -314,7 +314,10 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.INSTALLER_SKIP_WARNINGS, "跳过安装警告"),
         )),
     ),
-    "camera" to listOf(
+    "storage" to listOf(
+        SettingsGroup("不自动创建以下文件夹", ModuleSettings.MEDIA_FOLDERS.map { (folder, key) ->
+            FolderBlockItem(key, folder)
+        }),
         SettingsGroup("相机设置", listOf(
             SwitchItem(ModuleSettings.PHOTO_PREVIEW_SYSTEM_ROTATION, "图库预览跟随系统旋转锁定"),
             SwitchItem(ModuleSettings.CAMERA_KEEP_FILTER, "保留滤镜设置"),
@@ -345,10 +348,5 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.DARK_SYSTEM_APP_BLACK_BACKGROUND, "深色模式系统应用背景纯黑"),
             ActionItem("landscape_games", "横屏游戏宽度适配") { it.onSelectGameApplications() },
         )),
-    ),
-    "storage" to listOf(
-        SettingsGroup("不自动创建以下文件夹", ModuleSettings.MEDIA_FOLDERS.map { (folder, key) ->
-            FolderBlockItem(key, folder)
-        }),
     ),
 )

@@ -64,6 +64,7 @@ public final class CameraSettingsBridge extends Application {
     @Override public void onCreate() {
         super.onCreate();
         FontFailureLog.initialize(this);
+        SystemFontStore.INSTANCE.migrateChoices(this);
         local = ModuleSettings.preferences(this);
         local.registerOnSharedPreferenceChangeListener(changes);
         SystemIconPackStore.get(this);

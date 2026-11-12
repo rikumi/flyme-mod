@@ -1,20 +1,25 @@
 package dev.rikumi.flymemod
 
 import android.content.Context
+import android.text.Annotation
+import android.text.Spanned
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.CancellationException
 import android.content.Intent
 import android.content.ActivityNotFoundException
 import android.net.Uri
-import android.os.SystemClock
 import android.provider.Settings
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.drawable.Drawable
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
@@ -23,37 +28,32 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.key
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
-import java.text.Collator
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Icon
@@ -61,192 +61,52 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.icon.extended.ChevronForward
-import top.yukonga.miuix.kmp.icon.extended.Share
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private const val DISABLED_APPS_HINT =
-    "为防止误操作损害设备，我们不提供直接停用应用功能；这里列出了已通过其它途径停用和用户级卸载的应用列表，可在右上角导出成脚本方便重复执行。请注意：\n" +
-    "1. 取决于停用应用的途径，导出的脚本仍然可能需要 adb root；\n" +
-    "2. 模块获取的信息可能并不准确，因此脚本可能会导致系统崩溃或不稳定。请始终在无数据的全新系统上执行脚本。"
+import dev.rikumi.flymemod.ModuleSettings.HIDE_DISABLED_APPS
 
-private data class DisabledAppEntry(
-    val pkg: String,
-    val label: String?,
-    val uninstalled: Boolean,
-    val icon: Bitmap? = null,
-)
-
-// 保留启动异常及命令输出，让界面能显示真正的失败原因。
-private fun runAppCommand(command: String): String {
-    val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
-    try {
-        process.outputStream.close()
-        val output = process.inputStream.bufferedReader().use { it.readText() }
-        val code = process.waitFor()
-        check(code == 0) { output.trim().ifEmpty { "命令执行失败，退出码：$code" } }
-        return output
-    } finally { process.destroy() }
-}
-
-private fun showAppError(ctx: Context, operation: String, error: Exception) {
-    if (error is CancellationException) throw error
-    android.widget.Toast.makeText(ctx,
-        "$operation：${error.message ?: error.javaClass.simpleName}",
-        android.widget.Toast.LENGTH_LONG).show()
-}
-
-private fun listDisabledApps(ctx: Context): List<DisabledAppEntry> {
-    val marker = "---FLYMEMOD-SECTION---"
-    val out = runAppCommand(
-        "pm list packages -f -d --user 0 && echo $marker && pm list packages -f -u --user 0 && echo $marker && pm list packages -f --user 0"
-    )
-    // 按分隔行切成三段; 每段解析 -f 输出: package:/路径/base.apk=包名。
-    val sections = mutableListOf<List<Pair<String, String>>>()
-    var current = mutableListOf<Pair<String, String>>()
-    out.lines().forEach { line ->
-        val t = line.trim()
-        if (t == marker) {
-            sections.add(current)
-            current = mutableListOf()
-        } else if (t.startsWith("package:")) {
-            val eq = t.lastIndexOf('=')
-            check(eq > "package:".length) { "应用列表格式无效：$t" }
-            val pkg = t.substring(eq + 1)
-            check(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*").matches(pkg)) { "应用列表中的包名无效：$pkg" }
-            current.add(t.substring("package:".length, eq) to pkg)
-        } else if (t.isNotEmpty()) error(t)
-    }
-    sections.add(current)
-    check(sections.size == 3) { "应用列表输出缺少分隔标记" }
-    val (disabled, withUninstalled, installed) = sections
-    val installedPkgs = installed.map { it.second }.toSet()
-    val uninstalled = withUninstalled.filter { it.second !in installedPkgs }
-    val uninstalledPkgs = uninstalled.map { it.second }.toSet()
-    val entries = mutableListOf<DisabledAppEntry>()
-    disabled.forEach { (path, pkg) ->
-        if (pkg !in uninstalledPkgs) {
-            entries += appEntry(ctx, path, pkg, uninstalled = false)
-        }
-    }
-    uninstalled.forEach { (path, pkg) ->
-        entries += appEntry(ctx, path, pkg, uninstalled = true)
-    }
-    // 按当前语言的本地化规则排序(中文按拼音等), 而非按码位; 名称相同时以包名兜底, 保证顺序稳定。
-    val collator = Collator.getInstance(ctx.resources.configuration.locales[0])
-    return entries.sortedWith { a, b ->
-        val c = collator.compare(a.label ?: a.pkg, b.label ?: b.pkg)
-        if (c != 0) c else a.pkg.compareTo(b.pkg)
-    }
-}
-
-private fun listSystemApps(ctx: Context): List<DisabledAppEntry> {
-    val output = runAppCommand("pm list packages -f -s --user 0")
-    val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*")
-    val entries = output.lineSequence().mapNotNull { line ->
-        val text = line.trim()
-        val separator = text.lastIndexOf('=')
-        if (text.isEmpty()) return@mapNotNull null
-        check(text.startsWith("package:") && separator > "package:".length) { text }
-        val pkg = text.substring(separator + 1)
-        check(packagePattern.matches(pkg)) { "应用列表中的包名无效：$pkg" }
-        appEntry(ctx, text.substring("package:".length, separator), pkg, uninstalled = false)
-    }.distinctBy { it.pkg }.toList()
-    val collator = Collator.getInstance(ctx.resources.configuration.locales[0])
-    return entries.sortedWith { a, b ->
-        val result = collator.compare(a.label ?: a.pkg, b.label ?: b.pkg)
-        if (result == 0) a.pkg.compareTo(b.pkg) else result
-    }
-}
-
-private enum class AppOperation(val title: String) {
-    DISABLE("停用"), UNINSTALL("用户级卸载"), ENABLE("取消停用"), INSTALL_EXISTING("取消停用");
-
-    fun execute(pkg: String): Boolean {
-        // Validate again at the command boundary; never interpolate an arbitrary label.
-        require(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*").matches(pkg)) { "包名无效：$pkg" }
-        val command = when (this) {
-            DISABLE -> "pm disable-user --user 0 $pkg"
-            UNINSTALL -> "pm uninstall -k --user 0 $pkg"
-            ENABLE -> "pm enable --user 0 $pkg"
-            INSTALL_EXISTING -> "cmd package install-existing --user 0 $pkg"
-        }
-        val result = runAppCommand(command)
-        val success = when (this) {
-            DISABLE -> result.lineSequence().any { it.trim() == "Package $pkg new state: disabled-user" }
-            UNINSTALL -> result.lineSequence().any { it.trim() == "Success" }
-            ENABLE -> result.lineSequence().any { it.trim() == "Package $pkg new state: enabled" }
-            INSTALL_EXISTING -> result.lineSequence().any { it.trim() == "Package $pkg installed for user: 0" }
-        }
-        check(success) { result.trim().ifEmpty { "系统未返回操作成功结果" } }
-        return true
-    }
-}
-
-// 从 APK 解析名称和图标，不受包可见性限制；解析失败时使用包名和默认图标。
-private fun appEntry(ctx: Context, apkPath: String, pkg: String, uninstalled: Boolean): DisabledAppEntry {
-    val pm = ctx.packageManager
-    return runCatching {
-        @Suppress("DEPRECATION") val info = pm.getPackageArchiveInfo(apkPath, 0)
-        val ai = info?.applicationInfo ?: return@runCatching DisabledAppEntry(
-            pkg, null, uninstalled, iconBitmap(pm.defaultActivityIcon))
-        ai.sourceDir = apkPath
-        ai.publicSourceDir = apkPath
-        val label = pm.getApplicationLabel(ai).toString().takeIf { it.isNotBlank() }
-        val icon = runCatching { iconBitmap(pm.getApplicationIcon(ai)) }
-            .getOrElse { iconBitmap(pm.defaultActivityIcon) }
-        DisabledAppEntry(pkg, label, uninstalled, icon)
-    }.getOrElse { DisabledAppEntry(pkg, null, uninstalled, iconBitmap(pm.defaultActivityIcon)) }
-}
-
-private fun iconBitmap(drawable: Drawable): Bitmap =
-    Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).also {
-        drawable.setBounds(0, 0, 64, 64)
-        drawable.draw(Canvas(it))
-    }
+private enum class DisabledAppsWarningAction { ADD, EXPORT }
 
 // 生成导出脚本: 每行一条 adb 命令, 按模式分段并以注释标出(停用 / 用户级卸载)。
-private fun buildExportScript(apps: List<DisabledAppEntry>): String {
+private fun buildExportScript(ctx: Context, apps: List<ManagedAppEntry>): String {
     val sb = StringBuilder("#!/bin/sh\n")
     val disabled = apps.filter { !it.uninstalled }
     val uninstalled = apps.filter { it.uninstalled }
     if (disabled.isNotEmpty()) {
-        sb.append("\n# 停用\n")
+        sb.append("\n# ").append(ctx.getString(R.string.ui_disabled_state)).append("\n")
         disabled.forEach { sb.append("adb shell pm disable-user --user 0 ").append(it.pkg).append('\n') }
     }
     if (uninstalled.isNotEmpty()) {
-        sb.append("\n# 用户级卸载\n")
+        sb.append("\n# ").append(ctx.getString(R.string.ui_user_uninstalled)).append("\n")
         uninstalled.forEach { sb.append("adb shell pm uninstall -k --user 0 ").append(it.pkg).append('\n') }
     }
     return sb.toString()
 }
 
 @Composable
-internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
+internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit, showBack: Boolean = true) {
     val listState = rememberScrollState()
-    val overscrollOffset = remember { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
     var picking by remember { mutableStateOf(false) }
-    var choices by remember { mutableStateOf<List<DisabledAppEntry>?>(null) }
+    var choices by remember { mutableStateOf<List<ManagedAppEntry>?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var loadGeneration by remember { mutableIntStateOf(0) }
+    var warningAction by remember { mutableStateOf<DisabledAppsWarningAction?>(null) }
+    var loadGeneration by remember { mutableStateOf(0) }
     val pickerState = rememberScrollState()
     val currentListState = if (picking) pickerState else listState
+    val overscrollOffset = remember { mutableFloatStateOf(0f) }
     BackHandler(enabled = picking || busy) { if (!busy) picking = false }
-    // null = 加载中; 加载失败(无 root 等)toast 后按空列表展示。
-    var apps by remember { mutableStateOf<List<DisabledAppEntry>?>(null) }
+    var apps by remember { mutableStateOf<List<ManagedAppEntry>?>(null) }
     LaunchedEffect(Unit) {
         val generation = loadGeneration
-        android.widget.Toast.makeText(ctx, "加载中…", android.widget.Toast.LENGTH_SHORT).show()
         try {
-            val result = withContext(Dispatchers.IO) { listDisabledApps(ctx) }
-            // A quick operation must not be overwritten by the earlier initial scan.
-            if (generation == loadGeneration) apps = result
+            val loaded = withContext(Dispatchers.IO) { loadDisabledManagedApps(ctx) }
+            if (generation == loadGeneration) apps = loaded
         } catch (error: Exception) {
             if (error is CancellationException) throw error
             if (generation == loadGeneration) {
                 apps = emptyList()
-                showAppError(ctx, "读取已停用应用失败", error)
+                showManagedAppsError(ctx, R.string.app_management_read_disabled_failed, error)
             }
         }
     }
@@ -255,34 +115,37 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
         if (picking) {
             choices = null
             pickerState.scrollTo(0)
-            android.widget.Toast.makeText(ctx, "加载中…", android.widget.Toast.LENGTH_SHORT).show()
             try {
-                choices = withContext(Dispatchers.IO) { listSystemApps(ctx) }
+                choices = withContext(Dispatchers.IO) { loadSystemManagedApps(ctx) }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 choices = emptyList()
-                showAppError(ctx, "读取系统应用失败", error)
+                showManagedAppsError(ctx, R.string.app_management_read_system_failed, error)
             }
         }
     }
-    fun perform(app: DisabledAppEntry, action: AppOperation) {
+    fun perform(app: ManagedAppEntry, operation: ManagedAppOperation) {
         if (busy) return
         busy = true
         loadGeneration++
-        android.widget.Toast.makeText(ctx, "${action.title}…", android.widget.Toast.LENGTH_SHORT).show()
+        android.widget.Toast.makeText(ctx, ctx.getString(R.string.app_management_progress,
+            ctx.getString(operation.titleRes)), android.widget.Toast.LENGTH_SHORT).show()
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { action.execute(app.pkg) }
-                android.widget.Toast.makeText(ctx, "成功", android.widget.Toast.LENGTH_SHORT).show()
+                withContext(Dispatchers.IO) { executeManagedAppOperation(ctx, app, operation) }
+                android.widget.Toast.makeText(ctx, ctx.getString(R.string.app_management_success),
+                    android.widget.Toast.LENGTH_SHORT).show()
                 try {
-                    apps = withContext(Dispatchers.IO) { listDisabledApps(ctx) }
-                    if (picking) {
-                        // Refresh in place without resetting the picker or its scroll position.
-                        choices = withContext(Dispatchers.IO) { listSystemApps(ctx) }
-                    }
-                } catch (error: Exception) { showAppError(ctx, "刷新列表失败", error) }
+                    apps = withContext(Dispatchers.IO) { loadDisabledManagedApps(ctx) }
+                    if (picking) choices = withContext(Dispatchers.IO) { loadSystemManagedApps(ctx) }
+                } catch (error: Exception) {
+                    showManagedAppsError(ctx, R.string.app_management_refresh_failed, error)
+                }
             } catch (error: Exception) {
-                showAppError(ctx, "${action.title}失败", error)
+                if (error is CancellationException) throw error
+                android.widget.Toast.makeText(ctx, ctx.getString(R.string.app_management_action_failed,
+                    ctx.getString(operation.titleRes), error.message ?: error.javaClass.simpleName),
+                    android.widget.Toast.LENGTH_LONG).show()
             } finally { busy = false }
         }
     }
@@ -293,16 +156,17 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
         if (uri != null) {
             val current = apps.orEmpty()
             scope.launch(Dispatchers.IO) {
-                val result = runCatching {
-                    checkNotNull(ctx.contentResolver.openOutputStream(uri)) { "无法打开导出文件" }.use { out ->
-                        out.write(buildExportScript(current).toByteArray())
-                    }
-                }
+                val ok = runCatching {
+                    ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(buildExportScript(ctx, current).toByteArray())
+                    } != null
+                }.getOrDefault(false)
                 withContext(Dispatchers.Main) {
-                    val error = result.exceptionOrNull()
-                    if (error is Exception) showAppError(ctx, "导出失败", error)
-                    else if (error != null) throw error
-                    else android.widget.Toast.makeText(ctx, "已导出", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(
+                        ctx,
+                        if (ok) ctx.getString(R.string.ui_exported) else ctx.getString(R.string.ui_export_failed),
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
                 }
             }
         }
@@ -310,77 +174,68 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             FluixTopAppBar(
-                title = if (picking) "选择系统应用" else "停用应用",
+                title = ctx.getString(if (picking) R.string.app_management_select_system else R.string.ui_category_disabled),
                 navigationIcon = {
-                    IconButton(onClick = { if (!busy) { if (picking) picking = false else onBack() } }) {
-                        Icon(
-                            imageVector = MiuixIcons.Back,
-                            contentDescription = "返回",
-                            tint = MiuixTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(FLUIX_BACK_ICON),
-                        )
+                    if (showBack || picking) IconButton(onClick = { if (!busy) { if (picking) picking = false else onBack() } }) {
+                        Icon(MiuixIcons.Back, ctx.getString(R.string.ui_back), tint = MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(FLUIX_BACK_ICON))
                     }
                 },
                 actions = {
                     if (!picking && !busy) {
-                        IconButton(onClick = {
-                            if (apps.isNullOrEmpty()) {
-                                android.widget.Toast.makeText(ctx, "暂无可导出的应用", android.widget.Toast.LENGTH_SHORT).show()
-                            } else {
-                                exportLauncher.launch("disabled_apps.sh")
-                            }
-                        }) {
-                            Icon(
-                                imageVector = MiuixIcons.Share,
-                                contentDescription = "导出",
-                                tint = MiuixTheme.colorScheme.onSurface,
-                            )
-                        }
                         RestartMenu()
                     }
                 },
             )
         },
     ) { padding ->
+        // Prepare rows when the list loads, so scrolling does not compose new app rows.
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+            modifier = Modifier.fillMaxSize().padding(padding)
                 .fluixOverscroll(currentListState, overscrollOffset)
                 .verticalScroll(currentListState),
         ) {
             if (picking) {
-                FluixSmallTitle(text = "系统应用")
+                FluixSmallTitle(ctx.getString(R.string.app_management_system_apps))
                 val current = choices
                 when {
-                    current == null -> Unit
-                    current.isEmpty() -> FluixSmallTitle(text = "暂无应用")
-                    else -> current.forEachIndexed { index, entry ->
-                        FluixCardRow(first = index == 0, last = index == current.lastIndex) {
-                            AppRemovalRow(entry, busy) { action -> perform(entry, action) }
+                    current == null -> FluixSmallTitle(ctx.getString(R.string.ui_loading))
+                    current.isEmpty() -> FluixSmallTitle(ctx.getString(R.string.ui_no_apps))
+                    else -> current.forEachIndexed { index, app ->
+                        key(app.pkg) {
+                            FluixCardRow(first = index == 0, last = index == current.lastIndex) {
+                                if (index > 0) FluixItemDivider()
+                                ManagedAppActionsRow(app, busy, picking = true,
+                                    onAction = { perform(app, it) })
+                            }
                         }
                     }
                 }
             } else {
-                FluixSmallTitle(text = "停用应用设置")
                 FluixCard {
-                    DisabledAppsHintRow { if (!busy) picking = true }
+                    DisabledAppsActionRow(R.string.ui_disabled_apps_add_title, enabled = !busy) {
+                        warningAction = DisabledAppsWarningAction.ADD
+                    }
                     FluixItemDivider()
-                    SettingsItemRow(HIDE_DISABLED_APPS_ITEM)
+                    DisabledAppsActionRow(R.string.ui_disabled_apps_export_title, enabled = !busy) {
+                        warningAction = DisabledAppsWarningAction.EXPORT
+                    }
                 }
-                FluixSmallTitle(text = "已停用的应用")
+                FluixSmallTitle(ctx.getString(R.string.ui_disabled_settings))
+                FluixCard { HideDisabledAppsRow(ctx) }
+                FluixSmallTitle(ctx.getString(R.string.ui_disabled_apps))
                 val current = apps
                 when {
-                    current == null -> Unit
-                    current.isEmpty() -> FluixSmallTitle(text = "无已停用或用户级卸载的应用")
-                    // 每行独立创建, 保持卡片间距与边缘圆角一致。
+                    current == null -> FluixSmallTitle(ctx.getString(R.string.ui_loading))
+                    current.isEmpty() -> FluixSmallTitle(ctx.getString(R.string.ui_no_disabled_apps))
                     else -> current.forEachIndexed { index, entry ->
-                        FluixCardRow(first = index == 0, last = index == current.lastIndex) {
-                            if (index > 0) FluixItemDivider()
-                            DisabledAppActionsRow(entry, busy,
-                                onInfo = { openAppDetails(ctx, entry.pkg) },
-                                onRestore = { perform(entry, if (entry.uninstalled)
-                                    AppOperation.INSTALL_EXISTING else AppOperation.ENABLE) })
+                        key(entry.pkg) {
+                            FluixCardRow(first = index == 0, last = index == current.lastIndex) {
+                                if (index > 0) FluixItemDivider()
+                                ManagedAppActionsRow(entry, busy,
+                                    onInfo = { openAppDetails(ctx, entry.pkg) },
+                                    onAction = { perform(entry, it) })
+                            }
                         }
                     }
                 }
@@ -388,83 +243,193 @@ internal fun DisabledAppsScreen(ctx: Context, onBack: () -> Unit) {
             Box(Modifier.height(24.dp))
         }
     }
+
+    warningAction?.let { action ->
+        FluixConfirmDialog(
+            title = ctx.getString(if (action == DisabledAppsWarningAction.ADD)
+                R.string.ui_disabled_apps_add_title else R.string.ui_disabled_apps_export_title),
+            text = disabledAppsWarningText(if (action == DisabledAppsWarningAction.ADD)
+                R.string.ui_disabled_apps_add_hint else R.string.ui_disabled_apps_export_hint),
+            confirmLabel = ctx.getString(R.string.ui_disabled_apps_continue),
+            onDismiss = { warningAction = null },
+            onConfirm = {
+                warningAction = null
+                if (!busy) {
+                    if (action == DisabledAppsWarningAction.ADD) picking = true
+                    else if (apps.isNullOrEmpty()) {
+                        android.widget.Toast.makeText(ctx, ctx.getString(R.string.ui_no_apps_to_export),
+                            android.widget.Toast.LENGTH_SHORT).show()
+                    } else exportLauncher.launch("disabled_apps.sh")
+                }
+            },
+        )
+    }
+
 }
 
 @Composable
-private fun DisabledAppsHintRow(onAdd: () -> Unit) {
-    var taps by remember { mutableIntStateOf(0) }
-    var lastTap by remember { mutableLongStateOf(0L) }
-    var expanded by remember { mutableStateOf(false) }
-    LaunchedEffect(lastTap) {
-        if (taps > 0) {
-            delay(1_000)
-            taps = 0
+private fun HideDisabledAppsRow(ctx: Context) {
+    var checked by remember {
+        mutableStateOf(ModuleSettings.preferences(ctx).getBoolean(HIDE_DISABLED_APPS, false))
+    }
+    FluixSwitchPreference(
+        checked = checked,
+        onCheckedChange = {
+            checked = it
+            ModuleSettings.preferences(ctx).edit().putBoolean(HIDE_DISABLED_APPS, it).apply()
+            ctx.contentResolver.notifyChange(ModuleSettings.URI, null)
+        },
+        title = androidx.compose.ui.res.stringResource(R.string.ui_hide_in_app_management),
+    )
+}
+
+@Composable
+private fun DisabledAppsActionRow(
+    @androidx.annotation.StringRes titleRes: Int,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    BasicText(
+        text = androidx.compose.ui.res.stringResource(titleRes),
+        style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+    )
+}
+
+@Composable
+private fun disabledAppsWarningText(
+    @androidx.annotation.StringRes descriptionRes: Int,
+): androidx.compose.ui.text.AnnotatedString {
+    val description = androidx.compose.ui.platform.LocalContext.current.resources.getText(descriptionRes)
+    val warningColor = Color(0xFFE5484D)
+    return buildAnnotatedString {
+        append(description.toString())
+        if (description is Spanned) {
+            description.getSpans(0, description.length, Annotation::class.java).forEach { annotation ->
+                if (annotation.key == "warning") {
+                    addStyle(SpanStyle(color = warningColor), description.getSpanStart(annotation),
+                        description.getSpanEnd(annotation))
+                }
+            }
         }
     }
-    Box {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    val now = SystemClock.elapsedRealtime()
-                    if (now - lastTap >= 1_000) taps = 0
-                    lastTap = now
-                    taps++
-                    if (taps == 5) { taps = 0; expanded = true }
-                }
-                .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
-        ) {
+}
+
+private fun openAppDetails(ctx: Context, pkg: String) {
+    try {
+        ctx.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
+        )
+    } catch (_: ActivityNotFoundException) {
+        android.widget.Toast.makeText(ctx, ctx.getString(R.string.ui_cannot_open_app_settings), android.widget.Toast.LENGTH_SHORT)
+            .show()
+    }
+}
+
+@Composable
+private fun DisabledAppRow(entry: ManagedAppEntry, showState: Boolean = true, onClick: () -> Unit) {
+    val onSurface = MiuixTheme.colorScheme.onSurface
+    val summary = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    val detailStyle = MiuixTheme.textStyles.body2.copy(
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        color = summary,
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        entry.icon?.let {
+            Image(it, contentDescription = null,
+                modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)))
+            Box(Modifier.width(12.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            val appName = entry.label?.takeIf { it.isNotBlank() && it != entry.pkg }
             BasicText(
-                text = "功能说明",
-                style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+                text = appName ?: entry.pkg,
+                style = MiuixTheme.textStyles.body1.copy(color = onSurface),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            DISABLED_APPS_HINT.split('\n').forEach { paragraph ->
+            if (appName != null) BasicText(
+                text = entry.pkg,
+                style = detailStyle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            val annotation = remember(entry.pkg) { SystemAppDescriptions.find(entry.pkg) }
+            if (annotation != null) {
+                val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
+                val prefixColor = if (annotation.recommendation == R.string.system_app_recommendation_keep) {
+                    if (dark) Color(0xFFFFAA62) else Color(0xFFC15C00)
+                } else {
+                    if (dark) Color(0xFFF2D35E) else Color(0xFFA17A00)
+                }
+                val prefix = androidx.compose.ui.res.stringResource(annotation.recommendation, "")
+                val description = androidx.compose.ui.res.stringResource(annotation.description)
                 BasicText(
-                    text = paragraph,
-                    style = MiuixTheme.textStyles.body2.copy(
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        fontFeatureSettings = "tnum",
-                    ),
-                    modifier = Modifier.padding(top = 6.dp),
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = prefixColor)) { append(prefix) }
+                        append(description)
+                    },
+                    style = detailStyle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
         }
-        if (expanded) DisabledAppsDropdown(
-            items = listOf("忽略警告并新增停用应用", "取消"),
-            warningFirst = true,
-            onDismiss = { expanded = false },
-        ) { index ->
-            expanded = false
-            if (index == 0) onAdd()
+        if (showState) BasicText(
+            text = if (entry.uninstalled) androidx.compose.ui.res.stringResource(R.string.ui_user_uninstalled) else androidx.compose.ui.res.stringResource(R.string.ui_disabled_state),
+            style = detailStyle,
+            modifier = Modifier.padding(start = 12.dp),
+        )
+    }
+}
+
+private val ManagedAppOperation.titleRes: Int
+    get() = when (this) {
+        ManagedAppOperation.DISABLE -> R.string.app_management_disable
+        ManagedAppOperation.UNINSTALL -> R.string.app_management_uninstall
+        ManagedAppOperation.ENABLE, ManagedAppOperation.INSTALL_EXISTING -> R.string.app_management_restore
+    }
+
+private fun showManagedAppsError(ctx: Context, title: Int, error: Exception) {
+    if (error is CancellationException) throw error
+    android.widget.Toast.makeText(ctx, ctx.getString(R.string.app_management_error,
+        ctx.getString(title), error.message ?: error.javaClass.simpleName),
+        android.widget.Toast.LENGTH_LONG).show()
+}
+
+@Composable
+private fun ManagedAppActionsRow(app: ManagedAppEntry, busy: Boolean, picking: Boolean = false,
+    onInfo: () -> Unit = {}, onAction: (ManagedAppOperation) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        DisabledAppRow(app, showState = !picking) { if (!busy) expanded = true }
+        // Resolve labels and allocate action callbacks only for the opened menu.
+        if (expanded && !busy) {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val actions = if (picking) listOf(
+                ActionMenuItem(ctx.getString(R.string.app_management_disable), onClick = { onAction(ManagedAppOperation.DISABLE) }),
+                ActionMenuItem(ctx.getString(R.string.app_management_uninstall), onClick = { onAction(ManagedAppOperation.UNINSTALL) }),
+            ) else listOf(
+                ActionMenuItem(ctx.getString(R.string.ui_app_info), onInfo),
+                ActionMenuItem(ctx.getString(R.string.app_management_restore), onClick = {
+                    onAction(if (app.uninstalled) ManagedAppOperation.INSTALL_EXISTING else ManagedAppOperation.ENABLE)
+                }),
+            )
+            DisabledAppsDropdown(actions.map { it.label }, onDismiss = { expanded = false }, onSelected = { index ->
+                expanded = false
+                actions[index].onClick()
+            })
         }
-    }
-}
-
-@Composable
-private fun AppRemovalRow(app: DisabledAppEntry, busy: Boolean, onAction: (AppOperation) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    val actions = listOf(AppOperation.DISABLE, AppOperation.UNINSTALL)
-    Box {
-        DisabledAppRow(app, showState = false) { if (!busy) expanded = true }
-        if (expanded && !busy) DisabledAppsDropdown(
-            items = actions.map { it.title },
-            onDismiss = { expanded = false },
-        ) { index -> expanded = false; onAction(actions[index]) }
-    }
-}
-
-@Composable
-private fun DisabledAppActionsRow(app: DisabledAppEntry, busy: Boolean,
-    onInfo: () -> Unit, onRestore: () -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        DisabledAppRow(app) { if (!busy) expanded = true }
-        if (expanded && !busy) DisabledAppsDropdown(
-            items = listOf("应用信息", "取消停用"),
-            onDismiss = { expanded = false },
-        ) { index -> expanded = false; if (index == 0) onInfo() else onRestore() }
     }
 }
 
@@ -484,68 +449,5 @@ private fun DisabledAppsDropdown(items: List<String>, warningFirst: Boolean = fa
                         .clickable { onSelected(index) }.padding(horizontal = 20.dp, vertical = 16.dp))
             }
         }
-    }
-}
-
-private fun openAppDetails(ctx: Context, pkg: String) {
-    try {
-        ctx.startActivity(
-            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
-        )
-    } catch (_: ActivityNotFoundException) {
-        android.widget.Toast.makeText(ctx, "无法打开该应用的设置页", android.widget.Toast.LENGTH_SHORT)
-            .show()
-    }
-}
-
-@Composable
-private fun DisabledAppRow(entry: DisabledAppEntry, showState: Boolean = true, onClick: () -> Unit) {
-    val onSurface = MiuixTheme.colorScheme.onSurface
-    val summary = MiuixTheme.colorScheme.onSurfaceVariantSummary
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = FLUIX_ROW_MIN_HEIGHT)
-            .clickable { onClick() }
-            .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        entry.icon?.let {
-            Image(it.asImageBitmap(), contentDescription = null,
-                modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)))
-            Box(Modifier.width(12.dp))
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            if (entry.label != null) {
-                BasicText(
-                    text = entry.label,
-                    style = MiuixTheme.textStyles.body1.copy(color = onSurface),
-                )
-                BasicText(
-                    text = entry.pkg,
-                    style = MiuixTheme.textStyles.body2.copy(color = summary),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            } else {
-                BasicText(
-                    text = entry.pkg,
-                    style = MiuixTheme.textStyles.body1.copy(color = onSurface),
-                )
-            }
-        }
-        if (showState) BasicText(
-            text = if (entry.uninstalled) "用户级卸载" else "停用",
-            style = MiuixTheme.textStyles.body2.copy(color = summary),
-            modifier = Modifier.padding(start = 12.dp),
-        )
-        Icon(
-            imageVector = MiuixIcons.ChevronForward,
-            contentDescription = null,
-            // 与分类入口行同款: 在 summary 之上再压低透明度, 只作指示不抢视觉。
-            tint = summary.copy(alpha = summary.alpha * 0.6f),
-            modifier = Modifier
-                .padding(start = 12.dp)
-                .size(16.dp),
-        )
     }
 }

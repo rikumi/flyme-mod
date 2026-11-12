@@ -11,7 +11,6 @@
     <string name="ui_font_jetbrains">JetBrains Mono</string>
     <string name="ui_font_fira">Fira Code</string>
     <string name="ui_font_cascadia">Cascadia Code</string>
-    <string name="ui_system_font_zygote_hint">修改字型需重新啟動 Zygote 生效</string>
     <string name="ui_font_not_monospace">所選字型不包含等寬字型</string>
     <string name="ui_font_mount_failed">無法套用 WebView 字型，請檢查 root 授權並查看模組日誌</string>
     <string name="ui_system_font_emoji">系統 Emoji 字型</string>

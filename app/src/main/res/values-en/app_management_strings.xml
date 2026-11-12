@@ -1,0 +1,38 @@
+<resources>
+    <string name="ui_system_font_zygote_hint">Restart Zygote for font changes to take effect</string>
+<string name="app_management_select_system">Select system apps</string>
+    <string name="app_management_system_apps">System apps</string>
+    <string name="app_management_disable">Disable</string>
+    <string name="app_management_uninstall">Uninstall for user</string>
+    <string name="app_management_restore">Restore app</string>
+    <string name="app_management_success">Succeeded</string>
+    <string name="app_management_progress">%1$s…</string>
+    <string name="app_management_error">%1$s: %2$s</string>
+    <string name="app_management_action_failed">%1$s failed: %2$s</string>
+    <string name="app_management_read_disabled_failed">Failed to load disabled apps</string>
+    <string name="app_management_read_system_failed">Failed to load system apps</string>
+    <string name="app_management_refresh_failed">Failed to refresh app list</string>
+    <string name="ui_category_disabled">"Disabled apps"</string>
+    <string name="ui_back">"Back"</string>
+    <string name="ui_exported">"Exported"</string>
+    <string name="ui_export_failed">"Export failed"</string>
+    <string name="ui_no_apps_to_export">"No apps to export"</string>
+    <string name="ui_disabled_settings">"Disabled app settings"</string>
+    <string name="ui_disabled_apps">"Disabled apps"</string>
+    <string name="ui_loading">"Loading…"</string>
+    <string name="ui_no_disabled_apps">"No disabled apps or apps uninstalled for this user"</string>
+    <string name="ui_hide_in_app_management">"Hide in app management"</string>
+    <string name="ui_cannot_open_app_settings">"Cannot open settings for this app"</string>
+    <string name="ui_user_uninstalled">"Uninstalled for this user"</string>
+    <string name="ui_disabled_state">"Disabled"</string>
+    <string name="ui_no_apps">"No apps"</string>
+    <string name="ui_app_info">"App info"</string>
+    <string name="ui_disabled_apps_add_title">"Disable more apps"</string>
+    <string name="ui_disabled_apps_add_hint">"Disabling or uninstalling system apps is a high-risk operation. <annotation warning="soft_brick">Back up all data and be prepared for a soft brick</annotation>."</string>
+    <string name="ui_disabled_apps_export_title">"Export disabled apps as a script"</string>
+    <string name="ui_disabled_apps_export_hint">"Export disabled or uninstalled system apps as a reusable script. Please note:\n1. Depending on how the apps were disabled, the exported script may still require adb root.\n2. The information retrieved by the module may be inaccurate, so the script could cause system crashes or instability. <annotation warning="fresh_system">Always run it on a freshly installed system without user data</annotation>."</string>
+    <string name="ui_disabled_apps_continue">I understand the risks, continue</string>
+    <string name="app_management_exit_error">Command failed with exit code %1$d</string>
+    <string name="app_management_invalid_list">Invalid app list output: %1$s</string>
+    <string name="app_management_no_success">System did not confirm success</string>
+</resources>

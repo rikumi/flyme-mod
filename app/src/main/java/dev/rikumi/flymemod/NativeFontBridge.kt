@@ -18,6 +18,7 @@ internal object NativeFontBridge {
         val paths = linkedMapOf<String, String>()
         val selected = linkedMapOf<String, List<FontOverlayXml.Source>>()
         fun publish(prefix: String, suffix: String, bytes: ByteArray): String {
+            FontOperation.report(FontOperation.Step.PUBLISH_FONT, prefix)
             val hash = digest(bytes)
             val name = "$prefix$hash$suffix"
             if (name !in available) {
@@ -33,16 +34,46 @@ internal object NativeFontBridge {
         }
         val roles = listOf("zh" to SystemFontHooks.ZH, "latin" to SystemFontHooks.LATIN, "mono" to SystemFontHooks.MONO, "emoji" to SystemFontHooks.EMOJI)
         for ((role, key) in roles) {
-            val choice = if (key == overrideKey) requireNotNull(overrideValue) else prefs.getInt(key, if (role == "mono") -1 else 0)
+            FontOperation.report(FontOperation.Step.BUILD_CONFIG, key)
+            val choice = if (key == overrideKey) requireNotNull(overrideValue) else prefs.getInt(key, SystemFontHooks.defaultChoice(key))
             if ((role == "mono" && choice < 0) || (role == "emoji" && choice == 0)) continue
             // Rewriting the stock snapshot restores the native Flyme family for default choices.
             if ((role == "zh" || role == "latin") && choice == 0) {
                 continue
             }
             if (role == "zh" && choice != SystemFontStore.customIndex(key)) continue
-            val bytes: List<ByteArray> = if (role == "emoji") {
-                listOf(EmojiFontStore.obtain(context, choice).readBytes())
-            } else if (choice == SystemFontStore.customIndex(key)) {
+            if (role == "emoji") {
+                val file = if (choice == SystemFontStore.customIndex(key)) {
+                    if (key == overrideKey && overrideFile != null) overrideFile
+                    else File(de.filesDir, "system_fonts/$key.font")
+                } else EmojiFontStore.obtain(context, choice)
+                val digest = MessageDigest.getInstance("SHA-256")
+                FontOperation.report(FontOperation.Step.VERIFY_FONT, file.name + "\nSHA-256")
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(65536)
+                    while (true) {
+                        FontOperation.check()
+                        val count = input.read(buffer); if (count < 0) break
+                        digest.update(buffer, 0, count)
+                    }
+                }
+                val hash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+                val name = "nativefont_$hash.font"
+                if (name !in available) {
+                    FontOperation.report(FontOperation.Step.PUBLISH_FONT, name)
+                    try {
+                        ParcelFileDescriptor.AutoCloseOutputStream(service.openRemoteFile(name)).use { output ->
+                            output.channel.truncate(0); output.channel.position(0)
+                            file.inputStream().use { FontOperation.copy(it, output) }; output.fd.sync()
+                        }
+                        available += name
+                    } catch (error: Exception) { runCatching { service.deleteRemoteFile(name) }; throw error }
+                }
+                paths["/system/fonts/flymemod/$hash.ttf"] = name
+                selected[role] = listOf(FontOverlayXml.Source("flymemod/$hash.ttf", FontFileInfo.read(file).filter { it.color }))
+                continue
+            }
+            val bytes: List<ByteArray> = if (choice == SystemFontStore.customIndex(key)) {
                 listOf((if (key == overrideKey && overrideFile != null) overrideFile
                     else File(de.filesDir, "system_fonts/$key.font")).readBytes())
             } else {

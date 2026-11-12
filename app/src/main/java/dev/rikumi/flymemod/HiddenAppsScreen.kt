@@ -237,6 +237,7 @@ private fun HiddenAppPages(context: Context, entries: List<HiddenAppEntry>, modi
     val persist by rememberUpdatedState(onOrder)
     fun cancelDrag() {
         held = null
+        menuPackage = null
         moved = false
         ordered = entries
         gestureVersion++
@@ -301,7 +302,7 @@ private fun HiddenAppPages(context: Context, entries: List<HiddenAppEntry>, modi
                             moved = false
                             pointer = position
                             origin = position
-                            menuPackage = null
+                            menuPackage = held?.pkg
                             val index = ordered.indexOfFirst { it.pkg == held?.pkg } % 12
                             grab = position - Offset((index % 3) * gridSize.width / 3f,
                                 (index / 3) * gridSize.height / 4f)
@@ -310,7 +311,10 @@ private fun HiddenAppPages(context: Context, entries: List<HiddenAppEntry>, modi
                             if (held != null) {
                                 change.consume()
                                 pointer = change.position
-                                if (!moved && (pointer - origin).getDistance() > viewConfiguration.touchSlop) moved = true
+                                if (!moved && (pointer - origin).getDistance() >= viewConfiguration.touchSlop) {
+                                    menuPackage = null
+                                    moved = true
+                                }
                                 if (moved && !pages.isScrollInProgress) insertAtPointer()
                             }
                         },
@@ -318,9 +322,7 @@ private fun HiddenAppPages(context: Context, entries: List<HiddenAppEntry>, modi
                             val app = held
                             if (moved) insertAtPointer()
                             held = null
-                            if (app != null) {
-                                if (moved) persist(ordered.map { it.pkg }) else menuPackage = app.pkg
-                            }
+                            if (app != null && moved) persist(ordered.map { it.pkg })
                             moved = false
                         },
                         onDragCancel = { if (held != null) cancelDrag() })
@@ -337,6 +339,7 @@ private fun HiddenAppPages(context: Context, entries: List<HiddenAppEntry>, modi
                                             HiddenAppIcon(context, app, metrics,
                                                 modifier = Modifier.alpha(if (moved && held?.pkg == app.pkg) 0f else 1f),
                                                 expanded = menuPackage == app.pkg,
+                                                menuFocusable = held?.pkg != app.pkg,
                                                 onDismiss = { menuPackage = null }, onRemove = { onRemove(app.pkg) })
                                         }
                                     }
@@ -370,7 +373,8 @@ private data class HiddenFolderLayout(val iconSize: Float, val textSize: Float, 
 
 @Composable
 private fun HiddenAppIcon(context: Context, app: HiddenAppEntry, layout: HiddenFolderLayout,
-    modifier: Modifier = Modifier, expanded: Boolean = false, onDismiss: () -> Unit = {}, onRemove: () -> Unit) {
+    modifier: Modifier = Modifier, expanded: Boolean = false, menuFocusable: Boolean = true,
+    onDismiss: () -> Unit = {}, onRemove: () -> Unit) {
     val textColor = MiuixTheme.colorScheme.onSurface.toArgb()
     Box(modifier) {
 
@@ -400,8 +404,10 @@ private fun HiddenAppIcon(context: Context, app: HiddenAppEntry, layout: HiddenF
             drawable.setBounds(0, 0, size, size)
             label.setCompoundDrawables(null, drawable, null, null)
         })
+        // Keep the original touch stream while the finger is still down, so crossing
+        // the drag threshold can dismiss the menu and start reordering.
         if (expanded) Popup(alignment = Alignment.TopCenter, onDismissRequest = onDismiss,
-            properties = PopupProperties(focusable = true)) {
+            properties = PopupProperties(focusable = menuFocusable)) {
             val shape = RoundedCornerShape(12.dp)
             Column(Modifier.width(160.dp).shadow(8.dp, shape)
                 .background(if (isSystemInDarkTheme()) FLUIX_POPUP_DARK else FLUIX_POPUP_LIGHT, shape).clip(shape)) {

@@ -581,6 +581,7 @@ internal fun FluixCategoryRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    colorosIcon: Boolean = false,
 ) {
     val onSurface = MiuixTheme.colorScheme.onSurface
     val summary = MiuixTheme.colorScheme.onSurfaceVariantSummary
@@ -605,7 +606,7 @@ internal fun FluixCategoryRow(
                 painter = painterResource(icon),
                 contentDescription = null,
                 colorFilter = ColorFilter.tint(iconForeground),
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(if (colorosIcon) 22.dp else 32.dp),
             )
         }
         Column(modifier = Modifier.weight(1f).padding(start = FLUIX_CATEGORY_ICON_GAP)) {
@@ -940,6 +941,7 @@ internal fun FluixDropdownPreference(
     title: String,
     options: List<String>,
     selected: Int,
+    subtitle: String? = null,
     onSelected: (Int) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -949,11 +951,11 @@ internal fun FluixDropdownPreference(
             .padding(horizontal = FLUIX_ROW_HPADDING, vertical = FLUIX_ROW_VPADDING),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            BasicText(
-                text = title,
-                style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
-                modifier = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                BasicText(title, style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface))
+                if (subtitle != null) BasicText(subtitle,
+                    style = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurfaceVariantSummary))
+            }
             BasicText(
                 text = options[selected] + " ▾",
                 style = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurfaceVariantSummary),
@@ -1137,6 +1139,18 @@ fun FluixActionMenu(
 fun FluixConfirmDialog(
     title: String,
     text: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    confirmLabel: String = "确定",
+    dismissLabel: String = "取消",
+) {
+    FluixConfirmDialog(title, androidx.compose.ui.text.AnnotatedString(text), onConfirm, onDismiss, confirmLabel, dismissLabel)
+}
+
+@Composable
+fun FluixConfirmDialog(
+    title: String,
+    text: androidx.compose.ui.text.AnnotatedString,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     confirmLabel: String = "确定",

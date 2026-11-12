@@ -1,0 +1,38 @@
+<resources>
+    <string name="ui_system_font_zygote_hint">修改字型需重新啟動 Zygote 生效</string>
+<string name="app_management_select_system">選擇系統應用程式</string>
+    <string name="app_management_system_apps">系統應用程式</string>
+    <string name="app_management_disable">停用</string>
+    <string name="app_management_uninstall">用戶級卸載</string>
+    <string name="app_management_restore">取消停用</string>
+    <string name="app_management_success">成功</string>
+    <string name="app_management_progress">%1$s…</string>
+    <string name="app_management_error">%1$s：%2$s</string>
+    <string name="app_management_action_failed">%1$s失敗：%2$s</string>
+    <string name="app_management_read_disabled_failed">讀取已停用應用程式失敗</string>
+    <string name="app_management_read_system_failed">讀取系統應用程式失敗</string>
+    <string name="app_management_refresh_failed">重新整理清單失敗</string>
+    <string name="ui_category_disabled">"停用應用程式"</string>
+    <string name="ui_back">"返回"</string>
+    <string name="ui_exported">"已導出"</string>
+    <string name="ui_export_failed">"導出失敗"</string>
+    <string name="ui_no_apps_to_export">"暫無可導出的應用程式"</string>
+    <string name="ui_disabled_settings">"停用應用程式設定"</string>
+    <string name="ui_disabled_apps">"已停用的應用程式"</string>
+    <string name="ui_loading">"載入中…"</string>
+    <string name="ui_no_disabled_apps">"無已停用或用戶級卸載的應用程式"</string>
+    <string name="ui_hide_in_app_management">"在應用程式管理中隱藏"</string>
+    <string name="ui_cannot_open_app_settings">"無法打開該應用程式的設定頁"</string>
+    <string name="ui_user_uninstalled">"用戶級卸載"</string>
+    <string name="ui_disabled_state">"停用"</string>
+    <string name="ui_no_apps">"暫無應用程式"</string>
+    <string name="ui_app_info">"應用程式資訊"</string>
+    <string name="ui_disabled_apps_add_title">"新增停用應用程式"</string>
+    <string name="ui_disabled_apps_add_hint">"停用或卸載系統應用程式為高危操作。<annotation warning="soft_brick">請務必備份所有資料並做好系統無法正常啟動（軟變磚）的準備</annotation>。"</string>
+    <string name="ui_disabled_apps_export_title">"導出已停用應用程式為腳本"</string>
+    <string name="ui_disabled_apps_export_hint">"將已停用或卸載的系統應用程式導出成腳本方便重複執行，請注意：\n1. 取決於停用應用程式的途徑，導出的腳本仍然可能需要 adb root；\n2. 模組獲取的資訊可能並不準確，因此腳本可能會導致系統崩潰或不穩定。<annotation warning="fresh_system">請始終在無資料的全新系統上執行腳本</annotation>。"</string>
+    <string name="ui_disabled_apps_continue">已了解風險，繼續</string>
+    <string name="app_management_exit_error">命令執行失敗，退出碼：%1$d</string>
+    <string name="app_management_invalid_list">應用程式清單輸出無效：%1$s</string>
+    <string name="app_management_no_success">系統未傳回操作成功結果</string>
+</resources>

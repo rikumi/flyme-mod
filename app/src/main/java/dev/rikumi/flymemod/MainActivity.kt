@@ -44,6 +44,7 @@ import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 
+
 private const val PAGE_TRANSITION_MS = 240
 private const val DISABLED_APPS_ID = "disabled_apps"
 
@@ -52,6 +53,7 @@ private data class Category(
     val title: String,
     val icon: Int,
     val iconForeground: Color,
+    val colorosIcon: Boolean = false,
 )
 
 private object SettingsHomeColors {
@@ -67,21 +69,21 @@ private object SettingsHomeColors {
 
 private val CATEGORY_GROUPS: List<List<Category>> = listOf(
     listOf(
-        Category("desktop", "桌面", R.drawable.ic_flyme_home_apps, SettingsHomeColors.blueForeground),
-        Category("quick_settings", "控制中心", R.drawable.ic_flyme_home_wireless, SettingsHomeColors.cyanForeground),
-        Category("notification", "通知中心与状态栏", R.drawable.ic_flyme_home_notifications, SettingsHomeColors.cyanForeground),
-        Category("lockscreen", "锁屏", R.drawable.ic_flyme_home_security, SettingsHomeColors.greenForeground),
+        Category("desktop", "桌面", R.drawable.ic_coloros_category_grid_view, SettingsHomeColors.blueForeground, true),
+        Category("quick_settings", "控制中心", R.drawable.ic_coloros_category_tune, SettingsHomeColors.cyanForeground, true),
+        Category("notification", "通知中心与状态栏", R.drawable.ic_coloros_category_community, SettingsHomeColors.cyanForeground, true),
+        Category("lockscreen", "锁屏", R.drawable.ic_coloros_category_lock, SettingsHomeColors.greenForeground, true),
     ),
     listOf(
-        Category("hidden_apps", "隐藏应用", R.drawable.ic_flyme_home_apps, SettingsHomeColors.yellowForeground),
-        Category(DISABLED_APPS_ID, "停用应用", R.drawable.ic_flyme_home_disabled, SettingsHomeColors.yellowForeground),
-        Category("navigation", "导航与手势", R.drawable.ic_flyme_home_gestures, SettingsHomeColors.yellowForeground),
-        Category("system_fonts", "系统字体", R.drawable.ic_flyme_home_fonts, SettingsHomeColors.yellowForeground),
+        Category("hidden_apps", "隐藏应用", R.drawable.ic_coloros_category_hide, SettingsHomeColors.yellowForeground, true),
+        Category(DISABLED_APPS_ID, "停用应用", R.drawable.ic_coloros_category_blocklist, SettingsHomeColors.yellowForeground, true),
+        Category("navigation", "导航与手势", R.drawable.ic_coloros_category_backup, SettingsHomeColors.yellowForeground, true),
     ),
     listOf(
-        Category("system_cleanup", "系统净化", R.drawable.ic_flyme_home_cleaner, SettingsHomeColors.orangeForeground),
-        Category("camera", "相机与杂项", R.drawable.ic_flyme_home_install, SettingsHomeColors.orangeForeground),
-        Category("storage", "存储管理", R.drawable.ic_flyme_home_storage, SettingsHomeColors.redForeground),
+        Category("system_cleanup", "系统净化", R.drawable.ic_coloros_category_tune, SettingsHomeColors.orangeForeground, true),
+        Category("system_fonts", "系统字体", R.drawable.ic_coloros_category_translate, SettingsHomeColors.orangeForeground, true),
+        Category("hidden_notifications", "隐藏通知", R.drawable.ic_coloros_category_hide, SettingsHomeColors.redForeground, true),
+        Category("storage", "杂项设置", R.drawable.ic_coloros_category_settings, SettingsHomeColors.redForeground, true),
     ),
 )
 
@@ -175,9 +177,10 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun SettingsScreen(requestedPage: String?, pageRequest: Int, resumeRequest: Int, launcherEntry: Boolean, onReturnToLauncher: () -> Unit) {
-    var openCategoryId by remember { mutableStateOf(requestedPage?.takeIf { page -> CATEGORIES.any { it.id == page } }) }
+    val requestedCategory = if (requestedPage == "camera") "storage" else requestedPage
+    var openCategoryId by remember { mutableStateOf(requestedCategory?.takeIf { page -> CATEGORIES.any { it.id == page } }) }
     LaunchedEffect(pageRequest) {
-        if (requestedPage != null && CATEGORIES.any { it.id == requestedPage }) openCategoryId = requestedPage
+        if (requestedCategory != null && CATEGORIES.any { it.id == requestedCategory }) openCategoryId = requestedCategory
     }
     val onPageBack: () -> Unit = {
         if (launcherEntry && openCategoryId == "hidden_apps") onReturnToLauncher()
@@ -206,6 +209,8 @@ private fun SettingsScreen(requestedPage: String?, pageRequest: Int, resumeReque
         val category = CATEGORIES.firstOrNull { it.id == pageId }
         if (category == null) {
             HomeScreen(resumeRequest, onOpenCategory = { openCategoryId = it })
+        } else if (category.id == "hidden_notifications") {
+            HiddenNotificationsScreen(LocalContext.current, onBack = { openCategoryId = null })
         } else if (category.id == DISABLED_APPS_ID) {
             DisabledAppsScreen(LocalContext.current, onBack = { openCategoryId = null })
         } else if (category.id == "hidden_apps") {
@@ -244,6 +249,7 @@ private fun HomeScreen(resumeRequest: Int, onOpenCategory: (String) -> Unit) {
                         FluixCategoryRow(
                             icon = category.icon,
                             iconForeground = category.iconForeground,
+                            colorosIcon = category.colorosIcon,
                             title = category.title,
                             onClick = { onOpenCategory(category.id) },
                         )

@@ -14,6 +14,8 @@ public final class SystemFontHooks {
     public static final String PREFS = "system_fonts";
     public static final String ZH = "system_font_zh", LATIN = "system_font_latin", MONO = "system_font_mono";
     public static final String EMOJI = "system_font_emoji";
+    public static final int DEFAULT_EMOJI = 7, CUSTOM_EMOJI = 8;
+    public static int defaultChoice(String key) { return MONO.equals(key) ? -1 : EMOJI.equals(key) ? DEFAULT_EMOJI : 0; }
     private static final String FONT_ROOT = "/data/fonts/files";
     private static final String CACHE_NAME = "flyme-mod";
     private static XposedInit module;
@@ -100,11 +102,11 @@ public final class SystemFontHooks {
 
     private static synchronized FontFamily family(String slot, String language, int variant, boolean defaultFallback) {
         try {
-            int choice = prefs.getInt(slot, slot.equals(MONO) ? -1 : 0);
+            int choice = prefs.getInt(slot, defaultChoice(slot));
             if ((slot.equals(MONO) && choice < 0) || (!slot.equals(MONO) && choice == 0)) return null;
-            if (slot.equals(ZH) && choice != 2) return null;
             String[] sources;
             int custom = slot.equals(ZH) ? 2 : slot.equals(LATIN) ? 3 : 4;
+            if (slot.equals(ZH) && choice != 2) return null;
             if (slot.equals(EMOJI) || choice == custom) {
                 String remote = prefs.getString(slot + "_file", "");
                 if (remote.isEmpty()) return null;
@@ -125,6 +127,7 @@ public final class SystemFontHooks {
                 File file = materialize(source, !slot.equals(EMOJI));
                 List<FontFileInfo.Face> faces = FontFileInfo.read(file);
                 if (slot.equals(MONO)) faces.removeIf(face -> !face.monospace);
+                if (slot.equals(EMOJI)) faces.removeIf(face -> !face.color);
                 if (faces.isEmpty()) throw new IOException("No monospace face in selected font");
                 fontFiles.add(file); metadata.add(faces);
             }
@@ -199,6 +202,7 @@ public final class SystemFontHooks {
     }
 
     private static InputStream open(String source) throws IOException {
+        if (source.startsWith("system:")) return new FileInputStream(source.substring(7));
         if (source.startsWith("remote:")) {
             return new ParcelFileDescriptor.AutoCloseInputStream(module.openRemoteFile(source.substring(7)));
         }
