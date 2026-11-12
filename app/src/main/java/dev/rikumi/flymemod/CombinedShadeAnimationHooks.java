@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.os.SystemClock;
+import android.os.Trace;
 import android.view.View;
 import android.view.MotionEvent;
 import android.view.animation.DecelerateInterpolator;
@@ -123,7 +124,10 @@ final class CombinedShadeAnimationHooks {
         try {
             // Remove the old owner before cancel() delivers its synchronous end callbacks.
             Gesture previous = gestures.remove(quickSettings);
-            if (previous != null && previous.positionAnimator != null) previous.positionAnimator.cancel();
+            if (previous != null) {
+                if (previous.frame != null) previous.frame.cancel();
+                if (previous.positionAnimator != null) previous.positionAnimator.cancel();
+            }
             Object panel = lazyValue.invoke(panelLazy.get(quickSettings));
             cancel(expand, panel);
             cancel(collapse, panel);
@@ -230,6 +234,7 @@ final class CombinedShadeAnimationHooks {
             settings.accept(((View) view.get(panel)).getContext());
             if (secondaryOwner.test(qs.get(panel))) return chain.proceed();
             Gesture gesture = gestures.get(qs.get(panel));
+            if (gesture != null && gesture.frame != null) gesture.frame.flush();
             if (gesture != null && gesture.releasedByFling && gesture.expanding != (Boolean) chain.getArg(1)) {
 
                 ValueAnimator previousAnimator = gesture.positionAnimator;
@@ -321,7 +326,10 @@ final class CombinedShadeAnimationHooks {
                     && (Boolean) tracking.invoke(panel) && isCombined(panel)
                     && !filter.getBoolean(panel)) return chain.proceed();
             Gesture previous = gestures.remove(qs.get(panel));
-            if (previous != null && previous.positionAnimator != null) previous.positionAnimator.cancel();
+            if (previous != null) {
+                if (previous.frame != null) previous.frame.cancel();
+                if (previous.positionAnimator != null) previous.positionAnimator.cancel();
+            }
             if (enabled.getAsBoolean() && isCombined(panel)
                     && !filter.getBoolean(panel)) {
 
@@ -370,29 +378,16 @@ final class CombinedShadeAnimationHooks {
                 }
                 gestures.put(quickSettings, gesture);
             }
-            if (gesture.originFixed) {
-                updateDismissal(panel, quickSettings, gesture);
-                return null;
-            }
-            if (gesture.dismissal) {
-                updateDismissal(panel, quickSettings, gesture);
-                return null;
-            }
-            float progress = Math.max(0f, Math.min(1f, fraction.getFloat(panel)));
-            float height = ((Number) maxHeight.invoke(panel)).floatValue();
-            float damped = progress <= REVEAL_FRACTION ? 0f
-                    : ((Number) damping.invoke(null, progress - REVEAL_FRACTION)).floatValue();
-            gesture.translation = revealTranslation(progress, height, damped);
-            gesture.alpha = limitOpeningAlpha(gesture, revealAlpha(progress));
-            // Native translation distributes movement across header, tiles and notifications.
-            writeTranslation(quickSettings, gesture.translation);
-            alpha.invoke(panel, gesture.alpha);
+            // MotionEvent belongs to the dispatch stack and cannot be retained for a frame callback.
+            if (gesture.originFixed || gesture.dismissal) captureFingerDistance(panel, gesture);
+            requestDragFrame(panel, quickSettings, gesture);
             return null;
         }, float.class);
         installer.hook(QS, "startQsHeaderAnimator", chain -> {
             Object quickSettings = chain.getThisObject();
             if (secondaryOwner.test(quickSettings)) return chain.proceed();
             Gesture gesture = gestures.get(quickSettings);
+            if (gesture != null && gesture.frame != null) gesture.frame.flush();
             if (enabled.getAsBoolean() && gesture != null && (gesture.originFixed || gesture.minimumDuration)) {
 
                 writeTranslation(quickSettings, gesture.translation);
@@ -414,17 +409,53 @@ final class CombinedShadeAnimationHooks {
         }, float.class);
     }
 
+    private void captureFingerDistance(Object panel, Gesture gesture) throws IllegalAccessException {
+        MotionEvent event = touchEvent.get();
+        if (event == null || event.getActionMasked() != MotionEvent.ACTION_MOVE) return;
+        int index = event.findPointerIndex(pointer.getInt(panel));
+        gesture.fingerDistance = event.getY(Math.max(0, index)) - initialY.getFloat(panel);
+    }
+
+    private void requestDragFrame(Object panel, Object quickSettings, Gesture gesture) throws IllegalAccessException {
+        if (gesture.frame == null) {
+            View host = (View) view.get(panel);
+            // The map and queued frame must not keep a discarded QS/controller alive.
+            WeakReference<Object> owner = new WeakReference<>(quickSettings);
+            gesture.frame = new ShadeFrameCallback(host::postOnAnimation, host::removeCallbacks, () -> {
+                Object currentPanel = gesture.panel.get(), currentQs = owner.get();
+                if (!host.isAttachedToWindow() || currentPanel == null || currentQs == null
+                        || gestures.get(currentQs) != gesture) return;
+                Trace.beginSection("FlymeMod#mergedDrag");
+                try {
+                    if (!enabled.getAsBoolean() || gesture.released || secondaryOwner.test(currentQs)
+                            || filter.getBoolean(currentPanel) || !isCombined(currentPanel)) return;
+                    if (gesture.originFixed || gesture.dismissal) {
+                        updateDismissal(currentPanel, currentQs, gesture);
+                    } else {
+                        float progress = Math.max(0f, Math.min(1f, fraction.getFloat(currentPanel)));
+                        float height = ((Number) maxHeight.invoke(currentPanel)).floatValue();
+                        float damped = progress <= REVEAL_FRACTION ? 0f
+                                : ((Number) damping.invoke(null, progress - REVEAL_FRACTION)).floatValue();
+                        gesture.translation = revealTranslation(progress, height, damped);
+                        gesture.alpha = limitOpeningAlpha(gesture, revealAlpha(progress));
+                        writeTranslation(currentQs, gesture.translation);
+                        alpha.invoke(currentPanel, gesture.alpha);
+                    }
+                } catch (ReflectiveOperationException error) {
+                    log.accept("Cannot render merged shade drag", error);
+                } finally { Trace.endSection(); }
+            });
+        }
+        gesture.frame.request();
+    }
+
     private void updateDismissal(Object panel, Object quickSettings, Gesture gesture)
             throws ReflectiveOperationException {
         float progress = fraction.getFloat(panel);
         float height = ((Number) maxHeight.invoke(panel)).floatValue();
         if (!gesture.released) {
             if (gesture.hidden) return;
-            MotionEvent event = touchEvent.get();
-            if (event != null && event.getActionMasked() == MotionEvent.ACTION_MOVE) {
-                int index = event.findPointerIndex(pointer.getInt(panel));
-                gesture.fingerDistance = event.getY(Math.max(0, index)) - initialY.getFloat(panel);
-            }
+            captureFingerDistance(panel, gesture);
 
             float distance = DISMISSAL_DISTANCE_DP * ((View) view.get(panel)).getResources()
                     .getDisplayMetrics().density;
@@ -494,7 +525,10 @@ final class CombinedShadeAnimationHooks {
     private void resetReveal(Object panel) throws ReflectiveOperationException {
         Object quickSettings = qs.get(panel);
         Gesture previous = gestures.remove(quickSettings);
-        if (previous != null && previous.positionAnimator != null) previous.positionAnimator.cancel();
+        if (previous != null) {
+            if (previous.frame != null) previous.frame.cancel();
+            if (previous.positionAnimator != null) previous.positionAnimator.cancel();
+        }
         cancel(expand, panel);
         cancel(collapse, panel);
         stopSpring(quickSettings);
@@ -642,6 +676,7 @@ final class CombinedShadeAnimationHooks {
     private static final class Gesture {
         WeakReference<Object> panel = new WeakReference<>(null);
         ValueAnimator positionAnimator;
+        ShadeFrameCallback frame;
         float translation, alpha, releaseFraction, releaseTranslation, releaseAlpha, fingerDistance, referenceDistance;
         long openingStarted, openingRemaining;
         boolean released, releasedByFling, dismissal, settling, expanding, originFixed, nativeFinished, minimumDuration, hidden;

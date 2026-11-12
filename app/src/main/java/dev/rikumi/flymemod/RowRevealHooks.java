@@ -634,8 +634,9 @@ final class RowRevealHooks {
         watch(view, state);
         for (View parent = view.getParent() instanceof View p ? p : null;
              parent != null; parent = parent.getParent() instanceof View p ? p : null) {
-            if (parent instanceof ViewGroup group) {
-                state.clips.computeIfAbsent(group, Clip::new);
+            if (parent instanceof ViewGroup group && !state.clips.containsKey(group)) {
+                // Shared ancestors need one snapshot/write, not one per tile.
+                state.clips.put(group, new Clip(group));
                 group.setClipChildren(false);
                 group.setClipToPadding(false);
                 group.setClipToOutline(false);
@@ -793,6 +794,8 @@ final class RowRevealHooks {
     }
 
     private static void restore(State state) {
+        if (!state.animating && state.tiles.isEmpty() && state.draws.isEmpty()
+                && state.layouts.isEmpty() && state.notifications == null) return;
         for (Map.Entry<View, View.OnLayoutChangeListener> entry : state.layouts.entrySet()) {
             entry.getKey().removeOnLayoutChangeListener(entry.getValue());
         }
