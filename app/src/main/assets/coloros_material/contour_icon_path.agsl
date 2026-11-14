@@ -2,6 +2,7 @@ uniform float uGlowDepth;
 uniform float uGlowAlpha;
 uniform float3 uGlowGeometry;
 uniform shader uMask;
+uniform float uMaskDepth;
 uniform float2 u_size; uniform float u_corner; uniform float u_weight;
 layout(color) uniform vec4 uColor;
 uniform float uRatio;
@@ -50,7 +51,7 @@ GradientStrokeResult gradientStrokeColorWithRatio(float2 fragCoord, GradientInpu
     float distance_near = mix(dis_point+dis_pos,abs(dis_point-dis_pos),step(0.,flag));
     distance_near=min(2.*distanceAll-distance_near,distance_near);
     float corner = min(inputParams.corner, min(halfSize.x, halfSize.y));
-float rectSdf = -uMask.eval(fragCoord).r * max(uNearLineParams[0], uFarLineParams[0]);
+float rectSdf = -uMask.eval(fragCoord).r * uMaskDepth;
 LineParams nearLineParams = LineParams(uNearLineParams[0], uNearLineParams[1], float2(uNearLineParams[2], uNearLineParams[3]), float2(uNearLineParams[4], uNearLineParams[5]));
    LineParams farLineParams = LineParams(uFarLineParams[0], uFarLineParams[1], float2(uFarLineParams[2], uFarLineParams[3]), float2(uFarLineParams[4], uFarLineParams[5]));
    float lineNearAlpha = getLineAlpha(nearLineParams, rectSdf, u_fadeDistance, distance_near);

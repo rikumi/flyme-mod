@@ -203,7 +203,7 @@ final class LauncherContourHooks {
                 LauncherContourRenderer renderer = renderer(host);
                 Bitmap mask = renderer.pathMask(host, path, host.getWidth(), host.getHeight());
 
-                renderer.draw(host, canvas, new RectF(0, 0, host.getWidth(), host.getHeight()), 0f, 1f, mask);
+                renderer.drawIconContour(host, canvas, new RectF(0, 0, host.getWidth(), host.getHeight()), 1f, mask);
             } catch (Exception | LinkageError error) { report(host, error); }
             return result;
         }, Canvas.class);

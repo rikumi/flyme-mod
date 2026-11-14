@@ -64,12 +64,18 @@ final class LauncherContourRenderer {
         canvas.translate(bounds.left, bounds.top);
         try { canvas.drawRect(0, 0, bounds.width(), bounds.height(), iconShadePaint); }
         finally { canvas.restoreToCount(saved); }
-        draw(context, canvas, bounds, 0f, alpha, mask);
+        draw(context, canvas, bounds, 0f, alpha, mask, true);
     }
     void draw(View view, Canvas canvas, RectF bounds, float radius, float alpha, Bitmap mask) {
         draw(view.getContext(),canvas,bounds,radius,alpha,mask);
     }
+    void drawIconContour(View view, Canvas canvas, RectF bounds, float alpha, Bitmap mask) {
+        draw(view.getContext(), canvas, bounds, 0f, alpha, mask, true);
+    }
     void draw(Context context, Canvas canvas, RectF bounds, float radius, float alpha, Bitmap mask) {
+        draw(context, canvas, bounds, radius, alpha, mask, false);
+    }
+    private void draw(Context context, Canvas canvas, RectF bounds, float radius, float alpha, Bitmap mask, boolean iconStroke) {
         if (bounds.isEmpty() || alpha <= 0) return;
         RuntimeShader shader = mask == null ? round : nativeCurve;
         if (mask != null) {
@@ -92,19 +98,21 @@ final class LauncherContourRenderer {
                 == Configuration.UI_MODE_NIGHT_YES;
         UniformState state=mask==null?roundUniforms:nativeUniforms;
         if(!state.ready || state.width!=width || state.height!=height || state.radius!=radius
-                || state.coverage!=coverageCorner || state.density!=density || state.night!=night) {
+                || state.coverage!=coverageCorner || state.density!=density || state.night!=night || state.iconStroke!=iconStroke) {
             shader.setFloatUniform("u_size", width, height);
             shader.setFloatUniform("u_fadeDistance", ContourLightGeometry.fadeDistance(width, height, coverageCorner, false));
             shader.setFloatUniform("uRatio", .5f + width/(4f*(width+height)));
             shader.setFloatUniform("u_corner", radius); shader.setFloatUniform("u_weight", .2f);
             shader.setColorUniform("uColor", Color.WHITE);
-            near[0] = far[0] = 2f*density;
-            near[1] = .4f * (night ? .4f : 1f);
-            far[1] = .2f * (night ? .4f : 1f);
+            // Masks retain their 2dp distance encoding; only icon strokes become thinner.
+            if (mask != null) shader.setFloatUniform("uMaskDepth", 2f*density);
+            near[0] = far[0] = (iconStroke ? 1.2f : 2f)*density;
+            near[1] = (iconStroke ? .65f : .4f) * (night ? .4f : 1f);
+            far[1] = (iconStroke ? .35f : .2f) * (night ? .4f : 1f);
             ContourInnerLight.configure(shader,density,night);
             shader.setFloatUniform("uNearLineParams",near); shader.setFloatUniform("uFarLineParams",far);
             state.width=width; state.height=height; state.radius=radius; state.coverage=coverageCorner;
-            state.density=density; state.night=night; state.ready=true;
+            state.density=density; state.night=night; state.iconStroke=iconStroke; state.ready=true;
         }
         paint.setShader(shader); paint.setAlpha(Math.round(255f*Math.max(0f, Math.min(1f, alpha))));
         int save = canvas.save(); canvas.translate(bounds.left, bounds.top);
@@ -131,7 +139,7 @@ final class LauncherContourRenderer {
         return Math.min(width/2f,coverageHeight*height);
     }
     private static final class UniformState {
-        boolean ready, night;
+        boolean ready, night, iconStroke;
         float width,height,radius,coverage,density;
     }
     Bitmap pathMask(View view, Path path, int width, int height) {
