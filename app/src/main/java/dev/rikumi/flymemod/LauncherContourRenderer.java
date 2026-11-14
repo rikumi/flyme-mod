@@ -15,6 +15,10 @@ final class LauncherContourRenderer {
     private final Matrix inputScale = new Matrix();
     private float inputWidth, inputHeight;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint iconShadePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private Bitmap shadedMask;
+    private int shadedGeneration;
+    private float shadedWidth, shadedHeight;
     private final float[] near = {0, .4f, .2f, .2f, 0, 0};
     private final float[] far = {0, .2f, .2f, .2f, 0, 0};
     private Bitmap pathMask;
@@ -36,6 +40,31 @@ final class LauncherContourRenderer {
     }
     void drawMenu(View view, Canvas canvas, RectF bounds, float radius) {
         draw(view, canvas, bounds, radius, 1f, null);
+    }
+    void drawIcon(View view, Canvas canvas, RectF bounds, float alpha, Bitmap mask) {
+        drawIcon(view.getContext(), canvas, bounds, alpha, mask);
+    }
+    void drawIcon(Context context, Canvas canvas, RectF bounds, float alpha, Bitmap mask) {
+        if (bounds.isEmpty() || alpha <= 0 || mask == null) return;
+        if (shadedMask != mask || shadedGeneration != mask.getGenerationId()
+                || shadedWidth != bounds.width() || shadedHeight != bounds.height()) {
+            BitmapShader silhouette = new BitmapShader(mask, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            Matrix scale = new Matrix();
+            scale.setScale(bounds.width()/mask.getWidth(), bounds.height()/mask.getHeight());
+            silhouette.setLocalMatrix(scale);
+            Shader gradient = new LinearGradient(0, 0, 0, bounds.height(),
+                    Color.TRANSPARENT, 0x1f000000, Shader.TileMode.CLAMP);
+            // Mask the gradient to the icon, including transparent holes, before drawing its light.
+            iconShadePaint.setShader(new ComposeShader(gradient, silhouette, BlendMode.DST_IN));
+            shadedMask = mask; shadedGeneration = mask.getGenerationId();
+            shadedWidth = bounds.width(); shadedHeight = bounds.height();
+        }
+        iconShadePaint.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, alpha))));
+        int saved = canvas.save();
+        canvas.translate(bounds.left, bounds.top);
+        try { canvas.drawRect(0, 0, bounds.width(), bounds.height(), iconShadePaint); }
+        finally { canvas.restoreToCount(saved); }
+        draw(context, canvas, bounds, 0f, alpha, mask);
     }
     void draw(View view, Canvas canvas, RectF bounds, float radius, float alpha, Bitmap mask) {
         draw(view.getContext(),canvas,bounds,radius,alpha,mask);

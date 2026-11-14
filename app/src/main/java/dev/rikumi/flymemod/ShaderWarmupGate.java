@@ -13,6 +13,12 @@ final class ShaderWarmupGate {
         return centerFraction <= 0f && (barState == 1 || (barState == 0 && panelFraction <= 0f));
     }
 
+    // Called only from the completed listener of a transaction merged with a real draw.
+    // Devices without present-fence support legitimately return an empty SyncFence.
+    static boolean frameCompleted(boolean hasFence, boolean fenceSignaled) {
+        return !hasFence || fenceSignaled;
+    }
+
     synchronized long begin() {
         ready = false;
         return ++generation;
@@ -30,4 +36,6 @@ final class ShaderWarmupGate {
     }
 
     synchronized boolean ready() { return ready; }
+
+    synchronized boolean current(long ticket) { return ticket == generation; }
 }

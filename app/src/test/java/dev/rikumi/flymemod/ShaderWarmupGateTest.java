@@ -18,6 +18,10 @@ public final class ShaderWarmupGateTest {
         check(!ShaderWarmupGate.windowIdle(0, 1f, 0f)); // Nor may pausing on the open panel.
         check(!ShaderWarmupGate.windowIdle(1, 1f, .01f));
         check(!ShaderWarmupGate.windowIdle(2, 1f, 0f));
+        check(ShaderWarmupGate.frameCompleted(true, true));
+        check(ShaderWarmupGate.frameCompleted(false, false)); // Vendor has no present-fence support.
+        check(!ShaderWarmupGate.frameCompleted(true, false)); // A real fence timed out.
+        check(ShaderWarmupGate.frameCompleted(false, true)); // Completion, not optional vendor stats, is the proof.
         ShaderWarmupGate gate = new ShaderWarmupGate();
         check(!gate.ready());
         long first = gate.begin();

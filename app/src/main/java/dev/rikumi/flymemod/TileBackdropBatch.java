@@ -2,7 +2,10 @@ package dev.rikumi.flymemod;
 
 import android.graphics.Rect;
 import android.graphics.RuntimeShader;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.view.View;
+import android.view.WindowManager;
 import android.view.SurfaceControl;
 import android.hardware.SyncFence;
 import java.time.Duration;
@@ -21,6 +24,7 @@ import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 
 final class TileBackdropBatch {
     static final int MAX_TILES = 24;
@@ -38,7 +42,30 @@ final class TileBackdropBatch {
         Thread thread = new Thread(r, "FlymeMod-shader-warmup"); thread.setDaemon(true); return thread;
     });
     private final Map<Object, Warmup> warmups = new WeakHashMap<>();
-    private final Method surfaceControl, setRegions, completed, presentFence;
+    private final ShaderWarmupCache<CompiledProgram> programs = new ShaderWarmupCache<>();
+    private BooleanSupplier requested = () -> false;
+    private Object settingsKey;
+    private int nightMode = -1;
+
+    synchronized void settingsChanged(Object settingsKey) {
+        this.settingsKey = settingsKey;
+        invalidateChangedSettings();
+    }
+
+    private void invalidateChangedSettings() {
+        if (!programs.updateSettings(java.util.Arrays.asList(settingsKey, nightMode))) return;
+        for (Warmup warmup : warmups.values()) {
+            restoreNative(warmup);
+            warmup.gate.invalidate(); warmup.phase = Phase.WAITING_IDLE;
+            warmup.prepared = null; warmup.batch = null;
+            schedule(warmup);
+        }
+        trace.accept("Backdrop compiled-shader cache invalidated by settings change");
+    }
+
+    void setRequested(BooleanSupplier requested) { this.requested = requested; }
+
+    private final Method surfaceControl, setRegions, completed, presentFence, latchTime, applyOnDraw;
     private Runnable refresh = () -> {};
     private long quietUntil;
     private boolean touching;
@@ -50,6 +77,22 @@ final class TileBackdropBatch {
     void setRefresh(Runnable refresh) { this.refresh = refresh; }
 
     void install(SignalHooks.Installer installer) {
+        installer.hook("android.view.ViewRootImpl", "setView", chain -> {
+            Object result = chain.proceed();
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) chain.getArg(1);
+            if (params.type == WindowManager.LayoutParams.TYPE_STATUS_BAR
+                    || "StatusBar".contentEquals(params.getTitle())
+                    || chain.getArg(0).getClass().getSimpleName().equals("StatusBarWindowView")) {
+                Object root = chain.getThisObject();
+                observe(root, (View) chain.getArg(0));
+                synchronized (TileBackdropBatch.this) {
+                    Warmup host = warmups.get(root);
+                    if (host != null) host.prewarmHost = true;
+                    trace.accept("Backdrop idle warmup host discovered: " + params.getTitle());
+                }
+            }
+            return result;
+        }, View.class, WindowManager.LayoutParams.class, View.class, int.class);
         installer.hook("com.android.systemui.shade.NotificationPanelViewController", "onFinishInflate", chain -> {
             Object result = chain.proceed();
             panelOwner = new WeakReference<>(chain.getThisObject());
@@ -70,6 +113,8 @@ final class TileBackdropBatch {
     }
 
     synchronized void observe(Object root, View view) {
+        int nextNight = view.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+        if (nightMode != nextNight) { nightMode = nextNight; invalidateChangedSettings(); }
         Warmup warmup = warmups.get(root);
         if (warmup == null) {
             warmup = new Warmup(root, view);
@@ -82,13 +127,48 @@ final class TileBackdropBatch {
                         Object owner = observed.root.get();
                         if (owner != null) warmups.remove(owner);
                         observed.gate.invalidate(); observed.phase = Phase.FAILED;
+                        clearPatch(observed);
                         observed.prepared = null; observed.batch = null;
                     }
                     view.removeOnAttachStateChangeListener(this);
                 }
             });
         }
+        adopt(root, warmup);
         schedule(warmup);
+        for (Warmup host : warmups.values()) if (host.prewarmHost) schedule(host);
+    }
+
+    synchronized void refreshWarmups() {
+        for (Map.Entry<Object, Warmup> entry : warmups.entrySet()) {
+            adopt(entry.getKey(), entry.getValue());
+            schedule(entry.getValue());
+        }
+    }
+
+    private void adopt(Object root, Warmup warmup) {
+        if (warmup.phase == Phase.READY || warmup.phase == Phase.PREPARING || warmup.phase == Phase.PRESENTING) return;
+        CompiledProgram program = programs.find(warmup.capacity);
+        if (program == null) return;
+        warmup.ticket = warmup.gate.begin();
+        try {
+            Batch batch = new Batch(createDrawable.invoke(root, program.shaderId), program.capacity);
+            warmup.prepared = null;
+            warmup.baseId = program.baseId; warmup.mediaId = program.mediaId;
+            warmup.batch = batch;
+            warmup.gate.presented(warmup.ticket);
+            warmup.phase = Phase.READY;
+            trace.accept("Backdrop window reused idle-compiled GPU shader: capacity=" + program.capacity);
+        } catch (ReflectiveOperationException | RuntimeException error) { fail(warmup, error); }
+    }
+
+    private static final class CompiledProgram {
+        final int capacity;
+        final long shaderId, baseId, mediaId;
+        CompiledProgram(Batch batch, Warmup warmup) {
+            capacity = batch.capacity; shaderId = batch.shaderId;
+            baseId = warmup.baseId; mediaId = warmup.mediaId;
+        }
     }
 
     private boolean windowIdle() {
@@ -103,25 +183,34 @@ final class TileBackdropBatch {
 
     private static boolean usable(View view) {
         return view.isAttachedToWindow() && view.isShown() && view.getWindowVisibility() == View.VISIBLE
-                && view.getWidth() > 4 && view.getHeight() > 16 && view.getAlpha() > 0f;
+                && view.isHardwareAccelerated() && view.getWidth() > 4 && view.getHeight() > 16 && view.getAlpha() > 0f;
     }
 
     private void schedule(Warmup warmup) {
-        if (warmup.prepared != null || warmup.scheduled || warmup.phase == Phase.PREPARING || warmup.phase == Phase.PRESENTING || warmup.phase == Phase.READY || warmup.phase == Phase.FAILED) return;
+        if (!requested.getAsBoolean() || warmup.prepared != null || warmup.scheduled || warmup.phase == Phase.PREPARING || warmup.phase == Phase.PRESENTING || warmup.phase == Phase.READY || warmup.phase == Phase.FAILED) return;
         warmup.scheduled = true;
         main.postDelayed(() -> Looper.myQueue().addIdleHandler(() -> {
             warmup.scheduled = false;
             View view = warmup.view.get();
             Object root = warmup.root.get();
-            if (warmup.phase == Phase.FAILED || view == null || root == null || !view.isAttachedToWindow()) return false;
+            if (!requested.getAsBoolean() || warmup.phase != Phase.WAITING_IDLE || view == null || root == null || !view.isAttachedToWindow()) return false;
             if (!ShaderWarmupGate.canCompile(usable(view) && windowIdle(), touching, android.os.SystemClock.uptimeMillis(), quietUntil)) {
+                String reason = "visible=" + usable(view) + ", windowIdle=" + windowIdle() + ", touching=" + touching;
+                if (!reason.equals(warmup.waitingReason)) {
+                    warmup.waitingReason = reason;
+                    trace.accept("Backdrop warmup waiting: " + reason);
+                }
                 schedule(warmup); return false;
             }
+            warmup.waitingReason = null;
             warmup.ticket = warmup.gate.begin();
+            long ticket = warmup.ticket, revision = programs.generation();
+            int capacity = warmup.capacity;
             warmup.phase = Phase.PREPARING;
+            trace.accept("Backdrop idle shader preparation started: capacity=" + warmup.capacity);
             compiler.execute(() -> {
                 try {
-                    String source = shader(warmup.capacity);
+                    String source = shader(capacity);
                     new RuntimeShader(source);
                     if (warmup.baseId == 0) {
                         warmup.baseId = (Long) createEffect.invoke(root, TileBackdropHooks.SHADER);
@@ -131,22 +220,23 @@ final class TileBackdropBatch {
                     long shaderId = (Long) createEffect.invoke(root, source);
                     if (shaderId == 0 || warmup.baseId == 0 || warmup.mediaId == 0)
                         throw new IllegalStateException("Flyme rejected idle backdrop shader");
-                    Batch batch = new Batch(createDrawable.invoke(root, shaderId), warmup.capacity);
-                    main.post(() -> submit(warmup, batch));
-                } catch (ReflectiveOperationException | RuntimeException error) { fail(warmup, error); }
+                    Batch batch = new Batch(createDrawable.invoke(root, shaderId), capacity);
+                    main.post(() -> submit(warmup, batch, ticket, revision));
+                } catch (ReflectiveOperationException | RuntimeException error) { fail(warmup, error, ticket); }
             });
             return false;
         }), 1000);
     }
 
-    private void submit(Warmup warmup, Batch batch) {
+    private void submit(Warmup warmup, Batch batch, long ticket, long revision) {
         View view = warmup.view.get(); Object root = warmup.root.get();
-        if (warmup.phase == Phase.FAILED || view == null || root == null) return;
+        if (!warmup.gate.current(ticket) || !programs.current(revision)
+                || warmup.phase == Phase.FAILED || view == null || root == null) return;
         if (!ShaderWarmupGate.canCompile(usable(view) && windowIdle(), touching, android.os.SystemClock.uptimeMillis(), quietUntil)) {
             // Keep registration off the input path, even if input arrived during CPU preparation.
             warmup.prepared = batch; warmup.phase = Phase.WAITING_IDLE;
             main.postDelayed(() -> Looper.myQueue().addIdleHandler(() -> {
-                if (warmup.prepared == batch) submit(warmup, batch);
+                if (warmup.prepared == batch) submit(warmup, batch, ticket, revision);
                 return false;
             }), 1000);
             return;
@@ -167,44 +257,61 @@ final class TileBackdropBatch {
             Parcel packet = (Parcel) uniforms.get(batch.region); packet.setDataSize(0); packet.setDataPosition(0);
             writeUniforms.invoke(batch.region, batch.drawable);
             warmup.batch = batch; warmup.phase = Phase.PRESENTING;
-            long ticket = warmup.ticket;
+            trace.accept("Backdrop idle GPU warmup queued for actual draw: capacity=" + batch.capacity);
             SurfaceControl surface = (SurfaceControl) surfaceControl.invoke(root);
             if (surface == null || !surface.isValid()) { warmup.phase = Phase.WAITING_IDLE; schedule(warmup); return; }
             Object[] regions = append(warmup.nativeRegions, batch.region);
+            // Changing an overlay RenderNode guarantees a new buffer, rather than a property-only
+            // transaction that the compositor may acknowledge without latching any frame.
+            ColorDrawable patch = new ColorDrawable(0x01000000);
+            patch.setBounds(x, y, x + 1, y + 1);
+            warmup.patch = patch;
+            view.getOverlay().add(patch);
             try (SurfaceControl.Transaction transaction = new SurfaceControl.Transaction()) {
                 setRegions.invoke(transaction, surface, regions);
                 completed.invoke(transaction, compiler, (Consumer<Object>) stats -> {
                     try (SyncFence fence = (SyncFence) presentFence.invoke(stats)) {
-                        if (fence == null || !fence.isValid() || !fence.await(Duration.ofSeconds(8)))
-                            throw new IllegalStateException("No presentation fence for backdrop warmup");
+                        long latched = ((Number) latchTime.invoke(stats)).longValue();
+                        boolean hasFence = fence != null && fence.isValid();
+                        boolean signaled = hasFence && fence.await(Duration.ofSeconds(8));
+                        if (!ShaderWarmupGate.frameCompleted(hasFence, signaled))
+                            throw new IllegalStateException("Backdrop warmup draw was not presented: latch="
+                                    + latched + ", fence=" + hasFence + ", signaled=" + signaled);
                         main.post(() -> {
-                            if (warmup.phase != Phase.PRESENTING || warmup.batch != batch) return;
+                            if (!warmup.gate.current(ticket) || !programs.current(revision)
+                                    || warmup.phase != Phase.PRESENTING || warmup.batch != batch) return;
                             View current = warmup.view.get();
                             if (current == null || !usable(current) || !surface.isValid()) {
+                                restoreNative(warmup);
                                 warmup.phase = Phase.WAITING_IDLE; schedule(warmup); return;
                             }
                             // Only a presented compositor frame can make this shader available to input.
                             restoreNative(warmup);
                             if (!warmup.gate.presented(ticket)) return;
                             warmup.phase = Phase.READY;
-                            trace.accept("Backdrop GPU shader precompiled while idle: capacity=" + batch.capacity);
+                            programs.publish(batch.capacity, new CompiledProgram(batch, warmup), warmup.gate, revision);
+                            trace.accept("Backdrop GPU shader precompiled while idle: capacity=" + batch.capacity
+                                    + ", latch=" + latched + ", presentFence=" + hasFence);
                             refresh.run(); current.invalidate();
                         });
-                    } catch (ReflectiveOperationException | RuntimeException error) { fail(warmup, error); }
+                    } catch (ReflectiveOperationException | RuntimeException error) { fail(warmup, error, ticket); }
                 });
-                transaction.apply();
+                if (!Boolean.TRUE.equals(applyOnDraw.invoke(root, transaction)))
+                    throw new IllegalStateException("Cannot attach backdrop warmup to a draw");
             }
             view.invalidate();
             main.postDelayed(() -> {
-                if (warmup.phase == Phase.PRESENTING && warmup.batch == batch)
-                    fail(warmup, new IllegalStateException("Backdrop presentation timed out"));
+                if (warmup.gate.current(ticket) && warmup.phase == Phase.PRESENTING && warmup.batch == batch)
+                    fail(warmup, new IllegalStateException("Backdrop presentation timed out"), ticket);
             }, 10000);
-        } catch (ReflectiveOperationException | RuntimeException error) { fail(warmup, error); }
+        } catch (ReflectiveOperationException | RuntimeException error) { fail(warmup, error, ticket); }
     }
 
-    private void fail(Warmup warmup, Throwable error) {
+    private void fail(Warmup warmup, Throwable error) { fail(warmup, error, warmup.ticket); }
+
+    private void fail(Warmup warmup, Throwable error, long ticket) {
         main.post(() -> {
-            if (warmup.phase == Phase.FAILED) return;
+            if (!warmup.gate.current(ticket) || warmup.phase == Phase.FAILED) return;
             restoreNative(warmup);
             warmup.gate.invalidate();
             warmup.phase = Phase.FAILED;
@@ -214,6 +321,7 @@ final class TileBackdropBatch {
     }
 
     private void restoreNative(Warmup warmup) {
+        clearPatch(warmup);
         Object root = warmup.root.get();
         if (root == null) return;
         try (SurfaceControl.Transaction transaction = new SurfaceControl.Transaction()) {
@@ -222,11 +330,18 @@ final class TileBackdropBatch {
                 Object[] nativeRegions = warmup.nativeRegions == null
                         ? (Object[]) Array.newInstance(regionClass, 0) : warmup.nativeRegions;
                 setRegions.invoke(transaction, surface, nativeRegions);
-                transaction.apply();
+                applyOnDraw.invoke(root, transaction);
+                View view = warmup.view.get(); if (view != null) view.invalidate();
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
             log.accept("Cannot restore native regions after shader warmup", error);
         }
+    }
+
+    private static void clearPatch(Warmup warmup) {
+        View view = warmup.view.get();
+        if (view != null && warmup.patch != null) view.getOverlay().remove(warmup.patch);
+        warmup.patch = null;
     }
 
     synchronized long sourceId(Object root, boolean media) {
@@ -243,9 +358,11 @@ final class TileBackdropBatch {
         volatile Phase phase = Phase.WAITING_IDLE;
         long ticket;
         int capacity = MAX_TILES;
-        boolean scheduled;
+        boolean scheduled, prewarmHost;
         long baseId, mediaId;
         Batch batch, prepared;
+        Drawable patch;
+        String waitingReason;
         volatile Object[] nativeRegions;
         Warmup(Object root, View view) { this.root = new WeakReference<>(root); this.view = new WeakReference<>(view); }
     }
@@ -263,6 +380,8 @@ final class TileBackdropBatch {
                 Array.newInstance(loader.loadClass("com.android.internal.graphics.drawable.FlymeEffectDrawable$FlymeEffectRegion"), 0).getClass());
         completed = SurfaceControl.Transaction.class.getMethod("addTransactionCompletedListener", java.util.concurrent.Executor.class, Consumer.class);
         presentFence = loader.loadClass("android.view.SurfaceControl$TransactionStats").getMethod("getPresentFence");
+        latchTime = loader.loadClass("android.view.SurfaceControl$TransactionStats").getMethod("getLatchTimeNanos");
+        applyOnDraw = root.getMethod("applyTransactionOnDraw", SurfaceControl.Transaction.class);
         Class<?> drawable=loader.loadClass("com.android.internal.graphics.drawable.FlymeEffectDrawable");
         regionClass=loader.loadClass(drawable.getName()+"$FlymeEffectRegion");
         createEffect=root.getMethod("createFlymeEffect",String.class);
@@ -320,7 +439,18 @@ final class TileBackdropBatch {
             while(warmup.capacity<count) warmup.capacity*=2;
             warmup.gate.invalidate();
             warmup.phase=Phase.WAITING_IDLE;
-            main.post(() -> schedule(warmup));
+            main.post(() -> {
+                synchronized (TileBackdropBatch.this) {
+                    for (Warmup host : warmups.values()) {
+                        if (host.prewarmHost && host.capacity < warmup.capacity) {
+                            host.capacity = warmup.capacity; host.gate.invalidate(); host.phase = Phase.WAITING_IDLE;
+                            host.prepared = null;
+                            schedule(host);
+                        }
+                    }
+                }
+                schedule(warmup);
+            });
             return nativeRegions;
         }
         batch.bounds.setEmpty();
@@ -381,6 +511,7 @@ final class TileBackdropBatch {
         final Rect bounds;
         final Map<String,Float> scalars;
         final int capacity;
+        final long shaderId;
         final float[][][] values;
         final float[][] groupBounds;
         boolean reported;
@@ -397,6 +528,7 @@ final class TileBackdropBatch {
             for(int i=0;i<capacity;i++) for(int j=0;j<18;j++) vectors.put("tile"+i+"_"+j,values[i][j]);
             // This drawable is a uniform carrier only; it never registers an extra position tracker.
             region=regionConstructor.newInstance(drawable);
+            shaderId=id.getLong(region);
         }
     }
 

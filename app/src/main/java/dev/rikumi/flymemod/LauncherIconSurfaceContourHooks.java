@@ -68,7 +68,7 @@ final class LauncherIconSurfaceContourHooks {
                 }
                 synchronized(frame) {
                     canvas.drawBitmap(frame.shadow,null,frame.bounds,frame.paint);
-                    frame.renderer.draw(ctx,canvas,frame.bounds,0,1,frame.mask);
+                    frame.renderer.drawIcon(ctx,canvas,frame.bounds,1,frame.mask);
                 }
             } catch(Exception | LinkageError error) {
                 if(errors.add(owner))log.accept("Cannot render animated launcher icon contour",error);

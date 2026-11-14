@@ -419,7 +419,7 @@ final class LauncherContourHooks {
             Paint shade = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
             shade.setAlpha(drawable.getAlpha());
             canvas.drawBitmap(cache.shadow,null,bounds,shade);
-            renderer(host).draw(host,canvas,new RectF(bounds),0f,drawable.getAlpha()/255f,cache.mask);
+            renderer(host).drawIcon(host,canvas,new RectF(bounds),drawable.getAlpha()/255f,cache.mask);
         } finally { canvas.restoreToCount(save); }
     }
 

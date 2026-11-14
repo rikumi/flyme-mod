@@ -87,7 +87,7 @@ final class LauncherIconEditorContour {
                     Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
                     paint.setAlpha(drawable.getAlpha());
                     canvas.drawBitmap(shadow, null, bounds, paint);
-                    renderer.draw(this, canvas, bounds, 0, drawable.getAlpha()/255f, mask);
+                    renderer.drawIcon(this, canvas, bounds, drawable.getAlpha()/255f, mask);
                 } catch (Exception | LinkageError error) {
                     if (!failed) { failed = true; log.accept("Cannot render editor icon contour", error); }
                 } finally { canvas.restoreToCount(saved); }

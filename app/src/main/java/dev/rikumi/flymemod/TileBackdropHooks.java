@@ -262,7 +262,10 @@ final class TileBackdropHooks {
             log.accept("Cannot resolve batched live tile backdrop",error);
         }
         batchCompositor = batch;
-        if (batch != null) batch.setRefresh(this::refresh);
+        if (batch != null) {
+            batch.setRefresh(this::refresh);
+            batch.setRequested(() -> enabled.getAsBoolean() || notificationsEnabled.getAsBoolean());
+        }
     }
 
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
@@ -447,6 +450,13 @@ final class TileBackdropHooks {
     }
 
     void refresh() {
+        if (batchCompositor != null) {
+            batchCompositor.settingsChanged(java.util.Arrays.asList(enabled.getAsBoolean(),
+                    notificationsEnabled.getAsBoolean(), saturationAmount.getAsDouble(),
+                    notificationSaturation.getAsDouble(), networkStyle.getAsInt(),
+                    corners != null && corners.isEnabled()));
+            batchCompositor.refreshWarmups();
+        }
         for (WeakReference<State> reference : states.values()) {
             State state = reference.get();
             if (state != null) state.update();

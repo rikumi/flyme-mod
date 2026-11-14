@@ -185,7 +185,7 @@ final class LauncherPreviewContourHooks {
             }
             Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);paint.setAlpha(source.getAlpha());
             canvas.drawBitmap(frame.shadow,null,bounds,paint);
-            frame.renderer.draw(host,canvas,bounds,0,source.getAlpha()/255f,frame.mask);
+            frame.renderer.drawIcon(host,canvas,bounds,source.getAlpha()/255f,frame.mask);
         } catch(Exception | LinkageError error){if(errors.add(host))log.accept("Cannot render launcher icon preview contour",error);}
     }
     private record Frame(Drawable source,int generation,float width,float height,Bitmap mask,Bitmap shadow,
