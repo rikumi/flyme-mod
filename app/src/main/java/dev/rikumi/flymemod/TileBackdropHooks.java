@@ -7,7 +7,6 @@ import android.graphics.RectF;
 import android.graphics.Matrix;
 import android.graphics.Path;
 import android.graphics.RenderNode;
-import android.graphics.RuntimeShader;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
 import android.view.View;
@@ -158,7 +157,7 @@ final class TileBackdropHooks {
     private final DoubleSupplier saturationAmount;
     private final BiConsumer<String, Throwable> log;
     private final Consumer<String> trace;
-    private final Method createEffect, createDrawable, setFloat, setFloat2, setFloat4;
+    private final Method createDrawable, setFloat, setFloat2, setFloat4;
     private final Field trackerNode;
     private final Class<?> regionArray;
     private final Field regionId, regionRect, regionAlpha;
@@ -231,12 +230,9 @@ final class TileBackdropHooks {
         rowNeedsClip=notificationOutline.getMethod("childNeedsClipping",View.class);
         rowCustomClip=notificationOutline.getMethod("getCustomClipPath",View.class);
         rowClip=notificationOutline.getMethod("getClipPath",boolean.class);
-        // Validate SkSL locally too, so syntax errors reach the module log before SF registration.
-        new RuntimeShader(SHADER);
-        new RuntimeShader(MEDIA_SHADER);
+        // Shader validation/registration is deferred to the idle warmup worker.
         getRoot = View.class.getDeclaredMethod("getViewRootImpl"); getRoot.setAccessible(true);
         Class<?> rootType = loader.loadClass("android.view.ViewRootImpl");
-        createEffect = rootType.getMethod("createFlymeEffect", String.class);
         createDrawable = rootType.getMethod("createFlymeEffectDrawable", long.class);
         Class<?> drawableType = loader.loadClass("com.android.internal.graphics.drawable.FlymeEffectDrawable");
         setFloat = drawableType.getMethod("setFloatUniform", String.class, float.class);
@@ -266,9 +262,11 @@ final class TileBackdropHooks {
             log.accept("Cannot resolve batched live tile backdrop",error);
         }
         batchCompositor = batch;
+        if (batch != null) batch.setRefresh(this::refresh);
     }
 
     void install(SignalHooks.Installer installer, Consumer<Method> deoptimize) throws ReflectiveOperationException {
+        if (batchCompositor != null) batchCompositor.install(installer);
         for(String host:new String[]{"com.android.systemui.qs.QSTileHost","com.android.systemui.qs.QSHostAdapter"}) {
             notificationBackground.getClassLoader().loadClass(host).getDeclaredMethod("setShowingDetail",boolean.class);
             installer.hook(host,"setShowingDetail",chain->{
@@ -329,6 +327,7 @@ final class TileBackdropHooks {
                     log.accept("Cannot batch live tile backdrop regions",error);
                 }
             }
+            if (batchFailed && batchCompositor != null) composed = batchCompositor.withoutOwned(original);
             Object result = composed == original ? chain.proceed()
                     : chain.proceed(new Object[]{composed,chain.getArg(1)});
             if (reportedRegions.get() || shaderId == 0) return result;
@@ -439,6 +438,14 @@ final class TileBackdropHooks {
         }
     }
 
+    private void observeWarmup(View view) {
+        if (batchCompositor == null || !(enabled.getAsBoolean() || notificationsEnabled.getAsBoolean())) return;
+        try {
+            Object root = getRoot.invoke(view);
+            if (root != null) batchCompositor.observe(root, view.getRootView());
+        } catch (ReflectiveOperationException error) { log.accept("Cannot schedule idle backdrop warmup", error); }
+    }
+
     void refresh() {
         for (WeakReference<State> reference : states.values()) {
             State state = reference.get();
@@ -489,6 +496,7 @@ final class TileBackdropHooks {
 
             if (observer==view.getViewTreeObserver() && observer.isAlive()) return;
             observer = view.getViewTreeObserver(); observer.addOnPreDrawListener(this);
+            observeWarmup(view);
             update();
         }
         @Override public void onLayoutChange(View view,int left,int top,int right,int bottom,
@@ -520,6 +528,13 @@ final class TileBackdropHooks {
             View view = owner.get();
             if (view == null) return;
             if (!(notification || media ? notificationsEnabled : enabled).getAsBoolean() || !view.isAttachedToWindow()) { remove(view); return; }
+            if (batchCompositor == null || batchFailed) { remove(view); return; }
+            observeWarmup(view);
+            Object root;
+            try { root = getRoot.invoke(view); }
+            catch (ReflectiveOperationException error) { log.accept("Cannot find backdrop window", error); return; }
+            batch = root == null ? null : batchCompositor.prepare(root);
+            if (batch == null) return; // Native backgrounds stay in use until GPU presentation confirms warmup.
             if(!notification&&!media&&networkRole != 3&&detailShowing) {
                 if(effect!=null)setEffectVisibility(false,0);
                 return;
@@ -602,16 +617,13 @@ final class TileBackdropHooks {
                     smooth &= smoothing > 0f;
                 }
                 // A different ViewRoot requires a detach, which already clears effectRoot.
-                Object root = effectRoot.get();
-                if (root == null) root = getRoot.invoke(view);
-                if (root == null) return;
                 if (effectRoot.get() != root) remove(view);
                 if (effect == null) {
                     Map<Object,Long> registry=media?mediaEffects:effects;
                     Long id = registry.get(root);
                     if (id == null) {
-                        id = (Long) createEffect.invoke(root,media?MEDIA_SHADER:SHADER);
-                        if (id == 0) throw new IllegalStateException("Flyme rejected tile backdrop shader");
+                        id = batchCompositor.sourceId(root, media);
+                        if (id == 0) return;
                         registry.put(root,id); if(!media)shaderId = id;
                         liveShaderIds.add(id);
                     }
