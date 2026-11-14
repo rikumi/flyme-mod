@@ -29,7 +29,8 @@ final class RowRevealHooks {
     private static final String PANEL_CONTROLLER = "com.flyme.systemui.controlcenter.phone.MzQSPanelController";
     private static final String SHADE = "com.android.systemui.shade.NotificationPanelViewController";
     // One time-driven content transition; native geometry and blur remain independent.
-    private static final float ROW_DELAY = .22f;
+    private static final float ROW_DELAY = .11f;
+    private static final float MAX_ROW_DELAY = .30f;
     private final Consumer<Context> settings;
     private final BiConsumer<String, Throwable> log;
     private final BooleanSupplier enabled;
@@ -674,7 +675,7 @@ final class RowRevealHooks {
                     countedTop = top;
                 }
             }
-            // Delay depends on rows, not tile count; reserve at least 40% for the last row.
+            // Limit the cumulative stagger independently of the number of tiles.
             float lastDelay = rowDelay(rowCount - 1, rowCount);
             float lastGap = rowCount > 1 ? lastDelay - rowDelay(rowCount - 2, rowCount) : ROW_DELAY;
             state.pages.add(new Page(entry.getKey(), tiles, lastDelay, lastGap));
@@ -723,7 +724,7 @@ final class RowRevealHooks {
 
     private static float rowDelay(int row, int rowCount) {
         if (row <= 0 || rowCount <= 1) return 0f;
-        float total = Math.min(.6f, (rowCount - 1) * ROW_DELAY);
+        float total = Math.min(MAX_ROW_DELAY, (rowCount - 1) * ROW_DELAY);
         // Concave cumulative delay: larger early gaps, progressively shorter later gaps.
         return total * (float) Math.pow(row / (float) (rowCount - 1), .9f);
     }
