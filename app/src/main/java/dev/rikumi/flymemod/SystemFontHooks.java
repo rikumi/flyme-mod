@@ -16,6 +16,13 @@ public final class SystemFontHooks {
     public static final String EMOJI = "system_font_emoji";
     public static final int DEFAULT_EMOJI = 7, CUSTOM_EMOJI = 8;
     public static int defaultChoice(String key) { return MONO.equals(key) ? -1 : EMOJI.equals(key) ? DEFAULT_EMOJI : 0; }
+    public static boolean isActive(SharedPreferences prefs) {
+        return prefs.getInt(ZH, 0) == 2
+                || prefs.getInt(LATIN, 0) != 0
+                || prefs.getInt(EMOJI, DEFAULT_EMOJI) > DEFAULT_EMOJI
+                || prefs.getInt(MONO, -1) >= 0
+                || !prefs.getString("native_manifest", "").isEmpty();
+    }
     private static final String FONT_ROOT = "/data/fonts/files";
     private static final String CACHE_NAME = "flyme-mod";
     private static XposedInit module;
@@ -25,6 +32,9 @@ public final class SystemFontHooks {
     private static final Set<String> errors = new HashSet<>();
 
     private static final Set<FontFamily> emojiFamilies = Collections.newSetFromMap(new IdentityHashMap<>());
+    // Building a replacement family can call back into createFontFamily/buildSystemFallback;
+    // without this guard the module recurses until the system_server heap is exhausted.
+    private static final ThreadLocal<Boolean> replacing = ThreadLocal.withInitial(() -> false);
 
     public static void hook(XposedInit instance, ClassLoader loader) {
         module = instance;
@@ -47,49 +57,62 @@ public final class SystemFontHooks {
                 return result;
             });
             module.hook(create).intercept(chain -> {
-                Object result = chain.proceed();
-                if (!(result instanceof FontFamily original)) return result;
-                String language = (String) chain.getArg(1);
-                boolean emoji = language.contains("Zsye");
-                boolean chinese = Arrays.stream(language.split(",")).anyMatch(tag -> tag.startsWith("zh"));
-                boolean serif = false;
-                for (int i = 0; i < original.getSize(); i++) {
-                    File file = original.getFont(i).getFile();
-                    if (file == null) continue;
-                    String name = file.getName().toLowerCase(Locale.ROOT);
-                    chinese |= name.contains("hans") || name.contains("hant");
-                    serif |= name.contains("serif");
-                }
-                if (!emoji && (!chinese || serif)) return result;
-                FontFamily replacement = family(emoji ? EMOJI : ZH, language, (Integer) chain.getArg(2), (Boolean) chain.getArg(4));
-                if (emoji) emojiFamilies.add(replacement == null ? original : replacement);
-                return replacement == null ? result : replacement;
+                if (replacing.get()) return chain.proceed();
+                replacing.set(true);
+                try {
+                    Object result = chain.proceed();
+                    if (!(result instanceof FontFamily original)) return result;
+                    String language = (String) chain.getArg(1);
+                    boolean emoji = language.contains("Zsye");
+                    boolean chinese = Arrays.stream(language.split(",")).anyMatch(tag -> tag.startsWith("zh"));
+                    boolean serif = false;
+                    for (int i = 0; i < original.getSize(); i++) {
+                        File file = original.getFont(i).getFile();
+                        if (file == null) continue;
+                        String name = file.getName().toLowerCase(Locale.ROOT);
+                        chinese |= name.contains("hans") || name.contains("hant");
+                        serif |= name.contains("serif");
+                    }
+                    if (!emoji && (!chinese || serif)) return result;
+                    FontFamily replacement = family(emoji ? EMOJI : ZH, language, (Integer) chain.getArg(2), (Boolean) chain.getArg(4));
+                    if (emoji) emojiFamilies.add(replacement == null ? original : replacement);
+                    return replacement == null ? result : replacement;
+                } finally { replacing.set(false); }
             });
             module.hook(fallback).intercept(chain -> {
-                @SuppressWarnings("unchecked") Map<String, FontFamily[]> map = (Map<String, FontFamily[]>) chain.proceed();
-                Map<String, FontFamily[]> result = new LinkedHashMap<>(map);
-                for (Map.Entry<String, FontFamily[]> entry : map.entrySet()) {
-                    String name = entry.getKey();
-                    boolean mono = FontOverlayXml.MonospaceNames.matches(name);
-                    boolean latin = name.equals("sans-serif") || name.startsWith("sans-serif-");
-                    if ((!mono && !latin) || entry.getValue().length == 0) continue;
-                    FontFamily replacement = family(mono ? MONO : LATIN, "", 0, true);
-                    if (replacement == null) continue;
-                    FontFamily[] fonts = entry.getValue().clone();
-                    fonts[0] = replacement;
-                    result.put(name, fonts);
-                }
-                boolean active = prefs.getInt(ZH, 0) == 2 || prefs.getInt(LATIN, 0) > 0
-                        || prefs.getInt(MONO, -1) >= 0 || prefs.getInt(EMOJI, 0) > 0;
-                if (active) for (Map.Entry<String, FontFamily[]> entry : result.entrySet()) {
-                    FontFamily[] fonts = entry.getValue();
-                    if (fonts.length < 2) continue;
-                    List<FontFamily> ordered = new ArrayList<>(); ordered.add(fonts[0]);
-                    for (int i = 1; i < fonts.length; i++) if (emojiFamilies.contains(fonts[i]) && !ordered.contains(fonts[i])) ordered.add(fonts[i]);
-                    for (int i = 1; i < fonts.length; i++) if (!emojiFamilies.contains(fonts[i])) ordered.add(fonts[i]);
-                    entry.setValue(ordered.toArray(new FontFamily[0]));
-                }
-                return result;
+                if (replacing.get()) return chain.proceed();
+                replacing.set(true);
+                try {
+                    @SuppressWarnings("unchecked") Map<String, FontFamily[]> map = (Map<String, FontFamily[]>) chain.proceed();
+                    // Preserve the platform map type: the font service may cast the fallback map back.
+                    Map<String, FontFamily[]> result;
+                    if (map instanceof android.util.ArrayMap) {
+                        result = new android.util.ArrayMap<>();
+                        result.putAll(map);
+                    } else result = new LinkedHashMap<>(map);
+                    for (Map.Entry<String, FontFamily[]> entry : map.entrySet()) {
+                        String name = entry.getKey();
+                        boolean mono = FontOverlayXml.MonospaceNames.matches(name);
+                        boolean latin = name.equals("sans-serif") || name.startsWith("sans-serif-");
+                        if ((!mono && !latin) || entry.getValue().length == 0) continue;
+                        FontFamily replacement = family(mono ? MONO : LATIN, "", 0, true);
+                        if (replacement == null) continue;
+                        FontFamily[] fonts = entry.getValue().clone();
+                        fonts[0] = replacement;
+                        result.put(name, fonts);
+                    }
+                    boolean active = prefs.getInt(ZH, 0) == 2 || prefs.getInt(LATIN, 0) > 0
+                            || prefs.getInt(MONO, -1) >= 0 || prefs.getInt(EMOJI, 0) > 0;
+                    if (active) for (Map.Entry<String, FontFamily[]> entry : result.entrySet()) {
+                        FontFamily[] fonts = entry.getValue();
+                        if (fonts.length < 2) continue;
+                        List<FontFamily> ordered = new ArrayList<>(); ordered.add(fonts[0]);
+                        for (int i = 1; i < fonts.length; i++) if (emojiFamilies.contains(fonts[i]) && !ordered.contains(fonts[i])) ordered.add(fonts[i]);
+                        for (int i = 1; i < fonts.length; i++) if (!emojiFamilies.contains(fonts[i])) ordered.add(fonts[i]);
+                        entry.setValue(ordered.toArray(new FontFamily[0]));
+                    }
+                    return result;
+                } finally { replacing.set(false); }
             });
             module.deoptimize(create);
             module.deoptimize(fallback);
