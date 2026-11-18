@@ -125,8 +125,8 @@ final class CombinedNotificationWidthHooks {
         final WeakReference<View> host,stack;
         WeakReference<View> controls=new WeakReference<>(null);
         final Separator separator=new Separator();
-        final Matrix untranslated=new Matrix();
-        final float[] animatedPoint=new float[2],restPoint=new float[2];
+        final Matrix notificationToPanel=new Matrix();
+        final RectF animatedBounds=new RectF();
         ViewTreeObserver observer;
         float base,extra;
         boolean added;
@@ -163,23 +163,17 @@ final class CombinedNotificationWidthHooks {
                 if(!show) {if(added)panel.invalidate();added=false;return;}
                 float density=panel.getResources().getDisplayMetrics().density;
                 float width=44f*density,height=4f*density;
-                animatedPoint[0]=animatedPoint[1]=restPoint[0]=restPoint[1]=0;
-                float opacity=1f;
-                for(View child=qs;child!=panel;child=child.getParent() instanceof View parent?parent:panel) {
-                    opacity*=child.getAlpha();
-                    child.getMatrix().mapPoints(animatedPoint);
-                    untranslated.set(child.getMatrix());
-                    untranslated.postTranslate(-child.getTranslationX(),-child.getTranslationY());
-                    untranslated.mapPoints(restPoint);
-                    float x=child.getLeft(),y=child.getTop();
-                    if(child.getParent() instanceof View parent) {x-=parent.getScrollX();y-=parent.getScrollY();}
-                    animatedPoint[0]+=x;animatedPoint[1]+=y;restPoint[0]+=x;restPoint[1]+=y;
-                }
-
-                float left=(panel.getWidth()-width)/2f+animatedPoint[0]-restPoint[0];
-                float top=base+animatedPoint[1]-restPoint[1];
+                // Flyme 12.7 translates QS children and the shared notification container,
+                // leaving MzQSContainerImpl stationary. Anchor the resting bar in stack-local
+                // coordinates, then apply the stack's actual ancestor transforms, including
+                // the module's notification reveal scale/pivot and native spring-back motion.
+                float left=(panel.getWidth()-width)/2f,top=base;
+                animatedBounds.set(left,top,left+width,top+height);
+                float opacity=SeparatorViewTransform.map(notifications,panel,animatedBounds,notificationToPanel);
+                if(opacity<0f) {if(added)panel.invalidate();added=false;return;}
                 int alpha=Math.round(51f*Math.max(0f,Math.min(1f,opacity)));
-                boolean changed=separator.update(left,top,width,height,alpha);
+                boolean changed=separator.update(animatedBounds.left,animatedBounds.top,
+                        animatedBounds.width(),animatedBounds.height(),alpha);
                 if(!added||changed)panel.invalidate();
                 added=true;
             } catch(ReflectiveOperationException|RuntimeException error) {log.accept("Cannot position merged notification separator",error);}
