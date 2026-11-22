@@ -209,7 +209,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.TICKER_LYRIC_AVOID, "通知 Ticker 避让第三方歌词"),
             SelectItem(ModuleSettings.TICKER_DISPLAY_MODE, "通知使用 Ticker（跳字）显示", listOf("默认", "始终使用", "从不使用")),
             SwitchItem(ModuleSettings.TICKER_LEFT_OF_CUTOUT, "通知 Ticker 只显示在挖孔左侧"),
-            SelectItem(ModuleSettings.STATUS_BAR_CHARGING_INFO, "状态栏显示充电功率", listOf("关闭", "功率值", "电压电流值"), defaultValue = ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT),
+            SelectItem(ModuleSettings.STATUS_BAR_CHARGING_INFO, "状态栏显示充电功率", listOf("关闭", "功率值", "电压电流值", "协议+功率值"), defaultValue = ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT),
         )),
         SettingsGroup("状态栏图标隐藏", listOf(
             SwitchItem(ModuleSettings.HIDE_STATUS_ICON_KEYS[0], "隐藏睡眠模式图标"),

@@ -38,6 +38,7 @@ final class ChargingInfoHooks {
     });
     private final Map<View, WeakReference<State>> states = new WeakHashMap<>();
     private ChargingInfo.Sample sample;
+    private String protocol = "";
     private long sampledAt;
     private int generation;
     private boolean polling, inFlight;
@@ -135,7 +136,7 @@ final class ChargingInfoHooks {
     private void reconcile() {
         boolean needed = activeContext() != null;
         if (needed == polling) return;
-        polling = needed; generation++; sample = null; sampledAt = 0;
+        polling = needed; generation++; sample = null; protocol = ""; sampledAt = 0;
         main.removeCallbacks(tick);
         if (polling && !inFlight) main.post(tick);
         for (WeakReference<State> reference : new ArrayList<>(states.values())) {
@@ -149,9 +150,11 @@ final class ChargingInfoHooks {
         worker.execute(() -> {
             ChargingInfo.Sample result = null;
             String status = "provider_unavailable";
+            String resultProtocol = "";
             try {
                 Bundle data = context.getContentResolver().call(ModuleSettings.URI, ChargingInfo.METHOD, null, null);
                 if (data != null) {
+                    resultProtocol = data.getString("protocol", "");
                     String micro = data.getString("sample_micro");
                     result = micro == null ? ChargingInfo.parse(data.getString("sample")) : ChargingInfo.parseMicro(micro);
                     status = data.getString("status", result == null ? "no_valid_input" : "valid_input");
@@ -159,13 +162,14 @@ final class ChargingInfoHooks {
             } catch (RuntimeException error) { status = "provider_error_" + error.getClass().getSimpleName(); }
             ChargingInfo.Sample value = result;
             String readStatus = status;
+            String valueProtocol = resultProtocol;
             main.post(() -> {
                 inFlight = false;
                 if (token == generation && polling) {
                     if (!readStatus.equals(lastReadStatus)) {
                         lastReadStatus = readStatus; trace.accept("Charging information input: " + readStatus);
                     }
-                    sample = value; sampledAt = SystemClock.elapsedRealtime(); refresh();
+                    sample = value; protocol = valueProtocol; sampledAt = SystemClock.elapsedRealtime(); refresh();
                 }
                 if (polling) { main.removeCallbacks(tick); main.postDelayed(tick, token == generation ? 5000 : 0); }
             });
@@ -313,8 +317,8 @@ final class ChargingInfoHooks {
         }
         void render() {
             if (label == null) return;
-            String value = active() && sample != null && SystemClock.elapsedRealtime() - sampledAt <= 7000
-                    ? sample.format(mode.getAsInt()) : "";
+            String value = active() && SystemClock.elapsedRealtime() - sampledAt <= 7000
+                    ? ChargingInfo.format(sample, protocol, mode.getAsInt()) : "";
             setLine(primaryText, value);
             setLine(secondaryText, "");
             label.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);

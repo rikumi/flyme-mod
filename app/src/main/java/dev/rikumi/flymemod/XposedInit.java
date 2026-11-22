@@ -2992,7 +2992,7 @@ public final class XposedInit extends XposedModule {
                 int lyricAvoidColumn = cursor.getColumnIndex(ModuleSettings.STATUS_BAR_LYRIC_AVOID);
                 statusBarLyricAvoidEnabled = lyricAvoidColumn < 0 ? ModuleSettings.STATUS_BAR_LYRIC_AVOID_DEFAULT : cursor.getInt(lyricAvoidColumn) != 0;
                 int chargingInfoColumn = cursor.getColumnIndex(ModuleSettings.STATUS_BAR_CHARGING_INFO);
-                statusBarChargingInfoMode = chargingInfoColumn < 0 ? ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT : Math.max(0, Math.min(2, cursor.getInt(chargingInfoColumn)));
+                statusBarChargingInfoMode = chargingInfoColumn < 0 ? ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT : Math.max(0, Math.min(ChargingInfo.POWER_PROTOCOL, cursor.getInt(chargingInfoColumn)));
                 statusBarClockFont = statusFontColumn < 0 ? 0 : Math.max(0, Math.min(ModuleSettings.CLOCK_FONT_NAMES.length - 1, cursor.getInt(statusFontColumn)));
                 int controlCenterFontColumn = cursor.getColumnIndex(ModuleSettings.CONTROL_CENTER_CLOCK_FONT);
                 controlCenterClockFont = controlCenterFontColumn < 0 ? 0 : Math.max(0, Math.min(ModuleSettings.CLOCK_FONT_NAMES.length - 1, cursor.getInt(controlCenterFontColumn)));

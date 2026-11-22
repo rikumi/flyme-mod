@@ -22,10 +22,11 @@ public final class SettingsProvider extends ContentProvider {
             if (!allowed) throw new SecurityException("Only SystemUI may read charging input");
             android.os.Bundle result = new android.os.Bundle();
             int mode = ModuleSettings.preferences(getContext()).getInt(ModuleSettings.STATUS_BAR_CHARGING_INFO, ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT);
-            if (mode == ChargingInfo.POWER || mode == ChargingInfo.VOLTAGE_CURRENT) {
+            if (ChargingInfo.enabled(mode)) {
                 long identity = Binder.clearCallingIdentity();
                 try {
-                    String raw = chargingInputReader.read();
+                    String raw = chargingInputReader.read(mode == ChargingInfo.POWER_PROTOCOL);
+                    if (mode == ChargingInfo.POWER_PROTOCOL) result.putString("protocol", chargingInputReader.protocol());
                     result.putString("sample_micro", raw);
                     result.putString("sample", ChargingInfo.legacySample(raw));
                     result.putString("status", chargingInputReader.status());
@@ -280,7 +281,7 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.TICKER_LYRIC_AVOID, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(2, prefs.getInt(ModuleSettings.TICKER_DISPLAY_MODE, 0))));
         values.add(prefs.getBoolean(ModuleSettings.TICKER_LEFT_OF_CUTOUT, false) ? 1 : 0);
-        values.add(Math.max(0, Math.min(2, prefs.getInt(ModuleSettings.STATUS_BAR_CHARGING_INFO, ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT))));
+        values.add(Math.max(0, Math.min(ChargingInfo.POWER_PROTOCOL, prefs.getInt(ModuleSettings.STATUS_BAR_CHARGING_INFO, ModuleSettings.STATUS_BAR_CHARGING_INFO_DEFAULT))));
         values.add(prefs.getInt(ModuleSettings.CONTROL_CENTER_CLOCK_FONT, 0));
         values.add(prefs.getBoolean(ModuleSettings.LOCK_CLOCK_MONOSPACE, false) ? 1 : 0);
         values.add(prefs.getBoolean(ModuleSettings.AOD_CLOCK_MONOSPACE, false) ? 1 : 0);

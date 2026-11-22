@@ -2,7 +2,7 @@ package dev.rikumi.flymemod;
 
 final class ChargingInfo {
     static final String METHOD = "charging_input_sample";
-    static final int OFF = 0, POWER = 1, VOLTAGE_CURRENT = 2;
+    static final int OFF = 0, POWER = 1, VOLTAGE_CURRENT = 2, POWER_PROTOCOL = 3;
     record Sample(long microvolts, long microamps) {
         boolean valid() {
             return microvolts >= 3000000 && microvolts <= 30000000 && microamps > 0 && microamps <= 15000000;
@@ -46,7 +46,13 @@ final class ChargingInfo {
                 + sample.microamps / 1000 + " " + fields[4] + " " + fields[5];
     }
     static boolean active(int mode, boolean attached, boolean visible, boolean nativeCharging, boolean bypass) {
-        return (mode == POWER || mode == VOLTAGE_CURRENT) && attached && visible && nativeCharging && !bypass;
+        return enabled(mode) && attached && visible && nativeCharging && !bypass;
+    }
+    static boolean enabled(int mode) { return mode == POWER || mode == VOLTAGE_CURRENT || mode == POWER_PROTOCOL; }
+    static String format(Sample sample, String protocol, int mode) {
+        String value = sample == null ? "" : sample.format(mode == POWER_PROTOCOL ? POWER : mode);
+        if (mode != POWER_PROTOCOL || protocol == null || protocol.isEmpty()) return value;
+        return value.isEmpty() ? protocol : protocol + " " + value;
     }
     private ChargingInfo() {}
 }
