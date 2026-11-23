@@ -130,6 +130,12 @@ public final class SystemFontHooks {
             String[] sources;
             int custom = slot.equals(ZH) ? 2 : slot.equals(LATIN) ? 3 : 4;
             if (slot.equals(ZH) && choice != 2) return null;
+            // Selecting the stock emoji face must not rebuild it. The remote: branch below
+            // loads the whole NotoColorEmoji copy into system_server's Java heap; on Flyme 12.7
+            // that single allocation (228959296 bytes observed) lands inside
+            // FontManagerService.initialize, the watchdog then kills system_server and the
+            // device boot-loops. Leave the stock family untouched instead.
+            if (slot.equals(EMOJI) && choice == DEFAULT_EMOJI) return null;
             if (slot.equals(EMOJI) || choice == custom) {
                 String remote = prefs.getString(slot + "_file", "");
                 if (remote.isEmpty()) return null;
@@ -151,7 +157,8 @@ public final class SystemFontHooks {
                 List<FontFileInfo.Face> faces = FontFileInfo.read(file);
                 if (slot.equals(MONO)) faces.removeIf(face -> !face.monospace);
                 if (slot.equals(EMOJI)) faces.removeIf(face -> !face.color);
-                if (faces.isEmpty()) throw new IOException("No monospace face in selected font");
+                if (faces.isEmpty()) throw new IOException(slot.equals(EMOJI)
+                        ? "No color face in selected emoji font" : "No monospace face in selected font");
                 fontFiles.add(file); metadata.add(faces);
             }
             FontFamily.Builder builder = null;

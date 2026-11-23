@@ -110,7 +110,7 @@ internal object SystemFontStore {
         val editor = remote.edit()
         for (key in slots) {
             val choice = local.getInt(key, SystemFontHooks.defaultChoice(key))
-            if (key == SystemFontHooks.EMOJI && choice == 0) {
+            if (key == SystemFontHooks.EMOJI && (choice == 0 || choice == SystemFontHooks.DEFAULT_EMOJI)) {
                 editor.remove(key + "_file").putInt(key, choice)
                 continue
             }
@@ -131,6 +131,17 @@ internal object SystemFontStore {
         // while disconnected; onServiceBind queues sync on this same executor.
         if (key == SystemFontHooks.EMOJI && value == 0 && connectedService == null) {
             check(ModuleSettings.preferences(context).edit().putInt(key, value).commit())
+            return
+        }
+        if (key == SystemFontHooks.EMOJI && value == SystemFontHooks.DEFAULT_EMOJI) {
+            val service = connectedService ?: error("Xposed service unavailable")
+            val manifest = NativeFontBridge.prepare(context, service, key, value)
+            val remote = service.getRemotePreferences(SystemFontHooks.PREFS)
+            FontOperation.current()?.beginApplying()
+            check(remote.edit().putInt(key, value).remove(key + "_file").putString("native_manifest", manifest).commit()) { "Cannot save font settings" }
+            check(ModuleSettings.preferences(context).edit().putInt(key, value).commit())
+            SystemFontMounts.schedule(context, service, manifest)
+            SystemFontMounts.awaitPending(context)
             return
         }
         val service = connectedService ?: error("Xposed service unavailable")
