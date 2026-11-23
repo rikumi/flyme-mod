@@ -97,6 +97,8 @@ internal object OneClickPreset {
         ModuleSettings.NOTIFICATION_BACKGROUND_SATURATION to ModuleSettings.TILE_BACKGROUND_SATURATION_DEFAULT,
         ModuleSettings.NOTIFICATION_CORNER_PERCENT to 30,
         ModuleSettings.NOTIFICATION_LIGHT_OPACITY to 10,
+        ModuleSettings.NOTIFICATION_LIGHT_OPACITY_LIGHT to 70,
+        ModuleSettings.NOTIFICATION_LIGHT_OPACITY_DARK to 10,
         ModuleSettings.BLUR_RADIUS to 15,
         ModuleSettings.STATUS_BAR_CLOCK_FONT to 2,
         ModuleSettings.STATUS_BAR_CLOCK_SPACING to 0,

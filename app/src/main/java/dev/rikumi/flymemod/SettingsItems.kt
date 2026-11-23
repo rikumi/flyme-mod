@@ -49,6 +49,7 @@ internal data class SliderSpec(
     val dividerOnlyWhenExpanded: Boolean = false,
     val format: (Int) -> String = { "$it$unit" },
     val step: Int = 1,
+    val preserveStoredValue: Boolean = false,
 ) {
     fun snap(value: Int): Int =
         (min + ((value.coerceIn(min, max) - min).toFloat() / step).roundToInt() * step)
@@ -156,8 +157,10 @@ private fun SwitchSettingRow(
     var expanded by rememberSaveable(item.key) { mutableStateOf(false) }
     val slider = item.slider
     var value by remember(preferences, slider?.key) {
-        mutableStateOf(if (slider == null) 0 else
-            slider.snap(preferences.getInt(slider.key, slider.default)))
+        mutableStateOf(if (slider == null) 0 else {
+            val stored = preferences.getInt(slider.key, slider.default)
+            if (slider.preserveStoredValue) stored.coerceIn(slider.min, slider.max) else slider.snap(stored)
+        })
     }
     FluixSwitchPreference(
         title = item.title,

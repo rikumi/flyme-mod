@@ -25,7 +25,7 @@ final class ColorOsMaterialHooks {
     private final TileCornerHooks corners;
     private final Consumer<Context> settings;
     private final BooleanSupplier contourEnabled, splitNetworkEnabled, notificationEnabled;
-    private final IntSupplier notificationOpacity;
+    private final IntSupplier notificationLightOpacity, notificationDarkOpacity;
     private final Map<ImageView, ButtonStyle> notificationButtons = new WeakHashMap<>();
     private final Map<ImageView, DeleteBadgeDrawable> deleteBadges = new WeakHashMap<>();
     private final Map<View, Contour> notificationContours = new WeakHashMap<>();
@@ -41,11 +41,11 @@ final class ColorOsMaterialHooks {
     private final Method childNeedsClipping, customChildClipPath, notificationClipPath;
 
     ColorOsMaterialHooks(ClassLoader loader, Consumer<Context> settings,
-            BooleanSupplier contour, BooleanSupplier splitNetwork, BooleanSupplier notification, IntSupplier notificationOpacity,
+            BooleanSupplier contour, BooleanSupplier splitNetwork, BooleanSupplier notification, IntSupplier notificationLightOpacity, IntSupplier notificationDarkOpacity,
             TileCornerHooks corners, ToDoubleFunction<View> notificationRadius, BiConsumer<String, Throwable> log)
             throws ReflectiveOperationException {
         this.corners = corners; this.loader = loader; this.settings = settings; contourEnabled = contour; splitNetworkEnabled = splitNetwork; notificationEnabled = notification; this.log = log;
-        this.notificationOpacity = notificationOpacity;
+        this.notificationLightOpacity = notificationLightOpacity; this.notificationDarkOpacity = notificationDarkOpacity;
         // Carousel clipping follows the card's corner setting, independently of contour lighting.
         mediaSwipeCorners = new MediaSwipeCornerHooks(loader, settings, notificationRadius);
         notificationOutline = loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableOutlineView");
@@ -322,7 +322,7 @@ final class ColorOsMaterialHooks {
                 }
                 boolean night = (view.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
                         == android.content.res.Configuration.UI_MODE_NIGHT_YES;
-                int opacity = LightBackgroundOpacity.effective(notificationOpacity.getAsInt(), night);
+                int opacity = NotificationBackgroundOpacity.effective(notificationLightOpacity.getAsInt(), notificationDarkOpacity.getAsInt(), night);
                 if (opacity != previousOpacity) {
                     styled.backgroundAlpha = Math.round(opacity * 255f / 100f);
                     styled.invalidateSelf(); previousOpacity = opacity;

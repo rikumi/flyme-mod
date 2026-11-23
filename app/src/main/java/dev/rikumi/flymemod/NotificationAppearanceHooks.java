@@ -32,8 +32,8 @@ final class NotificationAppearanceHooks {
     private static final int DARK_BLUR_COLOR = 0xB21A1A1A;
     private static final int DARK_SOLID_COLOR = 0xFF1A1A1A;
     private final Consumer<Context> settings;
-    private final BooleanSupplier light, corners;
-    private final IntSupplier opacity, percent;
+    private final BooleanSupplier light, dark, corners;
+    private final IntSupplier lightOpacity, darkOpacity, percent;
     private final TileCornerHooks tileCorners;
     private final BiConsumer<String, Throwable> log;
     private final Class<?> rowClass, backgroundClass, mediaClass, landscapeClass, stackClass;
@@ -49,10 +49,10 @@ final class NotificationAppearanceHooks {
     private final Map<View, Float> maskRadii = new WeakHashMap<>();
     private final Map<View, WeakReference<State>> states = new WeakHashMap<>();
 
-    NotificationAppearanceHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier light,
-            IntSupplier opacity, BooleanSupplier corners, IntSupplier percent, TileCornerHooks tileCorners,
+    NotificationAppearanceHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier light, BooleanSupplier dark,
+            IntSupplier lightOpacity, IntSupplier darkOpacity, BooleanSupplier corners, IntSupplier percent, TileCornerHooks tileCorners,
             BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
-        this.settings=settings; this.light=light; this.opacity=opacity; this.corners=corners;
+        this.settings=settings; this.light=light; this.dark=dark; this.lightOpacity=lightOpacity; this.darkOpacity=darkOpacity; this.corners=corners;
         this.percent=percent; this.tileCorners=tileCorners; this.log=log;
         rowClass=loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow");
         landscapeClass=loader.loadClass("com.flyme.notification.view.LandscapeHeadsUpNotificationView");
@@ -71,8 +71,9 @@ final class NotificationAppearanceHooks {
         applyRoundness=rowClass.getMethod("applyRoundnessAndInvalidate");
         tintNoBlur=backgroundClass.getMethod("setTintForNoBlur",int.class);
     }
+    private boolean enabled(View view) { return (night(view) ? dark : light).getAsBoolean(); }
     private int color(View view) {
-        return Color.argb(Math.round(LightBackgroundOpacity.effective(opacity.getAsInt(), night(view))*255f/100f),255,255,255);
+        return Color.argb(Math.round(NotificationBackgroundOpacity.effective(lightOpacity.getAsInt(), darkOpacity.getAsInt(), night(view))*255f/100f),255,255,255);
     }
     float radius(View view) {
         float side=tileCorners.cellSide(view);
@@ -99,7 +100,7 @@ final class NotificationAppearanceHooks {
     }
     private int backgroundColor(View view,int nativeColor,boolean blur) throws ReflectiveOperationException {
         // With the switch off, preserve the exact native tint, including live notifications.
-        if (!light.getAsBoolean()) return nativeColor;
+        if (!enabled(view)) return nativeColor;
         // Keep dark floating notifications readable; light-mode surfaces all use the slider.
         if (night(view) && floating(view)) return blur ? DARK_BLUR_COLOR : DARK_SOLID_COLOR;
         return color(view);
@@ -312,7 +313,7 @@ final class NotificationAppearanceHooks {
                 else if(flymeBackground.get(view)!=null)applyRoundness.invoke(view);
             }
             boolean isFloating=floating(view);
-            if(light.getAsBoolean()) {
+            if(enabled(view)) {
                 if(media || landscape) {
                     Drawable drawable=view.getBackground();
                     if(drawable!=null && !drawable.getClass().getName().endsWith("BackgroundBlurDrawable")
@@ -332,13 +333,13 @@ final class NotificationAppearanceHooks {
                         tintNoBlur.invoke(background,backgroundColor(view,color(view),false));
                 }
             }
-            lastColor=color(view); lastLight=light.getAsBoolean(); lastCorners=corners.getAsBoolean();
+            lastColor=color(view); lastLight=enabled(view); lastCorners=corners.getAsBoolean();
             lastFloating=isFloating; lastNight=night(view);
             lastRadius=lastCorners?radius(view):-1f;
         }
         void update() {
             View view=owner.get(); if(view==null || running || failed || !view.isAttachedToWindow())return;
-            boolean currentCorners=corners.getAsBoolean(), currentLight=light.getAsBoolean();
+            boolean currentCorners=corners.getAsBoolean(), currentLight=enabled(view);
             boolean currentFloating;
             try { currentFloating=floating(view); }
             catch(ReflectiveOperationException error) {

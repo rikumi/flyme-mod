@@ -148,7 +148,11 @@ public final class SettingsProvider extends ContentProvider {
         columns.add(ModuleSettings.WIFI_LABEL);
         columns.add(ModuleSettings.LIGHT_OPACITY);
         columns.add(ModuleSettings.NOTIFICATION_LIGHT);
+        columns.add(ModuleSettings.NOTIFICATION_LIGHT_MODE_ENABLED);
+        columns.add(ModuleSettings.NOTIFICATION_DARK_MODE_ENABLED);
         columns.add(ModuleSettings.NOTIFICATION_LIGHT_OPACITY);
+        columns.add(ModuleSettings.NOTIFICATION_LIGHT_OPACITY_LIGHT);
+        columns.add(ModuleSettings.NOTIFICATION_LIGHT_OPACITY_DARK);
         columns.add(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR);
         columns.add(ModuleSettings.NOTIFICATION_BACKGROUND_SATURATION);
         columns.add(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS);
@@ -319,8 +323,14 @@ public final class SettingsProvider extends ContentProvider {
         values.add(prefs.getBoolean(ModuleSettings.WIFI_LABEL, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, prefs.getInt(ModuleSettings.LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT))));
         values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_LIGHT, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_LIGHT_MODE_ENABLED, false) ? 1 : 0);
+        values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_DARK_MODE_ENABLED, false) ? 1 : 0);
         values.add(Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX,
                 prefs.getInt(ModuleSettings.NOTIFICATION_LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT))));
+        values.add(NotificationBackgroundOpacity.clamp(prefs.getInt(ModuleSettings.NOTIFICATION_LIGHT_OPACITY_LIGHT,
+                ModuleSettings.NOTIFICATION_LIGHT_OPACITY_LIGHT_DEFAULT)));
+        values.add(NotificationBackgroundOpacity.clamp(prefs.getInt(ModuleSettings.NOTIFICATION_LIGHT_OPACITY_DARK,
+                ModuleSettings.NOTIFICATION_LIGHT_OPACITY_DARK_DEFAULT)));
         values.add(prefs.getBoolean(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR, false) ? 1 : 0);
         values.add(Math.max(ModuleSettings.TILE_BACKGROUND_SATURATION_MIN,
                 Math.min(ModuleSettings.TILE_BACKGROUND_SATURATION_MAX,

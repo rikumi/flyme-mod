@@ -166,6 +166,12 @@ public final class ModuleSettings {
     public static final String WHITE_ACTIVE_OPACITY = "white_active_opacity";
     public static final String HEADS_UP_WIDTH = "wider_heads_up_notifications";
     public static final String NOTIFICATION_LIGHT = "notification_light_background";
+    public static final String NOTIFICATION_LIGHT_MODE_ENABLED = "notification_light_background_light_enabled";
+    public static final String NOTIFICATION_DARK_MODE_ENABLED = "notification_light_background_dark_enabled";
+    public static final String NOTIFICATION_LIGHT_OPACITY_LIGHT = NotificationBackgroundOpacity.LIGHT;
+    public static final String NOTIFICATION_LIGHT_OPACITY_DARK = NotificationBackgroundOpacity.DARK;
+    public static final int NOTIFICATION_LIGHT_OPACITY_LIGHT_DEFAULT = NotificationBackgroundOpacity.LIGHT_DEFAULT;
+    public static final int NOTIFICATION_LIGHT_OPACITY_DARK_DEFAULT = NotificationBackgroundOpacity.DARK_DEFAULT;
     public static final String NOTIFICATION_LIGHT_OPACITY = "notification_light_background_opacity";
     public static final String NOTIFICATION_BACKGROUND_COLOR = "notification_background_color";
     public static final String NOTIFICATION_BACKGROUND_SATURATION = "notification_background_saturation";
@@ -281,6 +287,14 @@ public final class ModuleSettings {
                     preferences.getInt("ticker_lyric_avoid", 0) == 1).remove("ticker_lyric_avoid").commit();
         }
         DesktopFeatureDefaults.initialize(preferences);
+        NotificationBackgroundOpacity.initialize(preferences);
+        if (!preferences.contains(NOTIFICATION_LIGHT_MODE_ENABLED) || !preferences.contains(NOTIFICATION_DARK_MODE_ENABLED)) {
+            boolean enabled = preferences.getBoolean(NOTIFICATION_LIGHT, false);
+            SharedPreferences.Editor editor = preferences.edit();
+            if (!preferences.contains(NOTIFICATION_LIGHT_MODE_ENABLED)) editor.putBoolean(NOTIFICATION_LIGHT_MODE_ENABLED, enabled);
+            if (!preferences.contains(NOTIFICATION_DARK_MODE_ENABLED)) editor.putBoolean(NOTIFICATION_DARK_MODE_ENABLED, enabled);
+            editor.commit();
+        }
         if(preferences.contains("launcher_folder_contour")) {
             preferences.edit().putBoolean(ICON_CONTOUR,preferences.getBoolean(ICON_CONTOUR,false)
                     ||preferences.getBoolean("launcher_folder_contour",false)).remove("launcher_folder_contour").commit();

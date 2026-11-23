@@ -172,10 +172,16 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.NOTIFICATION_CONTOUR, "通知轮廓光"),
         )),
         SettingsGroup("通知中心主题", listOf(
-            SwitchItem(ModuleSettings.NOTIFICATION_LIGHT, "通知亮色背景",
+            SwitchItem(ModuleSettings.NOTIFICATION_LIGHT_MODE_ENABLED, "浅色模式通知亮色背景",
                 slider = SliderSpec(
-                    ModuleSettings.NOTIFICATION_LIGHT_OPACITY, ModuleSettings.LIGHT_OPACITY_DEFAULT, 0, ModuleSettings.LIGHT_OPACITY_MAX,
-                    unit = "%", step = 5,
+                    ModuleSettings.NOTIFICATION_LIGHT_OPACITY_LIGHT, ModuleSettings.NOTIFICATION_LIGHT_OPACITY_LIGHT_DEFAULT,
+                    0, 100, unit = "%", step = 5, preserveStoredValue = true,
+                ),
+            ),
+            SwitchItem(ModuleSettings.NOTIFICATION_DARK_MODE_ENABLED, "深色模式通知亮色背景",
+                slider = SliderSpec(
+                    ModuleSettings.NOTIFICATION_LIGHT_OPACITY_DARK, ModuleSettings.NOTIFICATION_LIGHT_OPACITY_DARK_DEFAULT,
+                    0, 100, unit = "%", step = 5, preserveStoredValue = true,
                 ),
             ),
             SwitchItem(ModuleSettings.NOTIFICATION_BACKGROUND_COLOR, "通知背景增色", subtitle = "可能影响功耗",

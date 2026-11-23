@@ -94,8 +94,9 @@ public final class XposedInit extends XposedModule {
     private final Set<View> whiteActiveCircleViews = Collections.newSetFromMap(new WeakHashMap<>());
     private final Set<GradientDrawable> whiteActiveProgress = Collections.newSetFromMap(new WeakHashMap<>());
     private boolean sliderActiveCornersEnabled;
-    private boolean notificationLightEnabled, notificationCustomCornersEnabled;
-    private int notificationLightOpacity = ModuleSettings.LIGHT_OPACITY_DEFAULT;
+    private boolean notificationLightEnabled, notificationDarkEnabled, notificationCustomCornersEnabled;
+    private int notificationLightOpacity = ModuleSettings.NOTIFICATION_LIGHT_OPACITY_LIGHT_DEFAULT;
+    private int notificationDarkOpacity = ModuleSettings.NOTIFICATION_LIGHT_OPACITY_DARK_DEFAULT;
     private int notificationCornerPercent = ModuleSettings.TILE_CORNER_PERCENT_DEFAULT;
     private NotificationAppearanceHooks activeNotificationAppearanceHooks;
     private NotificationRemovalLayerHooks activeNotificationRemovalLayerHooks;
@@ -987,7 +988,7 @@ public final class XposedInit extends XposedModule {
         try {
             if (activeTileCornerHooks != null) {
                 activeNotificationAppearanceHooks = new NotificationAppearanceHooks(loader, this::loadSettings,
-                        () -> notificationLightEnabled, () -> notificationLightOpacity,
+                        () -> notificationLightEnabled, () -> notificationDarkEnabled, () -> notificationLightOpacity, () -> notificationDarkOpacity,
                         () -> notificationCustomCornersEnabled, () -> notificationCornerPercent, activeTileCornerHooks,
                         (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
                 deoptimize(loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow")
@@ -1001,7 +1002,7 @@ public final class XposedInit extends XposedModule {
         try {
             activeColorOsMaterialHooks = new ColorOsMaterialHooks(loader, this::loadSettings,
                     () -> colorOsContourEnabled, () -> networkSplitStyle != 0, () -> notificationContourEnabled,
-                    () -> notificationLightOpacity, activeTileCornerHooks,
+                    () -> notificationLightOpacity, () -> notificationDarkOpacity, activeTileCornerHooks,
                     view -> notificationCustomCornersEnabled && activeNotificationAppearanceHooks != null
                             ? activeNotificationAppearanceHooks.radius(view) : Double.NaN,
                     (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
@@ -3010,10 +3011,22 @@ public final class XposedInit extends XposedModule {
                 combinedNotificationWidthEnabled = combinedWidthColumn >= 0 && cursor.getInt(combinedWidthColumn) != 0;
                 headsUpWidthEnabled = headsUpWidthColumn >= 0 && cursor.getInt(headsUpWidthColumn) != 0;
                 int notificationLightColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_LIGHT);
-                notificationLightEnabled = notificationLightColumn >= 0 && cursor.getInt(notificationLightColumn) != 0;
+                boolean legacyNotificationLightEnabled = notificationLightColumn >= 0 && cursor.getInt(notificationLightColumn) != 0;
+                int notificationLightEnabledColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_LIGHT_MODE_ENABLED);
+                int notificationDarkEnabledColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_DARK_MODE_ENABLED);
+                notificationLightEnabled = notificationLightEnabledColumn < 0 ? legacyNotificationLightEnabled
+                        : cursor.getInt(notificationLightEnabledColumn) != 0;
+                notificationDarkEnabled = notificationDarkEnabledColumn < 0 ? legacyNotificationLightEnabled
+                        : cursor.getInt(notificationDarkEnabledColumn) != 0;
                 int notificationLightOpacityColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_LIGHT_OPACITY);
-                notificationLightOpacity = notificationLightOpacityColumn < 0 ? ModuleSettings.LIGHT_OPACITY_DEFAULT
-                        : Math.max(0, Math.min(ModuleSettings.LIGHT_OPACITY_MAX, cursor.getInt(notificationLightOpacityColumn)));
+                int legacyNotificationOpacity = notificationLightOpacityColumn < 0 ? ModuleSettings.LIGHT_OPACITY_DEFAULT
+                        : cursor.getInt(notificationLightOpacityColumn);
+                int notificationLightModeColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_LIGHT_OPACITY_LIGHT);
+                int notificationDarkModeColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_LIGHT_OPACITY_DARK);
+                notificationLightOpacity = notificationLightModeColumn < 0 ? LightBackgroundOpacity.effective(legacyNotificationOpacity, false)
+                        : NotificationBackgroundOpacity.clamp(cursor.getInt(notificationLightModeColumn));
+                notificationDarkOpacity = notificationDarkModeColumn < 0 ? LightBackgroundOpacity.effective(legacyNotificationOpacity, true)
+                        : NotificationBackgroundOpacity.clamp(cursor.getInt(notificationDarkModeColumn));
                 int notificationCustomCornersColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_CUSTOM_CORNERS);
                 int notificationReadLayerFixColumn = cursor.getColumnIndex(ModuleSettings.NOTIFICATION_READ_LAYER_FIX);
                 notificationReadLayerFixEnabled = notificationReadLayerFixColumn >= 0 && cursor.getInt(notificationReadLayerFixColumn) != 0;
