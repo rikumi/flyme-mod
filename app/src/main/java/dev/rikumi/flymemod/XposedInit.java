@@ -2,6 +2,7 @@ package dev.rikumi.flymemod;
 
 import io.github.libxposed.api.XposedModule;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.LauncherActivityInfo;
@@ -235,51 +236,38 @@ public final class XposedInit extends XposedModule {
     private final ImageDrawHookChain imageDrawHooks = new ImageDrawHookChain();
 
     private boolean nightBlacklistInstalled;
+    private boolean iconPackHooksInstalled;
+    private String hookPackageName;
+    private ClassLoader hookClassLoader;
+    private SharedPreferences cameraPrefs;
+    private SharedPreferences fontPrefs;
+    private boolean hookSettingsWatched;
+    private final SharedPreferences.OnSharedPreferenceChangeListener hookSettingsChanges = (prefs, key) -> {
+        if (key == null || ModuleSettings.SYSTEM_ICON_PACK.equals(key)
+                || ModuleSettings.DARK_APP_SPECIAL_PACKAGES.equals(key)
+                || ModuleSettings.DARK_APP_WHITELIST_MODE.equals(key)) requestInstallEnabledHooks();
+    };
+    private final SharedPreferences.OnSharedPreferenceChangeListener fontSettingsChanges =
+            (prefs, key) -> requestInstallEnabledHooks();
 
     @Override public void onPackageReady(PackageReadyParam param) {
-        if (!"android".equals(param.getPackageName())) NativeFontHooks.hook(this);
-        FlymeFontProtection.install(this, param.getClassLoader());
-        if (!nightBlacklistInstalled) {
+        String packageName = param.getPackageName();
+        if (HookSafety.isProtected(packageName)) return;
+        hookPackageName = packageName;
+        hookClassLoader = param.getClassLoader();
+        installEnabledHooks();
+        watchHookSettings();
+        if (themeColorHooks == null && DarkBackgroundTargets.contains(packageName)) {
             try {
-                new NightModeBlacklistHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE)).install(param.getClassLoader(),
-                        (name, method, hooker, parameters) -> install(param.getClassLoader(), name, method, hooker, parameters),
-                        this::deoptimize, (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error));
-                nightBlacklistInstalled = true;
-            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-                log(Log.ERROR, "FlymeMod", "Cannot install native dark blacklist listener", error);
-            }
-        }
-        if (themeColorHooks == null && DarkBackgroundTargets.contains(param.getPackageName())) {
-            try {
-                themeColorHooks = new ThemeColorHooks(param.getPackageName(), getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
+                themeColorHooks = new ThemeColorHooks(packageName, cameraPreferences(),
                         (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error));
                 themeColorHooks.install(param.getClassLoader(), this::installDrawingHook, this::deoptimize);
             } catch (RuntimeException | LinkageError error) {
                 log(Log.ERROR, "FlymeMod", "Cannot initialize appearance background hooks", error);
             }
         }
-        try {
-            if (!"dev.rikumi.flymemod".equals(param.getPackageName())) {
-                SystemIconPackHooks icons = new SystemIconPackHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
-                        (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
-                ClassLoader iconLoader = param.getClassLoader();
-                SignalHooks.Installer iconInstaller = (name, method, hooker, parameters) ->
-                        install(iconLoader, name, method, hooker, parameters);
-                icons.install(iconLoader, iconInstaller, this::deoptimize);
-                if ("com.android.systemui".equals(param.getPackageName()))
-                    icons.installSystemUi(iconLoader, iconInstaller);
-                if ("com.android.settings".equals(param.getPackageName()))
-                    icons.installSettings(iconLoader, iconInstaller, this::deoptimize);
-                if ("com.meizu.flyme.launcher".equals(param.getPackageName()))
-                    new SystemIconPackLauncherHooks(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
-                            (message, error) -> log(Log.ERROR, "FlymeMod", message, error))
-                            .install(iconLoader, iconInstaller, this::deoptimize);
-            }
-        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-            log(Log.ERROR, "FlymeMod", "Cannot initialize scoped system application icon pack", error);
-        }
-        installPackageHooks(param.getPackageName(), param.getClassLoader());
-        if ("com.meizu.assistant".equals(param.getPackageName())) {
+        installPackageHooks(packageName, param.getClassLoader());
+        if ("com.meizu.assistant".equals(packageName)) {
             try {
                 new AssistantWidgetCloneHooks((message, error) -> log(error == null ? Log.INFO : Log.ERROR,
                         "FlymeMod", message, error)).install(param.getClassLoader(),
@@ -290,9 +278,84 @@ public final class XposedInit extends XposedModule {
         }
     }
 
+    private SharedPreferences cameraPreferences() {
+        if (cameraPrefs == null) cameraPrefs = getRemotePreferences(CameraSettingsBridge.REMOTE_FILE);
+        return cameraPrefs;
+    }
+
+    private SharedPreferences fontPreferences() {
+        if (fontPrefs == null) fontPrefs = getRemotePreferences(SystemFontHooks.PREFS);
+        return fontPrefs;
+    }
+
+    private void watchHookSettings() {
+        if (hookSettingsWatched) return;
+        hookSettingsWatched = true;
+        cameraPreferences().registerOnSharedPreferenceChangeListener(hookSettingsChanges);
+        fontPreferences().registerOnSharedPreferenceChangeListener(fontSettingsChanges);
+    }
+
+    private void requestInstallEnabledHooks() {
+        if (Looper.myLooper() == Looper.getMainLooper()) installEnabledHooks();
+        else new Handler(Looper.getMainLooper()).post(this::installEnabledHooks);
+    }
+
+    /**
+     * Installs process-wide hooks only for features that are enabled. Hooks that are installed
+     * while disabled still occupy every scoped process, so "off" must mean "not installed".
+     */
+    private void installEnabledHooks() {
+        String packageName = hookPackageName;
+        ClassLoader loader = hookClassLoader;
+        if (packageName == null || loader == null) return;
+        if (SystemFontHooks.isActive(fontPreferences())) {
+            if (!"android".equals(packageName)) NativeFontHooks.hook(this);
+            FlymeFontProtection.install(this, loader);
+        }
+        if (!nightBlacklistInstalled
+                && (cameraPreferences().getBoolean(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, false)
+                || cameraPreferences().getBoolean(ModuleSettings.DARK_APP_WHITELIST_MODE, false))) {
+            try {
+                new NightModeBlacklistHooks(cameraPreferences()).install(loader,
+                        (name, method, hooker, parameters) -> install(loader, name, method, hooker, parameters),
+                        this::deoptimize, (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error));
+                nightBlacklistInstalled = true;
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                log(Log.ERROR, "FlymeMod", "Cannot install native dark blacklist listener", error);
+            }
+        }
+        installIconPackHooks(packageName, loader);
+    }
+
+    private void installIconPackHooks(String packageName, ClassLoader loader) {
+        if (iconPackHooksInstalled || !cameraPreferences().getBoolean(ModuleSettings.SYSTEM_ICON_PACK, false)) return;
+        try {
+            SystemIconPackHooks icons = new SystemIconPackHooks(cameraPreferences(),
+                    (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
+            SignalHooks.Installer iconInstaller = (name, method, hooker, parameters) ->
+                    install(loader, name, method, hooker, parameters);
+            icons.install(loader, iconInstaller, this::deoptimize);
+            if ("com.android.systemui".equals(packageName))
+                icons.installSystemUi(loader, iconInstaller);
+            if ("com.android.settings".equals(packageName))
+                icons.installSettings(loader, iconInstaller, this::deoptimize);
+            if ("com.meizu.flyme.launcher".equals(packageName))
+                new SystemIconPackLauncherHooks(cameraPreferences(),
+                        (message, error) -> log(Log.ERROR, "FlymeMod", message, error))
+                        .install(loader, iconInstaller, this::deoptimize);
+            iconPackHooksInstalled = true;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            log(Log.ERROR, "FlymeMod", "Cannot initialize scoped system application icon pack", error);
+        }
+    }
+
     @Override public void onSystemServerStarting(SystemServerStartingParam param) {
         ClassLoader loader = param.getClassLoader();
-        SystemFontHooks.hook(this, loader);
+        if (SystemFontHooks.isActive(getRemotePreferences(SystemFontHooks.PREFS))) {
+            SystemFontHooks.hook(this, loader);
+        } else {
+            log(Log.INFO, "FlymeMod", "System font hooks skipped: no custom font selected", null);
+        }
         try {
             new HeyMelodyNoiseBridge(getRemotePreferences(CameraSettingsBridge.REMOTE_FILE),
                     (message, error) -> log(error == null ? Log.INFO : Log.ERROR, "FlymeMod", message, error))
