@@ -16,11 +16,15 @@ import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Predicate;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 final class NotificationForegroundHooks {
     private final Class<?> row, stack, landscape, media;
     private final Field expanded, status;
     private final Predicate<Context> darken;
+    private final Consumer<Context> settings;
+    private final BooleanSupplier lightBackground;
     private final Predicate<View> controlCenter;
     private final Map<TextView,ColorStateList> textColors=new WeakHashMap<>();
     private final Map<ImageView,ColorStateList> iconColors=new WeakHashMap<>();
@@ -31,8 +35,9 @@ final class NotificationForegroundHooks {
     private static final ColorStateList BLACK=ColorStateList.valueOf(Color.BLACK);
     private static final ColorStateList WHITE=ColorStateList.valueOf(Color.WHITE);
 
-    NotificationForegroundHooks(ClassLoader loader, Predicate<Context> darken, Predicate<View> controlCenter) throws ReflectiveOperationException {
-        this.darken=darken; this.controlCenter=controlCenter;
+    NotificationForegroundHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier lightBackground,
+            Predicate<Context> darken, Predicate<View> controlCenter) throws ReflectiveOperationException {
+        this.settings=settings; this.lightBackground=lightBackground; this.darken=darken; this.controlCenter=controlCenter;
         row=loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow");
         landscape=loader.loadClass("com.flyme.notification.view.LandscapeHeadsUpNotificationView");
         media=loader.loadClass("com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout");
@@ -47,7 +52,8 @@ final class NotificationForegroundHooks {
         for(View current=view;current!=null;current=current.getParent() instanceof View parent?parent:null) {
             if(row.isInstance(current) || landscape.isInstance(current) || media.isInstance(current)) {
                 notification=true;
-                if(!night)return BLACK;
+                settings.accept(view.getContext());
+                if(!night)return lightBackground.getAsBoolean() ? BLACK : null;
             }
             if(stack.isInstance(current))return notification && expanded.getBoolean(current)
                     && status.getInt(current)==0 && darken.test(view.getContext()) ? WHITE : null;

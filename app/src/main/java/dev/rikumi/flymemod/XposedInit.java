@@ -989,7 +989,7 @@ public final class XposedInit extends XposedModule {
             if (activeTileCornerHooks != null) {
                 activeNotificationAppearanceHooks = new NotificationAppearanceHooks(loader, this::loadSettings,
                         () -> notificationLightEnabled, () -> notificationDarkEnabled, () -> notificationLightOpacity, () -> notificationDarkOpacity,
-                        () -> notificationCustomCornersEnabled, () -> notificationCornerPercent, activeTileCornerHooks,
+                        () -> notificationLightEnabled || notificationContourEnabled, () -> notificationCustomCornersEnabled, () -> notificationCornerPercent, activeTileCornerHooks,
                         (message, error) -> log(Log.ERROR, "FlymeMod", message, error));
                 deoptimize(loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow")
                         .getDeclaredMethod("dispatchDraw",Canvas.class));
@@ -2046,7 +2046,8 @@ public final class XposedInit extends XposedModule {
             log(Log.ERROR,"FlymeMod","Cannot resolve native control center foreground palette",error);
         }
         try {
-            new NotificationForegroundHooks(loader,this::shouldDarken,this::isControlCenterView).install(
+            new NotificationForegroundHooks(loader,this::loadSettings,() -> notificationLightEnabled,
+                    this::shouldDarken,this::isControlCenterView).install(
                     (name,method,hooker,parameters) -> install(loader,name,method,hooker,parameters));
         } catch (ReflectiveOperationException error) {
             log(Log.ERROR,"FlymeMod","Cannot resolve dark shade notification foreground",error);

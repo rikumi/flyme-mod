@@ -32,7 +32,7 @@ final class NotificationAppearanceHooks {
     private static final int DARK_BLUR_COLOR = 0xB21A1A1A;
     private static final int DARK_SOLID_COLOR = 0xFF1A1A1A;
     private final Consumer<Context> settings;
-    private final BooleanSupplier light, dark, corners;
+    private final BooleanSupplier light, dark, corners, dismissBackground;
     private final IntSupplier lightOpacity, darkOpacity, percent;
     private final TileCornerHooks tileCorners;
     private final BiConsumer<String, Throwable> log;
@@ -50,9 +50,10 @@ final class NotificationAppearanceHooks {
     private final Map<View, WeakReference<State>> states = new WeakHashMap<>();
 
     NotificationAppearanceHooks(ClassLoader loader, Consumer<Context> settings, BooleanSupplier light, BooleanSupplier dark,
-            IntSupplier lightOpacity, IntSupplier darkOpacity, BooleanSupplier corners, IntSupplier percent, TileCornerHooks tileCorners,
+            IntSupplier lightOpacity, IntSupplier darkOpacity, BooleanSupplier dismissBackground, BooleanSupplier corners, IntSupplier percent, TileCornerHooks tileCorners,
             BiConsumer<String, Throwable> log) throws ReflectiveOperationException {
         this.settings=settings; this.light=light; this.dark=dark; this.lightOpacity=lightOpacity; this.darkOpacity=darkOpacity; this.corners=corners;
+        this.dismissBackground=dismissBackground;
         this.percent=percent; this.tileCorners=tileCorners; this.log=log;
         rowClass=loader.loadClass("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow");
         landscapeClass=loader.loadClass("com.flyme.notification.view.LandscapeHeadsUpNotificationView");
@@ -108,7 +109,9 @@ final class NotificationAppearanceHooks {
     void install(SignalHooks.Installer installer) {
         installer.hook("android.widget.ImageView", "onDraw", chain -> {
             ImageView icon=(ImageView)chain.getThisObject();
-            if(isDismissIcon(icon) && !night(icon)) {
+            boolean dismiss = isDismissIcon(icon);
+            if (dismiss) settings.accept(icon.getContext());
+            if(dismiss && !night(icon) && dismissBackground.getAsBoolean()) {
                 if(icon.getColorFilter()!=dismissFilter) {
                     dismissOriginals.put(icon,icon.getColorFilter());
                     icon.setColorFilter(dismissFilter);

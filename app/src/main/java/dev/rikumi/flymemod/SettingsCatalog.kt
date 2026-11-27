@@ -355,6 +355,7 @@ internal val SETTINGS_GROUPS: Map<String, List<SettingsGroup>> = mapOf(
             SwitchItem(ModuleSettings.WIRELESS_DEBUG_THEME_FIX, "修复无线调试配对页面主题适配"),
             SwitchItem(ModuleSettings.DARK_APP_WHITELIST_MODE, "强制深色适配使用白名单"),
             SwitchItem(ModuleSettings.DARK_APP_SPECIAL_PACKAGES, "强制深色黑名单支持关闭特殊应用"),
+            CustomItem(MonetBlack.KEY) { MonetBlackPreference() },
         )),
         SettingsGroup("系统杂项", listOf(
             SwitchItem(ModuleSettings.FIX_ZYGOTE_RESTART_UNLOCK, "修复重启系统服务后解锁卡顿"),
